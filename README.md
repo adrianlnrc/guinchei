@@ -19,6 +19,7 @@ Este repositório é a fonte de verdade do produto. Comece por:
 | [CONTEXT.md](CONTEXT.md) | Domínio, linguagem ubíqua, regras e invariantes. **Leia primeiro.** |
 | [docs/adr/](docs/adr/) | Decisões estruturais, com contexto, alternativas e consequências |
 | [docs/produto/requisitos.md](docs/produto/requisitos.md) | Requisitos funcionais e não funcionais, fluxo principal |
+| [docs/produto/PRD.md](docs/produto/PRD.md) | PRD do walking skeleton: recorte mínimo do MVP para construir primeiro, com critérios de aceite |
 | [docs/negocio/unit-economics.md](docs/negocio/unit-economics.md) | Modelo financeiro, ponto de equilíbrio, KPIs |
 | [docs/negocio/persona-e-segmentos.md](docs/negocio/persona-e-segmentos.md) | Cliente ideal, persona, segmentos-alvo |
 | [docs/negocio/go-to-market.md](docs/negocio/go-to-market.md) | Bootstrap de oferta e demanda, posicionamento, riscos |

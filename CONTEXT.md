@@ -5,6 +5,7 @@ Decisões estruturais ficam em `docs/adr/`. Regras de consumo destes docs: `docs
 
 **Documentação relacionada:**
 [requisitos e fluxo](docs/produto/requisitos.md) ·
+[PRD do walking skeleton](docs/produto/PRD.md) ·
 [unit economics](docs/negocio/unit-economics.md) ·
 [persona e segmentos](docs/negocio/persona-e-segmentos.md) ·
 [go-to-market](docs/negocio/go-to-market.md) ·
