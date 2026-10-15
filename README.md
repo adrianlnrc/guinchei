@@ -41,6 +41,7 @@ Configuração para agentes de IA: [CLAUDE.md](CLAUDE.md) e [docs/agents/](docs/
 | [0005](docs/adr/0005-mvp-em-pwa.md) | MVP em PWA para as três superfícies |
 | [0006](docs/adr/0006-oferta-via-frotas-ancora.md) | Oferta via frotas âncora com ganho mínimo garantido |
 | [0007](docs/adr/0007-travas-de-conformidade-do-mvp.md) | Travas de conformidade do MVP |
+| [0008](docs/adr/0008-stack-tecnica-do-skeleton.md) | Stack técnica do walking skeleton |
 
 ---
 

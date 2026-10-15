@@ -24,3 +24,9 @@ A plataforma calcula o Preço fechado — taxa base + R$/km até o veículo + R$
 - (−) A plataforma assume o risco de precificação em casos atípicos.
 - (−) Exige uma engine de preço já no MVP.
 - (−) O desconto inicial de 10–15% pressiona a margem enquanto dura o subsídio.
+
+## Nota de revisão (2026-10-15)
+
+A fórmula inclui "R$/km até o veículo", mas o Preço fechado é mostrado antes da confirmação, quando o Guincheiro ainda não foi atribuído. No walking skeleton ([ADR-0008](0008-stack-tecnica-do-skeleton.md)) isso é resolvido assim: a cotação usa a distância do Guincheiro disponível mais próximo naquele momento, o preço é travado e, se o Match atribuir um Guincheiro mais distante, a plataforma absorve a diferença.
+
+**Revisar com dados reais do piloto:** medir a frequência e o custo desse desvio. Alternativas a reavaliar: distância da base da Frota âncora mais próxima, ou taxa de deslocamento fixa por zona.

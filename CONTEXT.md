@@ -35,7 +35,7 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 | **Frota** | Empresa de guincho com CNPJ, cadastrada e verificada. |
 | **Frota âncora** | Frota do lançamento, com Ganho mínimo garantido por plantão nos primeiros 90 dias. |
 | **Pedido** | Solicitação de reboque criada pelo Cliente: tipo de veículo, situação, "as 4 rodas giram?", origem, destino. É o "chamado" antes do aceite. |
-| **Corrida** | Um Pedido aceito e em execução por um Guincheiro, do aceite à entrega. Evite "viagem". |
+| **Corrida** | Um Pedido aceito e em execução por um Guincheiro, do aceite à entrega. Estados: aceita → a_caminho → no_local → carregado → entregue (ver ADR-0008). Evite "viagem". |
 | **Match** | Processo que atribui um Pedido a um Guincheiro (ver ADR-0002). |
 | **Preço fechado** | Valor total calculado pela plataforma e mostrado ao Cliente antes da confirmação. Não é orçamento; só muda se o destino mudar durante a Corrida (ver ADR-0003). |
 | **Comissão** | Percentual do Preço fechado retido pela plataforma. MVP: 20%. |
@@ -101,4 +101,6 @@ Hipóteses centrais ainda não validadas:
 - Norma distrital específica de credenciamento de guincho particular no DF, além do alvará geral.
 - Estrutura contratual da apólice de avaria com a plataforma como cossegurada/beneficiária.
 - Modelo de dados e SLA dos contratos com Frotas âncora.
+- Preço fechado × Match: o R$/km até o veículo é cotado com o Guincheiro mais próximo e a plataforma absorve desvios (ver nota no ADR-0003); medir no piloto.
+- Escolha do PSP (ADR-0004 lista as opções; o skeleton usa adaptador mock).
 - Posição da SEFAZ-DF sobre CT-e/ICMS-transporte caso a praça se estenda ao entorno goiano.

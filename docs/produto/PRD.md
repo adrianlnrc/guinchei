@@ -44,7 +44,7 @@ Recorte dentro dos requisitos de `requisitos.md`:
 | RF10 | Registro fotográfico obrigatório (antes/depois) | Completo |
 | RF11 | Encerramento da Corrida condicionado às Fotos de estado | Completo |
 
-Como o Cliente acompanha a Corrida no skeleton (substituto do RF09 nesta fase): atualização de **status por etapa** (Pedido aberto → Guincheiro a caminho → veículo carregado → entregue), sem mapa em tempo real nem GPS ao vivo do Guincheiro.
+Como o Cliente acompanha a Corrida no skeleton (substituto do RF09 nesta fase): atualização de **status por etapa** (Pedido aberto → Guincheiro a caminho → no local → veículo carregado → entregue; ver ADR-0008), sem mapa em tempo real nem GPS ao vivo do Guincheiro.
 
 ## Critérios de aceite (Definition of Done)
 
