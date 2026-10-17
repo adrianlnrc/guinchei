@@ -11,9 +11,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@guinchei/estados": "workspace:*",
+    "@guinchei/mock": "workspace:*",
+    "@guinchei/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.3",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.4"
   },
   "devDependencies": {
     "@testing-library/react": "^16.3.3",
