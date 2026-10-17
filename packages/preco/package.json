@@ -1,0 +1,14 @@
+{
+  "name": "@guinchei/preco",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Cálculo do Preço fechado (TS puro, sem I/O)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
