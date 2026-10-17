@@ -44,3 +44,13 @@ O PRD do walking skeleton ([PRD.md](../produto/PRD.md)) deixou a stack técnica 
 - (−) Dependência do Supabase (Edge Functions e `pg_cron` têm limites; migração para API própria tem custo).
 - (−) Três apps no monorepo exigem disciplina nos pacotes compartilhados.
 - (−) iOS/PWA continua com push e GPS em segundo plano fracos; o spike da Fase 0 decide se o app do Guincheiro precisa de invólucro nativo (Capacitor).
+
+## Nota de revisão (2026-10-17)
+
+Decisões do grilling de 2026-10-17 que alteram este ADR:
+
+- **Auth:** "e-mail + senha" foi substituído por telefone + código ([ADR-0010](0010-login-por-telefone-e-cadastro-em-duas-etapas.md)). No skeleton, só números de teste.
+- **Fotos de estado:** deixam de ser condição para `carregado` e `entregue` ([ADR-0011](0011-fotos-de-estado-opcionais-cliente-e-guincheiro.md)). A máquina de estados da Corrida continua a mesma, sem guarda de fotos.
+- **`aceita → a_caminho`:** é uma ação explícita do Guincheiro ("Saí para o local"). Cancelar antes dela não tem custo para o Cliente (RN05).
+- **Sem aceite:** em `sem_guincheiro`, o Cliente escolhe entre **tentar de novo** (mesmo Preço fechado e mesma autorização de pagamento; nova rodada de Match em que todos os Guincheiros elegíveis podem receber o Pedido de novo) e **estornar**. Não há atribuição manual pelo Painel.
+- **Preço × Match:** a nota do ADR-0003 é detalhada no [ADR-0009](0009-tabela-de-precos-inicial-e-repasse-por-distancia.md): o Guincheiro que aceita recebe pela própria distância, com teto na Comissão.

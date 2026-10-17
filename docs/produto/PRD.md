@@ -93,3 +93,13 @@ Sem responsáveis nem datas atribuídos neste documento (ver decisão registrada
 3. **Incremento 2** — RF12 (split real), RF13 (avaliação), RF14 (cancelamento).
 4. **Incremento 3** — RF02 (homologação self-service), RF15–RF18 (Painel de operação completo, histórico, bloqueio geográfico).
 5. **Endurecimento** — RNF01–RNF08 (produção: 24×7, LGPD, PWA instalável, auditoria etc.), aplicados sobre o que já existe.
+
+## Nota de revisão (2026-10-17)
+
+O grilling de 2026-10-17 alterou o recorte:
+
+- **RF01:** login por telefone + código e cadastro urgente com aceite dos termos ([ADR-0010](../adr/0010-login-por-telefone-e-cadastro-em-duas-etapas.md)); no skeleton, números de teste.
+- **RF10/RF11:** Fotos de estado opcionais, registradas pelo Cliente e pelo Guincheiro, com aviso explícito; a Corrida encerra sem elas ([ADR-0011](../adr/0011-fotos-de-estado-opcionais-cliente-e-guincheiro.md)). O critério de aceite 4 passa a ser: "Cliente e Guincheiro conseguem registrar Fotos de estado; encerrar sem elas exige confirmar o aviso".
+- **Sem aceite:** o Cliente escolhe entre tentar de novo e estornar (nota de revisão do ADR-0008).
+- **Preço:** valores, piso e repasse pela distância de quem aceita no [ADR-0009](../adr/0009-tabela-de-precos-inicial-e-repasse-por-distancia.md).
+- **Cadastro de prestadores** (empresa e autônomo, [ADR-0012](../adr/0012-cadastro-de-prestadores-empresa-e-autonomo.md)) foi antecipado para o Incremento 1; o skeleton segue com Frotas do seed.

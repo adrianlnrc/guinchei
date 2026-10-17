@@ -23,3 +23,7 @@ Lançar com 3–5 Frotas âncora (empresas com CNPJ), com contrato e Ganho míni
 - (+) Risco jurídico menor: empresa com apólice e CNPJ regular.
 - (−) Custo fixo do Ganho mínimo garantido antes de haver receita.
 - (−) Escala de oferta limitada até a abertura para autônomos.
+
+## Nota de revisão (2026-10-17)
+
+Autônomos entram já no lançamento, como Frota de uma pessoa só, com a mesma verificação manual e a mesma apólice. Ver [ADR-0012](0012-cadastro-de-prestadores-empresa-e-autonomo.md). As Frotas âncora com Ganho mínimo garantido continuam.

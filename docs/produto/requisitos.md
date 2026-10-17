@@ -64,8 +64,8 @@ Homologação de Frotas, monitor de Corridas em curso, resolução de Disputa, g
 | RF07 | Match: atribuição automática ao Guincheiro disponível mais próximo, com repasse ao próximo em caso de recusa ou timeout |
 | RF08 | Broadcast como fallback quando a auto-atribuição se esgota |
 | RF09 | Rastreamento da Corrida em tempo real, com ETA, no app do Cliente |
-| RF10 | Registro fotográfico obrigatório antes e depois do transporte, com data, hora e coordenadas |
-| RF11 | Encerramento da Corrida condicionado às Fotos de estado completas |
+| RF10 | Registro de fotos e vídeos do estado do veículo pelo Cliente e pelo Guincheiro, com data, hora, coordenadas e autor (opcional, ADR-0011) |
+| RF11 | ~~Encerramento condicionado às Fotos de estado~~ Encerramento com aviso explícito quando não há Fotos de estado (ADR-0011) |
 | RF12 | Liquidação com split: repasse ao Guincheiro já descontada a Comissão |
 | RF13 | Avaliação mútua de 1 a 5 ao fim da Corrida |
 | RF14 | Cálculo e cobrança de taxa de cancelamento conforme as regras de negócio |
@@ -96,8 +96,8 @@ Homologação de Frotas, monitor de Corridas em curso, resolução de Disputa, g
 | RN01 | Toda Corrida tem origem **e** destino dentro do DF |
 | RN02 | O Preço fechado só muda se o destino mudar durante a Corrida |
 | RN03 | Uma Frota só recebe Corridas após homologação manual completa e com apólice vigente |
-| RN04 | A Corrida só encerra com as Fotos de estado (antes e depois) enviadas |
-| RN05 | Cancelamento pelo Cliente após "a caminho": taxa de ~R$ 30 repassada ao Guincheiro |
+| RN04 | ~~A Corrida só encerra com as Fotos de estado~~ Revogada pelo ADR-0011: Fotos de estado são opcionais, registradas pelo Cliente e pelo Guincheiro, com aviso explícito |
+| RN05 | Cancelamento pelo Cliente antes de o Guincheiro sair: sem custo. Após "a caminho": taxa de ~R$ 30 repassada ao Guincheiro |
 | RN06 | Não comparecimento do Guincheiro: sem repasse, penalidade no score, re-Match sem nova cobrança ao Cliente |
 | RN07 | Serviço impossível por erro de descrição do Cliente: cobra deslocamento. Por erro do Guincheiro: não cobra |
 | RN08 | Casos ambíguos vão para Disputa, resolvida pelo Painel de operação com base nas Fotos de estado e no histórico |
