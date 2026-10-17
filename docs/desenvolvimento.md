@@ -22,7 +22,7 @@ packages/
   tipos/        tipos compartilhados e gerados do schema
   api/          cliente Supabase compartilhado
   ui/           tokens da identidade visual e componentes React
-  mock/         dados do protótipo navegável e dublês de preço e estados
+  mock/         dados do cenário do protótipo navegável (o preço vem de @guinchei/preco)
 supabase/       config, migrações e seed do Supabase CLI
 ```
 
