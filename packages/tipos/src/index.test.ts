@@ -12,7 +12,8 @@ describe('@guinchei/tipos', () => {
   });
 
   it('expõe as linhas das tabelas do schema', () => {
-    expectTypeOf<Tables<'pedidos'>['preco_total']>().toEqualTypeOf<number>();
+    // Nulo até a cotação (#10): o Pedido nasce só com as três respostas.
+    expectTypeOf<Tables<'pedidos'>['preco_total']>().toEqualTypeOf<number | null>();
     expectTypeOf<Tables<'corridas'>['estado']>().toEqualTypeOf<Enums<'estado_corrida'>>();
   });
 });
