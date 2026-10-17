@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatarHora, formatarKm, formatarReais, formatarPercentual } from '@guinchei/ui';
-import { TABELA_PADRAO } from '@guinchei/mock';
+import { TABELA_PADRAO } from '@guinchei/preco';
 import { CLIENTE, LADOS, PRECO, REPASSE, TRECHO } from '@guinchei/mock';
 import { Botao, Corpo, Foto, Heroi, Nota, Ponto, Segmentado, Tela, Valores } from '@guinchei/ui';
 import { contarFotos, usePlantao } from '../plantao';

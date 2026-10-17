@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TABELA_PADRAO } from '@guinchei/mock';
-import { formatarKm, formatarPercentual, formatarReais } from '@guinchei/ui';
 import { PRECO, TRECHO } from '@guinchei/mock';
+import { TABELA_PADRAO } from '@guinchei/preco';
+import { formatarKm, formatarPercentual, formatarReais } from '@guinchei/ui';
 import {
   Botao,
   Corpo,
@@ -77,6 +77,8 @@ export function Preco() {
       `Adicional feriado · ${formatarPercentual(TABELA_PADRAO.adicionalFeriado)}`,
       formatarReais(PRECO.adicionalFeriado),
     ]);
+  if (PRECO.ajustePiso)
+    linhas.push(['Ajuste para o Preço fechado mínimo', formatarReais(PRECO.ajustePiso)]);
 
   return (
     <Tela escura rotulo="Preço fechado">

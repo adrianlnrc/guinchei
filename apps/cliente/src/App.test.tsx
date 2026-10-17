@@ -2,6 +2,9 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useEffect } from 'react';
 import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { COTACAO } from '@guinchei/mock';
+import { TABELA_PADRAO, calcularPrecoFechado } from '@guinchei/preco';
+import { formatarReais, partesReais } from '@guinchei/ui';
 import { App } from './App';
 
 afterEach(() => {
@@ -49,10 +52,18 @@ describe('App cliente', () => {
     expect(screen.getByRole('heading', { name: /Carro parou\? Respira/ })).toBeTruthy();
   });
 
-  it('mostra o Preço fechado com a conta detalhada', () => {
+  it('mostra o Preço fechado e a decomposição calculados por @guinchei/preco', () => {
     renderEm('/preco');
+    const preco = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
+    expect(screen.getByText(partesReais(preco.total).inteiro)).toBeTruthy();
+    expect(screen.getByText(partesReais(preco.total).centavos)).toBeTruthy();
     expect(screen.getByText('Taxa base')).toBeTruthy();
-    expect(screen.getByText('R$ 38,82')).toBeTruthy();
+    for (const parcela of [preco.taxaBase, preco.deslocamento, preco.reboque]) {
+      expect(screen.getByText(formatarReais(parcela))).toBeTruthy();
+    }
+    expect(screen.getByText('Adicional noturno · 15%')).toBeTruthy();
+    expect(screen.getByText(formatarReais(preco.adicionalNoturno))).toBeTruthy();
+    expect(screen.queryByText(/Preço fechado mínimo/)).toBeNull();
   });
 
   it('o Pedido em três toques só libera o mapa depois da última resposta', () => {

@@ -13,6 +13,7 @@
   "dependencies": {
     "@guinchei/estados": "workspace:*",
     "@guinchei/mock": "workspace:*",
+    "@guinchei/preco": "workspace:*",
     "@guinchei/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.3",
     "react": "^19.3.1",

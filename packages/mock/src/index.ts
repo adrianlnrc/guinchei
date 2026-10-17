@@ -1,11 +1,20 @@
 // Cenário do protótipo: terça, 21:47, Rafael parado no Eixo Monumental.
 // Nomes, valores e histórico são de exemplo (ver chats/ do handoff de design).
 import type { EstadoCorrida } from '@guinchei/estados';
-import { calcularPrecoFechado, calcularRepasse } from './simulacao';
+import {
+  TABELA_PADRAO,
+  calcularPrecoFechado,
+  calcularRepasse,
+  type Cotacao,
+} from '@guinchei/preco';
 
 export * from './simulacao';
 
-export const QUANDO = new Date(2026, 9, 13, 21, 47);
+/** Momento da cotação do cenário, com o fuso de Brasília explícito. */
+export const INSTANTE = '2026-10-13T21:47:00-03:00';
+
+/** Feriados do cenário (YYYY-MM-DD). Vazio: a terça do cenário não é feriado. */
+export const FERIADOS: readonly string[] = [];
 
 export const CLIENTE = {
   nome: 'Rafael',
@@ -41,12 +50,15 @@ export const TRECHO = {
   coordenadas: '-15.7903, -47.8921',
 };
 
-export const PRECO = calcularPrecoFechado({
-  kmDeslocamento: TRECHO.kmDeslocamento,
-  kmReboque: TRECHO.kmReboque,
-  quando: QUANDO,
-});
-export const REPASSE = calcularRepasse(PRECO.total);
+export const COTACAO: Cotacao = {
+  kmAteVeiculo: TRECHO.kmDeslocamento,
+  kmRebocado: TRECHO.kmReboque,
+  instante: INSTANTE,
+  feriados: FERIADOS,
+};
+
+export const PRECO = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
+export const REPASSE = calcularRepasse(PRECO.total, TABELA_PADRAO);
 
 export const VEICULOS = [
   { valor: 'carro', rotulo: 'Carro de passeio', curto: 'Carro' },

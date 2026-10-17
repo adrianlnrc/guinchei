@@ -1,11 +1,19 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { TABELA_PADRAO, type TabelaPrecos } from '@guinchei/mock';
 import {
   FILA_HOMOLOGACAO,
   MONITOR,
+  TAXA_CANCELAMENTO,
   type CorridaMonitor,
   type FrotaHomologacao,
 } from '@guinchei/mock';
+import { TABELA_PADRAO, type TabelaPrecos } from '@guinchei/preco';
+
+/** Tabela de preços do pacote mais a taxa de cancelamento, que a operação edita junto. */
+export interface TabelaDoPainel extends TabelaPrecos {
+  taxaCancelamento: number;
+}
+
+const TABELA_INICIAL: TabelaDoPainel = { ...TABELA_PADRAO, taxaCancelamento: TAXA_CANCELAMENTO };
 
 interface Operacao {
   corridas: CorridaMonitor[];
@@ -17,8 +25,8 @@ interface Operacao {
   /** Decisão registrada na Disputa do protótipo; `null` enquanto está em análise. */
   decisaoDisputa: string | null;
   resolverDisputa: (decisao: string) => void;
-  tabela: TabelaPrecos;
-  publicarTabela: (t: TabelaPrecos) => void;
+  tabela: TabelaDoPainel;
+  publicarTabela: (t: TabelaDoPainel) => void;
   aviso: string | null;
   avisar: (texto: string) => void;
 }
@@ -30,7 +38,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   const [fila, setFila] = useState(FILA_HOMOLOGACAO);
   const [decisaoDisputa, setDecisaoDisputa] = useState<string | null>(null);
   const disputasAbertas = decisaoDisputa === null ? 1 : 0;
-  const [tabela, setTabela] = useState(TABELA_PADRAO);
+  const [tabela, setTabela] = useState(TABELA_INICIAL);
   const [aviso, setAviso] = useState<string | null>(null);
 
   const avisar = useCallback((texto: string) => {
@@ -52,7 +60,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   );
   const resolverDisputa = useCallback((decisao: string) => setDecisaoDisputa(decisao), []);
   const publicarTabela = useCallback(
-    (t: TabelaPrecos) => setTabela({ ...t, versao: t.versao + 1 }),
+    (t: TabelaDoPainel) => setTabela({ ...t, versao: t.versao + 1 }),
     [],
   );
 
