@@ -16,6 +16,8 @@
     "format:check": "prettier --check .",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "test:db": "supabase test db",
+    "gen:tipos": "supabase gen types typescript --local > packages/tipos/src/database.ts && prettier --write packages/tipos/src/database.ts",
     "supabase": "supabase"
   },
   "devDependencies": {

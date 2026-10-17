@@ -198,7 +198,11 @@ importers:
         specifier: ^2.118.0
         version: 2.118.0
 
-  packages/estados: {}
+  packages/estados:
+    devDependencies:
+      '@guinchei/tipos':
+        specifier: workspace:*
+        version: link:../tipos
 
   packages/match: {}
 
