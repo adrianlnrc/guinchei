@@ -1,0 +1,10 @@
+pnpm-lock.yaml
+dist/
+dev-dist/
+coverage/
+*.pdf
+*.docx
+docs/
+CONTEXT.md
+CLAUDE.md
+README.md

@@ -1,0 +1,14 @@
+{
+  "name": "@guinchei/estados",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Máquinas de estado do Pedido e da Corrida (TS puro, sem I/O)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

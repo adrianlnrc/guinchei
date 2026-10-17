@@ -25,6 +25,7 @@ Este repositório é a fonte de verdade do produto. Comece por:
 | [docs/negocio/go-to-market.md](docs/negocio/go-to-market.md) | Bootstrap de oferta e demanda, posicionamento, riscos |
 | [docs/marca/identidade-visual.md](docs/marca/identidade-visual.md) | Paleta, tipografia, regras de uso |
 | [docs/pesquisa/](docs/pesquisa/) | Pesquisa de preços do DF e requisitos regulatórios, com fontes |
+| [docs/desenvolvimento.md](docs/desenvolvimento.md) | Como rodar o monorepo localmente, comandos e deploy |
 
 Configuração para agentes de IA: [CLAUDE.md](CLAUDE.md) e [docs/agents/](docs/agents/).
 
