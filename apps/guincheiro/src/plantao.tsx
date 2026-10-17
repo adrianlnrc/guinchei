@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { transitarCorrida } from '@guinchei/mock';
+import { useNavigate } from 'react-router-dom';
+import { TRANSICOES_CORRIDA, TransicaoInvalida, transitarCorrida } from '@guinchei/mock';
 import { type EstadoCorrida } from '@guinchei/estados';
 import { HISTORICO_GUINCHEIRO, LADOS, type CorridaHistorico } from '@guinchei/mock';
 
@@ -23,7 +24,12 @@ interface Plantao {
   estado: EstadoCorrida | null;
   fotos: Fotos;
   aceitar: () => void;
-  avancar: (para: EstadoCorrida) => void;
+  /**
+   * Leva a Corrida ao estado `para` e abre `rota`. Se a transição não vale (o
+   * Guincheiro voltou no navegador, recarregou a página, faltam fotos), avisa e
+   * abre a tela do estado atual em vez de derrubar o app.
+   */
+  avancar: (para: EstadoCorrida, rota: string) => void;
   registrarFoto: (etapa: Etapa, lado: number, foto: FotoEstado) => void;
   encerrar: (c: CorridaHistorico) => void;
   historico: CorridaHistorico[];
@@ -35,7 +41,17 @@ const Contexto = createContext<Plantao | null>(null);
 
 export const contarFotos = (lista: (FotoEstado | null)[]) => lista.filter(Boolean).length;
 
+/** Tela em que o Guincheiro retoma a Corrida em cada estado. */
+const TELA_DO_ESTADO: Record<EstadoCorrida, string> = {
+  aceita: '/a-caminho',
+  a_caminho: '/a-caminho',
+  no_local: '/fotos/antes',
+  carregado: '/transporte',
+  entregue: '/repasse',
+};
+
 export function PlantaoProvider({ children }: { children: ReactNode }) {
+  const ir = useNavigate();
   const [disponivel, setDisponivelBruto] = useState(true);
   const [chamadoPendente, setChamadoPendente] = useState(true);
   const setDisponivel = useCallback((v: boolean) => {
@@ -58,17 +74,34 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
     setEstado(transitarCorrida('aceita', 'a_caminho', { antes: 0, depois: 0 }));
   }, []);
 
-  // Lança TransicaoInvalida se faltar Foto de estado: a tela só chama quando pode.
   const avancar = useCallback(
-    (para: EstadoCorrida) => {
-      setEstado((de) =>
-        transitarCorrida(de ?? 'aceita', para, {
+    (para: EstadoCorrida, rota: string) => {
+      if (estado === null) {
+        avisar('Nenhuma Corrida em andamento.');
+        ir('/', { replace: true });
+        return;
+      }
+      // Tocar de novo o botão de uma etapa já feita só reabre a tela dela.
+      if (estado === para) {
+        ir(rota, { replace: true });
+        return;
+      }
+      try {
+        const novo = transitarCorrida(estado, para, {
           antes: contarFotos(fotos.antes),
           depois: contarFotos(fotos.depois),
-        }),
-      );
+        });
+        setEstado(novo);
+        ir(rota, { replace: true });
+      } catch (erro) {
+        if (!(erro instanceof TransicaoInvalida)) throw erro;
+        // Falta de Fotos de estado tem mensagem própria; fora de ordem, só leva de volta.
+        const foraDeOrdem = !TRANSICOES_CORRIDA[estado].includes(para);
+        avisar(foraDeOrdem ? 'A Corrida está em outra etapa. Voltamos para ela.' : erro.message);
+        ir(TELA_DO_ESTADO[estado], { replace: true });
+      }
     },
-    [fotos],
+    [estado, fotos, avisar, ir],
   );
 
   const registrarFoto = useCallback((etapa: Etapa, lado: number, foto: FotoEstado) => {
@@ -78,6 +111,7 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
   const encerrar = useCallback((c: CorridaHistorico) => {
     setHistorico((h) => [c, ...h]);
     setEstado(null);
+    setFotos(fotosVazias());
   }, []);
 
   const valor = useMemo(

@@ -125,7 +125,7 @@ export function CartaoCorrida({ c, compacto }: { c: CorridaHistorico; compacto?:
 
 export function Historico() {
   const ir = useNavigate();
-  const { historico } = useFluxo();
+  const { historico, novoPedido } = useFluxo();
   return (
     <Tela rotulo="Histórico de Corridas" semRodape>
       <Corpo style={{ padding: '16px 20px 16px', gap: 14 }}>
@@ -140,10 +140,14 @@ export function Historico() {
         abas={[
           { valor: 'pedir', rotulo: 'Pedir' },
           { valor: 'historico', rotulo: 'Histórico' },
-          { valor: 'conta', rotulo: 'Conta' },
+          { valor: 'conta', rotulo: 'Conta', emBreve: true },
         ]}
         atual="historico"
-        onChange={(aba) => aba === 'pedir' && ir('/pedido/1')}
+        onChange={(aba) => {
+          if (aba !== 'pedir') return;
+          novoPedido();
+          ir('/pedido/1');
+        }}
       >
         <IndicadorHome />
       </Abas>

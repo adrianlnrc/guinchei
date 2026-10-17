@@ -87,14 +87,7 @@ export function ConfirmarEntrega() {
         <p className="apoio" style={{ fontSize: 13, textAlign: 'center' }}>
           A Corrida só encerra com todas as Fotos de estado.
         </p>
-        <Botao
-          grande
-          disabled={!completo}
-          onClick={() => {
-            avancar('entregue');
-            ir('/repasse', { replace: true });
-          }}
-        >
+        <Botao grande disabled={!completo} onClick={() => avancar('entregue', '/repasse')}>
           Encerrar Corrida
         </Botao>
       </Corpo>

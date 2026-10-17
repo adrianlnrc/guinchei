@@ -14,7 +14,9 @@ interface Operacao {
   atualizarFrota: (f: FrotaHomologacao) => void;
   homologacoesPendentes: number;
   disputasAbertas: number;
-  resolverDisputa: () => void;
+  /** Decisão registrada na Disputa do protótipo; `null` enquanto está em análise. */
+  decisaoDisputa: string | null;
+  resolverDisputa: (decisao: string) => void;
   tabela: TabelaPrecos;
   publicarTabela: (t: TabelaPrecos) => void;
   aviso: string | null;
@@ -26,7 +28,8 @@ const Contexto = createContext<Operacao | null>(null);
 export function OperacaoProvider({ children }: { children: ReactNode }) {
   const [corridas, setCorridas] = useState(MONITOR);
   const [fila, setFila] = useState(FILA_HOMOLOGACAO);
-  const [disputasAbertas, setDisputasAbertas] = useState(1);
+  const [decisaoDisputa, setDecisaoDisputa] = useState<string | null>(null);
+  const disputasAbertas = decisaoDisputa === null ? 1 : 0;
   const [tabela, setTabela] = useState(TABELA_PADRAO);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -47,7 +50,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     (f: FrotaHomologacao) => setFila((fs) => fs.map((x) => (x.id === f.id ? f : x))),
     [],
   );
-  const resolverDisputa = useCallback(() => setDisputasAbertas((n) => Math.max(0, n - 1)), []);
+  const resolverDisputa = useCallback((decisao: string) => setDecisaoDisputa(decisao), []);
   const publicarTabela = useCallback(
     (t: TabelaPrecos) => setTabela({ ...t, versao: t.versao + 1 }),
     [],
@@ -63,6 +66,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
       atualizarFrota,
       homologacoesPendentes,
       disputasAbertas,
+      decisaoDisputa,
       resolverDisputa,
       tabela,
       publicarTabela,
@@ -76,6 +80,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
       atualizarFrota,
       homologacoesPendentes,
       disputasAbertas,
+      decisaoDisputa,
       resolverDisputa,
       tabela,
       publicarTabela,

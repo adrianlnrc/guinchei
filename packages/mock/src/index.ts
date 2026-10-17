@@ -37,6 +37,7 @@ export const TRECHO = {
   kmDeslocamento: 4.2,
   kmReboque: 21.3,
   minutosAteCliente: 14,
+  minutosReboque: 26,
   coordenadas: '-15.7903, -47.8921',
 };
 
@@ -315,16 +316,45 @@ export const FILA_HOMOLOGACAO: FrotaHomologacao[] = [
   },
 ];
 
+export interface FotoDisputa {
+  legenda: string;
+  quando: string;
+  gps: string;
+}
+
+const ORIGEM_DISPUTA = '-15.8341, -48.0562 · Taguatinga Sul';
+const DESTINO_DISPUTA = '-15.8170, -48.1071 · Ceilândia';
+const fotoDisputa = (legenda: string, quando: string, gps: string): FotoDisputa => ({
+  legenda,
+  quando,
+  gps,
+});
+
 export const DISPUTA = {
   titulo: 'Disputa · avaria no para-choque traseiro',
   subtitulo: 'Corrida 2296 · aberta pelo Cliente em 16/10, 09:14 · prazo de resposta 48 h',
+  // Fotos de estado por lado; a "Foto do Cliente" é a que ele anexou ao abrir a Disputa.
   fotos: {
-    Traseira: {
-      antes: { quando: 'Antes · 15/10 19:42', gps: '-15.8341, -48.0562 · Taguatinga Sul' },
-      depois: { quando: 'Depois · 15/10 20:21', gps: '-15.8170, -48.1071 · Ceilândia' },
-    },
-  },
-  lados: ['Traseira', 'Frente', 'Lateral esq.', 'Lateral dir.', 'Foto do Cliente'],
+    Traseira: [
+      fotoDisputa('antes de carregar', 'Antes · 15/10 19:42', ORIGEM_DISPUTA),
+      fotoDisputa('depois de entregar', 'Depois · 15/10 20:21', DESTINO_DISPUTA),
+    ],
+    Frente: [
+      fotoDisputa('antes de carregar', 'Antes · 15/10 19:41', ORIGEM_DISPUTA),
+      fotoDisputa('depois de entregar', 'Depois · 15/10 20:20', DESTINO_DISPUTA),
+    ],
+    'Lateral esq.': [
+      fotoDisputa('antes de carregar', 'Antes · 15/10 19:41', ORIGEM_DISPUTA),
+      fotoDisputa('depois de entregar', 'Depois · 15/10 20:20', DESTINO_DISPUTA),
+    ],
+    'Lateral dir.': [
+      fotoDisputa('antes de carregar', 'Antes · 15/10 19:42', ORIGEM_DISPUTA),
+      fotoDisputa('depois de entregar', 'Depois · 15/10 20:21', DESTINO_DISPUTA),
+    ],
+    'Foto do Cliente': [
+      fotoDisputa('enviada pelo Cliente', 'Cliente · 16/10 09:12', DESTINO_DISPUTA),
+    ],
+  } satisfies Record<string, FotoDisputa[]>,
   relatoCliente: {
     autor: 'Ana C.',
     texto: 'O para-choque chegou com um amassado do lado direito que não tinha antes.',

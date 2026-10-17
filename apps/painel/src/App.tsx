@@ -1,5 +1,6 @@
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { OPERADOR } from '@guinchei/mock';
+import { LimiteDeErro } from '@guinchei/ui';
 import { OperacaoProvider, useOperacao } from './operacao';
 import { Monitor } from './telas/Monitor';
 import { Homologacao } from './telas/Homologacao';
@@ -52,17 +53,19 @@ function AvisoPainel() {
 export function App() {
   return (
     <OperacaoProvider>
-      <div className="painel">
-        <Lateral />
-        <Routes>
-          <Route path="/monitor" element={<Monitor />} />
-          <Route path="/homologacao" element={<Homologacao />} />
-          <Route path="/disputas" element={<Disputa />} />
-          <Route path="/precos" element={<TabelaDePrecos />} />
-          <Route path="*" element={<Navigate to="/monitor" replace />} />
-        </Routes>
-        <AvisoPainel />
-      </div>
+      <LimiteDeErro>
+        <div className="painel">
+          <Lateral />
+          <Routes>
+            <Route path="/monitor" element={<Monitor />} />
+            <Route path="/homologacao" element={<Homologacao />} />
+            <Route path="/disputas" element={<Disputa />} />
+            <Route path="/precos" element={<TabelaDePrecos />} />
+            <Route path="*" element={<Navigate to="/monitor" replace />} />
+          </Routes>
+          <AvisoPainel />
+        </div>
+      </LimiteDeErro>
     </OperacaoProvider>
   );
 }

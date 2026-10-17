@@ -3,12 +3,16 @@ import { formatarReais } from '@guinchei/ui';
 import { DISPUTA } from '@guinchei/mock';
 import { useOperacao } from '../operacao';
 
+type Lado = keyof typeof DISPUTA.fotos;
+const LADOS = Object.keys(DISPUTA.fotos) as Lado[];
+
 export function Disputa() {
-  const { disputasAbertas, resolverDisputa, avisar } = useOperacao();
-  const [lado, setLado] = useState<string>('Traseira');
-  const [decisao, setDecisao] = useState<string | undefined>(DISPUTA.decisoes[0]);
-  const resolvida = disputasAbertas === 0;
-  const fotos = DISPUTA.fotos.Traseira;
+  const { decisaoDisputa, resolverDisputa, avisar } = useOperacao();
+  const [lado, setLado] = useState<Lado>('Traseira');
+  // Nenhuma decisão vem marcada: a operação escolhe depois de ver as fotos.
+  const [escolha, setEscolha] = useState<string | null>(null);
+  const resolvida = decisaoDisputa !== null;
+  const decisao = decisaoDisputa ?? escolha;
 
   return (
     <main className="conteudo">
@@ -34,29 +38,20 @@ export function Disputa() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <span className="rotulo rotulo--12">Fotos de estado · {lado.toLowerCase()}</span>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-            {[
-              ['antes de carregar', fotos.antes],
-              ['depois de entregar', fotos.depois],
-            ].map(([legenda, f]) => {
-              const foto = f as typeof fotos.antes;
-              return (
-                <div
-                  key={legenda as string}
-                  style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
-                >
-                  <div className="foto" style={{ height: 280, fontSize: 12 }}>
-                    {lado === 'Foto do Cliente'
-                      ? 'foto enviada pelo Cliente'
-                      : `${legenda as string} · ${lado.toLowerCase()}`}
-                  </div>
-                  <span style={{ font: '600 14px var(--fonte-texto)' }}>{foto.quando}</span>
-                  <span className="mono">{foto.gps}</span>
+            {DISPUTA.fotos[lado].map((foto) => (
+              <div key={foto.legenda} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="foto" style={{ height: 280, fontSize: 12 }}>
+                  {lado === 'Foto do Cliente'
+                    ? `foto ${foto.legenda}`
+                    : `${foto.legenda} · ${lado.toLowerCase()}`}
                 </div>
-              );
-            })}
+                <span style={{ font: '600 14px var(--fonte-texto)' }}>{foto.quando}</span>
+                <span className="mono">{foto.gps}</span>
+              </div>
+            ))}
           </div>
           <div style={{ display: 'flex', gap: 8 }} role="group" aria-label="Lado do veículo">
-            {DISPUTA.lados.map((l) => (
+            {LADOS.map((l) => (
               <button
                 key={l}
                 type="button"
@@ -141,7 +136,7 @@ export function Disputa() {
                 aria-checked={d === decisao}
                 className="escolha"
                 disabled={resolvida}
-                onClick={() => setDecisao(d)}
+                onClick={() => setEscolha(d)}
               >
                 {d}
               </button>
@@ -150,10 +145,11 @@ export function Disputa() {
           <button
             type="button"
             className="acao acao--tinta"
-            disabled={resolvida}
+            disabled={resolvida || decisao === null}
             onClick={() => {
-              resolverDisputa();
-              avisar('Decisão registrada. Cliente e Guincheiro foram avisados.');
+              if (decisao === null) return;
+              resolverDisputa(decisao);
+              avisar(`Decisão registrada: ${decisao}. Cliente e Guincheiro foram avisados.`);
             }}
           >
             {resolvida ? 'Decisão registrada' : 'Registrar decisão e avisar as partes'}

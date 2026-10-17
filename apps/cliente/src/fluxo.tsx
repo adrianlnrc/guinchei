@@ -19,6 +19,8 @@ interface Fluxo {
   setSituacao: (v: Situacao) => void;
   rodas: Rodas | null;
   setRodas: (v: Rodas) => void;
+  /** Zera as respostas do rascunho para começar um Pedido novo. */
+  novoPedido: () => void;
   historico: CorridaHistorico[];
   registrar: (c: CorridaHistorico) => void;
   aviso: string | null;
@@ -35,6 +37,11 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
   const [historico, setHistorico] = useState(HISTORICO_CLIENTE);
   const [aviso, setAviso] = useState<string | null>(null);
 
+  const novoPedido = useCallback(() => {
+    setVeiculo(null);
+    setSituacao(null);
+    setRodas(null);
+  }, []);
   const registrar = useCallback((c: CorridaHistorico) => setHistorico((h) => [c, ...h]), []);
   const avisar = useCallback((texto: string) => {
     setAviso(texto);
@@ -51,12 +58,13 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       setSituacao,
       rodas,
       setRodas,
+      novoPedido,
       historico,
       registrar,
       aviso,
       avisar,
     }),
-    [celular, veiculo, situacao, rodas, historico, registrar, aviso, avisar],
+    [celular, veiculo, situacao, rodas, novoPedido, historico, registrar, aviso, avisar],
   );
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

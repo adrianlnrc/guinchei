@@ -51,78 +51,104 @@ function exibir(valor: number, tipo: Tipo) {
   return (valor / 100).toLocaleString('pt-BR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
+    useGrouping: false,
   });
 }
 
+// "7", "7,5", "7,50" ou "7.50": a vírgula ou um ponto único separam os centavos.
+const VALOR_VALIDO = /^\d+(?:[.,]\d{1,2})?$/;
+
+/** Texto digitado → centavos (ou fração, para %); `null` se não for um valor válido. */
 function interpretar(texto: string, tipo: Tipo): number | null {
-  const n = Number(
-    texto
-      .replace(/\./g, '')
-      .replace(',', '.')
-      .replace(/[^\d.]/g, ''),
-  );
-  if (!Number.isFinite(n) || texto.trim() === '') return null;
+  const limpo = texto.trim();
+  if (!VALOR_VALIDO.test(limpo)) return null;
+  const n = Number(limpo.replace(',', '.'));
   return tipo === 'pct' ? n / 100 : Math.round(n * 100);
 }
 
 function Campo({
-  valor,
+  texto,
   tipo,
   alterado,
+  invalido,
   onChange,
+  onBlur,
   rotulo,
+  idErro,
 }: {
-  valor: number;
+  texto: string;
   tipo: Tipo;
   alterado: boolean;
-  onChange: (v: number) => void;
+  invalido: boolean;
+  onChange: (texto: string) => void;
+  onBlur: () => void;
   rotulo: string;
+  idErro: string;
 }) {
-  const [texto, setTexto] = useState<string | null>(null);
+  const destacado = alterado || invalido;
   return (
-    <label
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: alterado ? '11px 13px' : '12px 14px',
-        borderRadius: 10,
-        border: alterado ? '2px solid var(--tinta)' : '1px solid var(--linha)',
-        background: '#fff',
-        font: '600 16px var(--fonte-titulo)',
-        cursor: 'text',
-      }}
-    >
-      {tipo === 'pct' ? <span>+</span> : <span>R$</span>}
-      <input
-        aria-label={rotulo}
-        inputMode="decimal"
-        value={texto ?? exibir(valor, tipo)}
-        onChange={(e) => {
-          setTexto(e.target.value);
-          const v = interpretar(e.target.value, tipo);
-          if (v !== null) onChange(v);
-        }}
-        onBlur={() => setTexto(null)}
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label
         style={{
-          width: '100%',
-          minWidth: 0,
-          border: 0,
-          outline: 'none',
-          font: 'inherit',
-          background: 'transparent',
-          padding: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          padding: destacado ? '11px 13px' : '12px 14px',
+          borderRadius: 10,
+          border: invalido
+            ? '2px solid var(--alerta)'
+            : alterado
+              ? '2px solid var(--tinta)'
+              : '1px solid var(--linha)',
+          background: '#fff',
+          font: '600 16px var(--fonte-titulo)',
+          cursor: 'text',
         }}
-      />
-      {tipo === 'reais_km' && <span style={{ whiteSpace: 'nowrap' }}>/ km</span>}
-      {tipo === 'pct' && <span>%</span>}
-    </label>
+      >
+        {tipo === 'pct' ? <span>+</span> : <span>R$</span>}
+        <input
+          aria-label={rotulo}
+          aria-invalid={invalido}
+          aria-describedby={invalido ? idErro : undefined}
+          inputMode="decimal"
+          value={texto}
+          onChange={(e) => onChange(e.target.value)}
+          onBlur={onBlur}
+          style={{
+            width: '100%',
+            minWidth: 0,
+            border: 0,
+            outline: 'none',
+            font: 'inherit',
+            background: 'transparent',
+            padding: 0,
+          }}
+        />
+        {tipo === 'reais_km' && <span style={{ whiteSpace: 'nowrap' }}>/ km</span>}
+        {tipo === 'pct' && <span>%</span>}
+      </label>
+      {invalido && (
+        <span
+          id={idErro}
+          style={{ font: '500 13px var(--fonte-texto)', color: 'var(--alerta-texto)' }}
+        >
+          {tipo === 'pct' ? 'Use só números, como 15' : 'Use só números, como 7,50'}
+        </span>
+      )}
+    </div>
   );
 }
 
 export function TabelaDePrecos() {
   const { tabela, publicarTabela, avisar } = useOperacao();
   const [rascunho, setRascunho] = useState<TabelaPrecos>(tabela);
+  // Texto de cada campo em edição; um campo fora daqui mostra o valor do rascunho.
+  const [textos, setTextos] = useState<Partial<Record<Chave, string>>>({});
+  const invalido = ({ chave, tipo }: (typeof COMPONENTES)[number]) => {
+    const texto = textos[chave];
+    return texto !== undefined && interpretar(texto, tipo) === null;
+  };
+  const algumInvalido = COMPONENTES.some(invalido);
   const alterada = COMPONENTES.some((c) => rascunho[c.chave] !== tabela[c.chave]);
   const preco = calcularPrecoFechado(
     { kmDeslocamento: TRECHO.kmDeslocamento, kmReboque: TRECHO.kmReboque, quando: QUANDO },
@@ -177,10 +203,25 @@ export function TabelaDePrecos() {
                   </div>
                   <Campo
                     rotulo={c.nome}
-                    valor={rascunho[c.chave]}
+                    idErro={`erro-${c.chave}`}
+                    texto={textos[c.chave] ?? exibir(rascunho[c.chave], c.tipo)}
                     tipo={c.tipo}
                     alterado={mudou}
-                    onChange={(v) => setRascunho((r) => ({ ...r, [c.chave]: v }))}
+                    invalido={invalido(c)}
+                    onChange={(texto) => {
+                      setTextos((t) => ({ ...t, [c.chave]: texto }));
+                      const v = interpretar(texto, c.tipo);
+                      if (v !== null) setRascunho((r) => ({ ...r, [c.chave]: v }));
+                    }}
+                    onBlur={() => {
+                      // Ao sair de um campo válido, ele volta a mostrar o valor formatado.
+                      if (invalido(c)) return;
+                      setTextos((t) => {
+                        const resto = { ...t };
+                        delete resto[c.chave];
+                        return resto;
+                      });
+                    }}
                   />
                 </div>
               );
@@ -289,8 +330,11 @@ export function TabelaDePrecos() {
               type="button"
               className="acao acao--contorno"
               style={{ flex: 1, padding: 14 }}
-              disabled={!alterada}
-              onClick={() => setRascunho(tabela)}
+              disabled={!alterada && !algumInvalido}
+              onClick={() => {
+                setRascunho(tabela);
+                setTextos({});
+              }}
             >
               Descartar
             </button>
@@ -298,7 +342,7 @@ export function TabelaDePrecos() {
               type="button"
               className="acao acao--tinta"
               style={{ flex: 1, padding: 14 }}
-              disabled={!alterada}
+              disabled={!alterada || algumInvalido}
               onClick={() => {
                 publicarTabela(rascunho);
                 setRascunho({ ...rascunho, versao: rascunho.versao + 1 });

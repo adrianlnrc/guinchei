@@ -15,7 +15,7 @@ export function AbasGuincheiro({
       abas={[
         { valor: 'plantao', rotulo: 'Plantão' },
         { valor: 'corridas', rotulo: 'Corridas' },
-        { valor: 'conta', rotulo: 'Conta' },
+        { valor: 'conta', rotulo: 'Conta', emBreve: true },
       ]}
       atual={atual}
       onChange={(aba) => {

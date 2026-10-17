@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { formatarKm, formatarReais } from '@guinchei/ui';
+import { formatarHora, formatarKm, formatarReais } from '@guinchei/ui';
 import { CLIENTE, GUINCHEIRO, PRECO, REPASSE, RODAS, TRECHO } from '@guinchei/mock';
 import {
   Avatar,
@@ -285,9 +285,15 @@ export function Chamado() {
   );
 }
 
+/** Hora prevista de chegada, fixada quando a tela abre. */
+export function useChegada(minutos: number) {
+  const [chegada] = useState(() => formatarHora(new Date(Date.now() + minutos * 60_000)));
+  return chegada;
+}
+
 export function ACaminho() {
-  const ir = useNavigate();
   const { avancar } = usePlantao();
+  const chegada = useChegada(TRECHO.minutosAteCliente);
   return (
     <Tela mapa escura rotulo="A caminho do Cliente">
       <Mapa
@@ -307,9 +313,11 @@ export function ACaminho() {
       <Navegacao instrucao="Em 600 m, vire à direita" via="Eixo Monumental, sentido Torre de TV" />
       <div className="folha folha--escura">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ font: '700 28px var(--fonte-titulo)' }}>11 min</span>
+          <span style={{ font: '700 28px var(--fonte-titulo)' }}>
+            {TRECHO.minutosAteCliente} min
+          </span>
           <span style={{ font: '500 15px var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
-            3,6 km · chega 22:06
+            {formatarKm(TRECHO.kmDeslocamento)} · chega {chegada}
           </span>
         </div>
         <div
@@ -345,14 +353,7 @@ export function ACaminho() {
             Mensagem
           </Botao>
         </div>
-        <Botao
-          variante="claro"
-          grande
-          onClick={() => {
-            avancar('no_local');
-            ir('/fotos/antes', { replace: true });
-          }}
-        >
+        <Botao variante="claro" grande onClick={() => avancar('no_local', '/fotos/antes')}>
           Cheguei no local
         </Botao>
         <IndicadorHome />
