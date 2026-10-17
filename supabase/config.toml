@@ -69,7 +69,7 @@ schema_paths = []
 enabled = true
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
-sql_paths = ["./seed.sql"]
+sql_paths = ["./seeds/*.sql"]
 
 [db.network_restrictions]
 # Enable management of network restrictions.
@@ -257,7 +257,8 @@ otp_expiry = 3600
 
 [auth.sms]
 # Allow/disallow new user signups via SMS to your project.
-enable_signup = false
+# Login por telefone + código (ADR-0010).
+enable_signup = true
 # If enabled, users need to confirm their phone number before signing in.
 enable_confirmations = false
 # Template for sending OTP to users
@@ -266,8 +267,14 @@ template = "Your code is {{ .Code }}"
 max_frequency = "5s"
 
 # Use pre-defined map of phone number to OTP for testing.
-# [auth.sms.test_otp]
-# 4152127777 = "123456"
+# Números fictícios dos usuários do seed (supabase/seeds/02_usuarios_de_teste.sql), sem envio
+# real: nenhum provedor de SMS está configurado. Ver docs/desenvolvimento.md.
+[auth.sms.test_otp]
+5561900000001 = "123456" # Cliente: Rafael Souza
+5561900000002 = "123456" # Guincheiro: Marcos Alves (Reboque Planalto)
+5561900000003 = "123456" # Guincheiro: Wagner Lopes (Reboque Planalto)
+5561900000004 = "123456" # Guincheiro: Rita Campos (autônoma)
+5561900000005 = "123456" # Operação
 
 # Configure logged in session timeouts.
 # [auth.sessions]
@@ -287,12 +294,17 @@ max_frequency = "5s"
 # uri = "pg-functions://<database>/<schema>/<hook_name>"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
+#
+# Guinchei: o Auth só aceita login por telefone com algum provedor ligado, mesmo para os
+# números de `[auth.sms.test_otp]` (que nunca disparam envio). Por isso o Twilio fica ligado
+# com credenciais de mentira: os números de teste funcionam e qualquer outro número falha no
+# envio. Não é um provedor real; o canal de verdade é o Send SMS hook com uazapi (ADR-0010).
 [auth.sms.twilio]
-enabled = false
-account_sid = ""
-message_service_sid = ""
+enabled = true
+account_sid = "ACnao-usado-so-numeros-de-teste"
+message_service_sid = "MGnao-usado-so-numeros-de-teste"
 # DO NOT commit your Twilio auth token to git. Use environment variable substitution instead:
-auth_token = "env(SUPABASE_AUTH_SMS_TWILIO_AUTH_TOKEN)"
+auth_token = "nao-usado"
 
 # Multi-factor-authentication is available to Supabase Pro plan.
 [auth.mfa]
