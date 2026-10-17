@@ -248,7 +248,8 @@ export function Abas<T extends string>({
   escura,
   children,
 }: {
-  abas: readonly { valor: T; rotulo: string }[];
+  /** `emBreve` mostra a aba desabilitada, com a indicação "em breve". */
+  abas: readonly { valor: T; rotulo: string; emBreve?: boolean }[];
   atual: T;
   onChange: (v: T) => void;
   escura?: boolean;
@@ -257,16 +258,29 @@ export function Abas<T extends string>({
   return (
     <nav className={`abas${escura ? ' abas--escura' : ''}`}>
       <div className="abas__grade">
-        {abas.map((a) => (
-          <button
-            key={a.valor}
-            type="button"
-            aria-current={a.valor === atual ? 'page' : undefined}
-            onClick={() => onChange(a.valor)}
-          >
-            {a.rotulo}
-          </button>
-        ))}
+        {abas.map((a) =>
+          a.emBreve ? (
+            <button
+              key={a.valor}
+              type="button"
+              aria-disabled="true"
+              aria-label={`${a.rotulo}, em breve`}
+              className="abas__em-breve"
+            >
+              {a.rotulo}
+              <small>em breve</small>
+            </button>
+          ) : (
+            <button
+              key={a.valor}
+              type="button"
+              aria-current={a.valor === atual ? 'page' : undefined}
+              onClick={() => onChange(a.valor)}
+            >
+              {a.rotulo}
+            </button>
+          ),
+        )}
       </div>
       {children}
     </nav>

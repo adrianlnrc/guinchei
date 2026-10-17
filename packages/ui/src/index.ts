@@ -1,3 +1,4 @@
+export * from './LimiteDeErro';
 export * from './Moldura';
 export * from './componentes';
 export * from './Mapa';

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { formatarHora } from '@guinchei/ui';
+import { formatarHora, formatarKm } from '@guinchei/ui';
 import { LADOS, TRECHO } from '@guinchei/mock';
 import { Botao, Corpo, Foto, IndicadorHome, Mapa, Ponto, Rotulo, Tela } from '@guinchei/ui';
 import { contarFotos, usePlantao, type Etapa } from '../plantao';
-import { Navegacao } from './Chamado';
+import { Navegacao, useChegada } from './Chamado';
 
 // GPS de exemplo; no skeleton vem do navegador (ADR-0008).
 const GPS = [
@@ -103,13 +103,7 @@ export function Checklist() {
             Tirar foto da {ladoProximo.toLowerCase()}
           </Botao>
         ) : (
-          <Botao
-            grande
-            onClick={() => {
-              avancar('carregado');
-              ir('/transporte', { replace: true });
-            }}
-          >
+          <Botao grande onClick={() => avancar('carregado', '/transporte')}>
             Veículo carregado
           </Botao>
         )}
@@ -186,7 +180,7 @@ export function Camera() {
       >
         <button
           type="button"
-          style={{ font: '500 16px var(--fonte-texto)' }}
+          style={{ font: '500 16px var(--fonte-texto)', minWidth: 44, minHeight: 44 }}
           onClick={() => ir(voltar, { replace: true })}
         >
           Fechar
@@ -249,6 +243,7 @@ export function Camera() {
 
 export function Transporte() {
   const ir = useNavigate();
+  const chegada = useChegada(TRECHO.minutosReboque);
   return (
     <Tela mapa escura rotulo="Em transporte">
       <Mapa
@@ -269,9 +264,9 @@ export function Transporte() {
       <div className="folha folha--escura" style={{ gap: 14 }}>
         <Ponto>Carregado · Fotos de estado enviadas</Ponto>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ font: '700 28px var(--fonte-titulo)' }}>17 min</span>
+          <span style={{ font: '700 28px var(--fonte-titulo)' }}>{TRECHO.minutosReboque} min</span>
           <span style={{ font: '500 15px var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
-            14,8 km · chega 22:31
+            {formatarKm(TRECHO.kmReboque)} · chega {chegada}
           </span>
         </div>
         <div

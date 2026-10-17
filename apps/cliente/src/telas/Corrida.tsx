@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react';
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { formatarHora, formatarKm, formatarReais } from '@guinchei/ui';
 import { taxaDeCancelamento, transitarCorrida } from '@guinchei/mock';
@@ -25,9 +25,6 @@ const DURACAO: Partial<Record<EstadoAcompanhamento, number>> = {
   carregado: 10000,
 };
 const INTERVALO_FOTO = 1500;
-const MINUTOS_ATE_CLIENTE = 12;
-const KM_ATE_DESTINO = 14.8;
-const MINUTOS_ATE_DESTINO = 17;
 const TELEFONE_GUINCHEIRO = '+5561999990000';
 
 interface Sim {
@@ -37,11 +34,13 @@ interface Sim {
   fotosDepois: number;
 }
 
-type Acao = { tipo: 'avancar' } | { tipo: 'foto' };
+type Acao = { tipo: 'avancar' } | { tipo: 'foto' } | { tipo: 'retomar'; pausaMs: number };
 
 function proximo(sim: Sim, acao: Acao): Sim {
   const agora = Date.now();
   if (acao.tipo === 'foto') return { ...sim, fotosAntes: sim.fotosAntes + 1 };
+  // O tempo com uma folha aberta não conta: a etapa continua de onde parou.
+  if (acao.tipo === 'retomar') return { ...sim, inicio: sim.inicio + acao.pausaMs };
   const fotos = { antes: sim.fotosAntes, depois: sim.fotosDepois };
   switch (sim.estado) {
     case 'em_match':
@@ -63,14 +62,16 @@ function proximo(sim: Sim, acao: Acao): Sim {
   }
 }
 
+/** Relógio da simulação; `atualizar` acerta o relógio na hora, sem esperar o próximo tique. */
 function useAgora(ativo: boolean) {
   const [agora, setAgora] = useState(() => Date.now());
+  const atualizar = useCallback(() => setAgora(Date.now()), []);
   useEffect(() => {
     if (!ativo) return;
-    const id = setInterval(() => setAgora(Date.now()), 500);
+    const id = setInterval(atualizar, 500);
     return () => clearInterval(id);
-  }, [ativo]);
-  return agora;
+  }, [ativo, atualizar]);
+  return [agora, atualizar] as const;
 }
 
 export function Corrida() {
@@ -82,10 +83,21 @@ export function Corrida() {
     fotosAntes: 0,
     fotosDepois: 0,
   }));
-  const [cancelando, setCancelando] = useState(false);
-  const [vendoFotos, setVendoFotos] = useState(false);
-  const pausado = cancelando || vendoFotos;
-  const agora = useAgora(!pausado);
+  // Com uma folha aberta a simulação pausa, para o Cliente decidir com calma.
+  const [folha, setFolha] = useState<'cancelar' | 'fotos' | null>(null);
+  const pausado = folha !== null;
+  const [agora, atualizarAgora] = useAgora(!pausado);
+  const pausaDesde = useRef(0);
+
+  function abrirFolha(qual: 'cancelar' | 'fotos') {
+    pausaDesde.current = Date.now();
+    setFolha(qual);
+  }
+  function fecharFolha() {
+    despachar({ tipo: 'retomar', pausaMs: Date.now() - pausaDesde.current });
+    atualizarAgora();
+    setFolha(null);
+  }
 
   useEffect(() => {
     if (pausado) return;
@@ -100,11 +112,13 @@ export function Corrida() {
       );
       return () => clearTimeout(id);
     }
-    const id = setTimeout(() => despachar({ tipo: 'avancar' }), DURACAO[sim.estado] ?? 0);
+    const restante = (DURACAO[sim.estado] ?? 0) - (Date.now() - sim.inicio);
+    const id = setTimeout(() => despachar({ tipo: 'avancar' }), Math.max(0, restante));
     return () => clearTimeout(id);
   }, [sim, pausado, ir]);
 
-  const fracao = Math.min(1, (agora - sim.inicio) / (DURACAO[sim.estado] ?? 1));
+  // `agora` anda em tiques de 500 ms; ao mudar de etapa ele pode estar antes do início dela.
+  const fracao = Math.min(1, Math.max(0, (agora - sim.inicio) / (DURACAO[sim.estado] ?? 1)));
 
   function cancelar() {
     const taxa = taxaDeCancelamento(sim.estado) ?? 0;
@@ -129,15 +143,15 @@ export function Corrida() {
       return <Procurando onCancelar={cancelar} />;
     case 'aceita':
     case 'a_caminho': {
-      const minutos = Math.max(1, Math.round(MINUTOS_ATE_CLIENTE * (1 - fracao)));
+      const minutos = Math.max(1, Math.round(TRECHO.minutosAteCliente * (1 - fracao)));
       return (
         <>
-          <ACaminho agora={agora} minutos={minutos} onCancelar={() => setCancelando(true)} />
-          {cancelando && (
+          <ACaminho agora={agora} minutos={minutos} onCancelar={() => abrirFolha('cancelar')} />
+          {folha === 'cancelar' && (
             <FolhaCancelamento
-              minutos={Math.max(1, minutos - 5)}
+              minutos={minutos}
               taxa={taxaDeCancelamento(sim.estado) ?? 0}
-              onManter={() => setCancelando(false)}
+              onManter={fecharFolha}
               onCancelar={cancelar}
             />
           )}
@@ -153,10 +167,10 @@ export function Corrida() {
           <Carregado
             agora={agora}
             fracao={fracao}
-            onVerFotos={() => setVendoFotos(true)}
+            onVerFotos={() => abrirFolha('fotos')}
             avisar={avisar}
           />
-          {vendoFotos && <FolhaFotos onFechar={() => setVendoFotos(false)} />}
+          {folha === 'fotos' && <FolhaFotos onFechar={fecharFolha} />}
         </>
       );
   }
@@ -460,8 +474,8 @@ function Carregado({
   onVerFotos: () => void;
   avisar: (t: string) => void;
 }) {
-  const km = KM_ATE_DESTINO * (1 - fracao);
-  const previsao = formatarHora(new Date(agora + MINUTOS_ATE_DESTINO * (1 - fracao) * 60_000));
+  const km = TRECHO.kmReboque * (1 - fracao);
+  const previsao = formatarHora(new Date(agora + TRECHO.minutosReboque * (1 - fracao) * 60_000));
 
   async function compartilhar() {
     const texto = `Meu carro está no guincho do ${GUINCHEIRO.primeiroNome}, a caminho da ${TRECHO.oficina}. Previsão: ${previsao}.`;

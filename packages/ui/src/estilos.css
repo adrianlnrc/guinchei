@@ -304,6 +304,11 @@ p {
   font: 500 16px var(--fonte-texto);
   color: var(--tinta-2);
   align-self: flex-start;
+  /* Alvo de toque de 44 px; a margem negativa evita empurrar o resto da tela. */
+  min-height: 44px;
+  margin-block: -8px;
+  display: inline-flex;
+  align-items: center;
 }
 .tela--escura .link,
 .folha--escura .link {
@@ -311,7 +316,9 @@ p {
 }
 .link--centro {
   align-self: center;
+  justify-content: center;
   text-align: center;
+  padding-inline: 12px;
 }
 
 /* ---------- Escolhas ---------- */
@@ -359,6 +366,7 @@ p {
   background: var(--segmentado);
 }
 .segmentado button {
+  min-height: 44px;
   padding: 10px;
   border-radius: 9px;
   text-align: center;
@@ -585,6 +593,15 @@ p {
 .abas__grade button[aria-current='page'] {
   font-weight: 600;
   color: inherit;
+}
+.abas__grade .abas__em-breve {
+  flex-direction: column;
+  gap: 1px;
+  cursor: not-allowed;
+}
+.abas__em-breve small {
+  font: 500 10px var(--fonte-texto);
+  letter-spacing: 0.04em;
 }
 @media (max-width: 599px) {
   .abas {
