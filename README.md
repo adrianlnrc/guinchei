@@ -43,6 +43,10 @@ Configuração para agentes de IA: [CLAUDE.md](CLAUDE.md) e [docs/agents/](docs/
 | [0006](docs/adr/0006-oferta-via-frotas-ancora.md) | Oferta via frotas âncora com ganho mínimo garantido |
 | [0007](docs/adr/0007-travas-de-conformidade-do-mvp.md) | Travas de conformidade do MVP |
 | [0008](docs/adr/0008-stack-tecnica-do-skeleton.md) | Stack técnica do walking skeleton |
+| [0009](docs/adr/0009-tabela-de-precos-inicial-e-repasse-por-distancia.md) | Tabela de preços inicial, piso e repasse pela distância de quem aceita (provisório) |
+| [0010](docs/adr/0010-login-por-telefone-e-cadastro-em-duas-etapas.md) | Login por telefone com código (WhatsApp) e cadastro em duas etapas |
+| [0011](docs/adr/0011-fotos-de-estado-opcionais-cliente-e-guincheiro.md) | Fotos de estado opcionais, registradas pelo Cliente e pelo Guincheiro |
+| [0012](docs/adr/0012-cadastro-de-prestadores-empresa-e-autonomo.md) | Cadastro de prestadores: empresa e autônomo, com verificação manual |
 
 ---
 

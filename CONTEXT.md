@@ -32,7 +32,7 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 |---|---|
 | **Cliente** | Pessoa com veículo parado que abre um Pedido. Evite "usuário", "passageiro". |
 | **Guincheiro** | Operador que executa a Corrida. Pertence a uma Frota. Evite "motorista" (ambíguo com o Cliente). |
-| **Frota** | Empresa de guincho com CNPJ, cadastrada e verificada. |
+| **Frota** | Prestador de guincho cadastrado e verificado: empresa (CNPJ) ou autônomo (CPF/MEI, Frota de uma pessoa só). Ver ADR-0012. |
 | **Frota âncora** | Frota do lançamento, com Ganho mínimo garantido por plantão nos primeiros 90 dias. |
 | **Pedido** | Solicitação de reboque criada pelo Cliente: tipo de veículo, situação, "as 4 rodas giram?", origem, destino. É o "chamado" antes do aceite. |
 | **Corrida** | Um Pedido aceito e em execução por um Guincheiro, do aceite à entrega. Estados: aceita → a_caminho → no_local → carregado → entregue (ver ADR-0008). Evite "viagem". |
@@ -41,8 +41,8 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 | **Comissão** | Percentual do Preço fechado retido pela plataforma. MVP: 20%. |
 | **Take efetivo** | Comissão menos os subsídios pagos naquela Corrida. |
 | **Painel de operação** | Superfície interna: verificação de Frota, monitor de Corridas, resolução de Disputa. Evite "admin", "backoffice". |
-| **Disputa** | Contestação de avaria, cobrança ou não comparecimento, resolvida pela operação com base nas Fotos de estado e no histórico. |
-| **Fotos de estado** | Fotos do veículo feitas pelo Guincheiro no app, com carimbo de hora e GPS, antes de carregar e depois de entregar. Obrigatórias para encerrar a Corrida. |
+| **Disputa** | Contestação de avaria, cobrança ou não comparecimento, resolvida caso a caso pela operação com as provas existentes (Fotos de estado de qualquer lado, horários, histórico). |
+| **Fotos de estado** | Fotos e vídeos do veículo registrados pelo Cliente ou pelo Guincheiro durante a Corrida, com hora do servidor, GPS e autor. Opcionais, mas recomendados (ver ADR-0011). |
 | **Ganho mínimo garantido** | Valor pago pela plataforma a uma Frota âncora por plantão disponível, independentemente do volume de Corridas, nos primeiros 90 dias. |
 | **PSP** | Provedor de pagamento com split (Pagar.me / Asaas / Iugu / Mercado Pago). Recebe do Cliente e repassa ao Guincheiro já descontada a Comissão. A plataforma não retém valores em conta própria (ver ADR-0004). |
 
@@ -52,9 +52,9 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 2. O Cliente vê o Preço fechado antes de confirmar o Pedido; o valor só muda se o destino mudar durante a Corrida.
 3. Uma Frota só fica ativa após verificação manual da operação: CNPJ ativo, contrato assinado, registro do veículo como reboque no DETRAN, CNH do Guincheiro, apólice de responsabilidade civil por avaria em transporte com a plataforma como cossegurada.
 4. Nenhum valor transita em conta da plataforma — todo dinheiro passa pelo PSP com split.
-5. A Corrida só é encerrada com as Fotos de estado (antes e depois) enviadas.
+5. Fotos de estado são opcionais e podem ser registradas pelo Cliente e pelo Guincheiro; os dois apps avisam que registrar protege numa reclamação de avaria (ADR-0011).
 6. Cliente e Guincheiro se avaliam de 1 a 5 ao fim da Corrida.
-7. Cancelamento pelo Cliente após "a caminho": taxa (~R$ 30) repassada ao Guincheiro. Não comparecimento do Guincheiro: sem repasse, penalidade no score, re-Match sem nova cobrança ao Cliente. Serviço impossível por erro de descrição do Cliente: cobra deslocamento; por erro do Guincheiro: não cobra. Casos ambíguos vão para a Disputa.
+7. Cancelamento pelo Cliente antes de o Guincheiro sair ("Saí para o local"): sem custo. Após "a caminho": taxa (~R$ 30) repassada ao Guincheiro. Não comparecimento do Guincheiro: sem repasse, penalidade no score, re-Match sem nova cobrança ao Cliente. Serviço impossível por erro de descrição do Cliente: cobra deslocamento; por erro do Guincheiro: não cobra. Casos ambíguos vão para a Disputa.
 
 ## Modelo de receita
 
@@ -75,7 +75,7 @@ Secundárias: nota média ≥ 4,6 · CAC por Corrida · margem de contribuição
 ## Roadmap
 
 - **Fase 1 (MVP):** reboque · DF · B2C · PWA · Frotas parceiras.
-- **Fase 2:** assistência completa · Guincheiros autônomos verificados · app nativo.
+- **Fase 2:** assistência completa · app nativo. (Autônomos verificados foram antecipados para o lançamento, ADR-0012.)
 - **Fase 3:** contratos com seguradoras · novas praças (Goiânia, entorno).
 
 ## Contexto acadêmico
@@ -97,10 +97,10 @@ Hipóteses centrais ainda não validadas:
 
 ## Questões em aberto
 
-- Categoria de CNH exigida por faixa de PBT do conjunto (confirmar CTB art. 143 e resoluções CONTRAN).
+- Categoria de CNH por faixa de PBT: adotado B até 3.500 kg e C acima (CTB art. 143, ADR-0012); confirmar resoluções CONTRAN específicas de guincho.
 - Norma distrital específica de credenciamento de guincho particular no DF, além do alvará geral.
 - Estrutura contratual da apólice de avaria com a plataforma como cossegurada/beneficiária.
 - Modelo de dados e SLA dos contratos com Frotas âncora.
-- Preço fechado × Match: o R$/km até o veículo é cotado com o Guincheiro mais próximo e a plataforma absorve desvios (ver nota no ADR-0003); medir no piloto.
+- Preço fechado × Match: o Cliente paga a cotação com o Guincheiro mais próximo; quem aceita recebe pela própria distância e a plataforma absorve a diferença até o teto da Comissão (ADR-0009, provisório); medir no piloto.
 - Escolha do PSP (ADR-0004 lista as opções; o skeleton usa adaptador mock).
 - Posição da SEFAZ-DF sobre CT-e/ICMS-transporte caso a praça se estenda ao entorno goiano.
