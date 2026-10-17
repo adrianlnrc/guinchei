@@ -46,6 +46,20 @@ Configuração para agentes de IA: [CLAUDE.md](CLAUDE.md) e [docs/agents/](docs/
 
 ---
 
+## Protótipo navegável
+
+Os três apps em `apps/` trazem as telas do protótipo do Claude Design (App do Cliente, App do Guincheiro e Painel de operação), navegáveis e com dados mock do cenário do Rafael: Eixo Monumental → Taguatinga Norte, Preço fechado de R$ 297,62. Supabase e Mapbox ainda não estão ligados. As issues F4 a F10 trocam o mock pelos dados reais.
+
+- **Cliente:** login por SMS, Pedido em três toques (variação 1a do design), Preço fechado, Pix, acompanhamento da Corrida, cancelamento com taxa, avaliação e histórico.
+- **Guincheiro:** plantão, chamado com aceite em 30 s, Fotos de estado antes e depois (a Corrida só encerra com elas), transporte, repasse e histórico.
+- **Painel:** monitor de Corridas com atribuição manual, homologação de Frota (RN03), Disputa e tabela de preços com simulador.
+
+`packages/ui` guarda os tokens da identidade visual e os componentes compartilhados. `packages/mock` guarda os dados do cenário e dublês do cálculo de preço e das transições; ele sai quando `preco` (#7) e `estados` (#6) estiverem prontos.
+
+Em tela larga, os apps do Cliente e do Guincheiro aparecem dentro de uma moldura de iPhone, útil para pitch e teste com usuário. No celular, ocupam a tela inteira. No mock, qualquer código SMS de 6 dígitos entra, o Pix "cai" alguns segundos depois de copiar o código e a Corrida avança sozinha. Como rodar: [docs/desenvolvimento.md](docs/desenvolvimento.md).
+
+---
+
 ## Entregáveis produzidos
 
 ### Acadêmico — UCB, Engenharia de Software, disciplina de Startups

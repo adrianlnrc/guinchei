@@ -21,6 +21,8 @@ packages/
   estados/      máquinas de estado do Pedido e da Corrida (TS puro)
   tipos/        tipos compartilhados e gerados do schema
   api/          cliente Supabase compartilhado
+  ui/           tokens da identidade visual e componentes React
+  mock/         dados do protótipo navegável e dublês de preço e estados
 supabase/       config, migrações e seed do Supabase CLI
 ```
 

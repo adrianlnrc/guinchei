@@ -1,50 +1,164 @@
-/* Tokens de docs/marca/identidade-visual.md */
-:root {
-  --ambar: #ffb020;
-  --ambar-escuro: #e0940a;
-  --grafite: #14161b;
-  --superficie-escura: #1f232b;
-  --off-white: #f6f7f9;
-  --tinta: #0b0c0f;
-  --tinta-secundaria: #5b6472;
-  --sucesso: #12b76a;
-  --alerta: #f04438;
-  --apoio: #2e90fa;
+/* O Painel é desktop: ocupa a janela inteira, sem moldura de aparelho. */
+body {
+  display: block !important;
+  place-items: normal !important;
+  padding: 0 !important;
+  background: var(--off-white);
+  min-width: 1280px;
+}
 
-  --fonte-titulo: 'Space Grotesk', system-ui, sans-serif;
-  --fonte-texto: 'Inter', system-ui, sans-serif;
+.painel {
+  height: 100dvh;
+  min-height: 760px;
+  display: flex;
+  background: var(--off-white);
+  position: relative;
+}
 
-  color-scheme: dark;
-  font-family: var(--fonte-texto);
+.lateral {
+  width: 232px;
+  flex: none;
   background: var(--grafite);
   color: var(--off-white);
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  min-height: 100dvh;
-}
-
-h1,
-h2,
-h3 {
-  font-family: var(--fonte-titulo);
-}
-
-.tela {
+  display: flex;
+  flex-direction: column;
   padding: 24px 16px;
-  max-width: 480px;
-  margin: 0 auto;
+  gap: 6px;
+}
+.lateral__marca {
+  font: 700 22px var(--fonte-titulo);
+  padding: 0 12px 24px;
+}
+.lateral__marca small {
+  font: 500 12px var(--fonte-texto);
+  color: var(--cinza-medio);
+}
+.lateral a,
+.lateral__inativo {
+  padding: 11px 12px;
+  border-radius: 10px;
+  font: 500 15px var(--fonte-texto);
+  color: var(--cinza-claro);
+  text-decoration: none;
+  display: flex;
+  justify-content: space-between;
+}
+.lateral a:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.lateral a[aria-current='page'] {
+  background: var(--superficie-escura);
+  color: var(--off-white);
+  font-weight: 600;
+}
+.lateral__inativo {
+  opacity: 0.6;
+  cursor: default;
+}
+.lateral__contagem {
+  color: var(--cinza-medio);
+}
+.lateral__contagem--alerta {
+  color: var(--alerta);
 }
 
-.eyebrow {
-  font-family: var(--fonte-titulo);
-  text-transform: uppercase;
-  letter-spacing: 0.13em;
-  font-size: 0.75rem;
-  color: var(--ambar);
+.conteudo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.topo {
+  height: 72px;
+  flex: none;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--linha-suave);
+  background: #fff;
+}
+.topo__titulo {
+  font: 700 22px var(--fonte-titulo);
+}
+.topo__sub {
+  font: 400 13px var(--fonte-texto);
+  color: var(--tinta-2);
+}
+.etiqueta {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--linha-fina);
+  font: 600 13px var(--fonte-texto);
+}
+.etiqueta--alerta {
+  background: var(--alerta-fundo);
+  color: var(--alerta-texto);
+}
+.etiqueta--ok {
+  background: var(--sucesso-fundo);
+  color: var(--sucesso-texto);
+}
+
+.acao {
+  padding: 14px 20px;
+  border-radius: 12px;
+  font: 600 15px var(--fonte-titulo);
+  text-align: center;
+}
+.acao--tinta {
+  background: var(--tinta);
+  color: var(--off-white);
+}
+.acao--contorno {
+  border: 1px solid var(--linha);
+  background: #fff;
+}
+.acao:disabled {
+  background: var(--linha);
+  color: var(--tinta-2);
+  border-color: var(--linha);
+}
+
+.linha-tabela {
+  display: grid;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--linha-fina);
+  align-items: center;
+  width: 100%;
+}
+.linha-tabela:last-child {
+  border-bottom: 0;
+}
+button.linha-tabela:hover {
+  background: #fafbfc;
+}
+
+.escolha {
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid var(--linha);
+  font: 500 14px var(--fonte-texto);
+  width: 100%;
+}
+.escolha[aria-pressed='true'],
+.escolha[aria-checked='true'] {
+  border: 2px solid var(--tinta);
+  padding: 13px 15px;
+  font-weight: 600;
+}
+
+.aviso-painel {
+  position: fixed;
+  right: 24px;
+  top: 84px;
+  z-index: 10;
+  padding: 14px 18px;
+  border-radius: 12px;
+  background: var(--tinta);
+  color: var(--off-white);
+  font: 500 14px var(--fonte-texto);
+  max-width: 420px;
 }
