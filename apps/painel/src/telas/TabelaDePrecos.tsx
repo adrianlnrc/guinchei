@@ -1,32 +1,36 @@
 import { useState } from 'react';
-import { calcularPrecoFechado, calcularRepasse, type TabelaPrecos } from '@guinchei/mock';
+import { COTACAO, TRECHO } from '@guinchei/mock';
+import { TABELA_PADRAO, calcularPrecoFechado, calcularRepasse } from '@guinchei/preco';
 import { formatarKm, formatarPercentual, formatarReais } from '@guinchei/ui';
-import { QUANDO, TRECHO } from '@guinchei/mock';
 import { Heroi } from '@guinchei/ui';
-import { useOperacao } from '../operacao';
+import { useOperacao, type TabelaDoPainel } from '../operacao';
 
 type Tipo = 'reais' | 'reais_km' | 'pct';
 type Chave =
   | 'taxaBase'
-  | 'deslocamentoPorKm'
-  | 'reboquePorKm'
+  | 'porKmAteVeiculo'
+  | 'porKmRebocado'
   | 'adicionalNoturno'
   | 'adicionalFeriado'
+  | 'precoMinimo'
   | 'taxaCancelamento';
+
+const hora = (h: number) => `${String(h).padStart(2, '0')}:00`;
 
 const COMPONENTES: { chave: Chave; nome: string; detalhe: string; tipo: Tipo }[] = [
   { chave: 'taxaBase', nome: 'Taxa base', detalhe: 'Por Pedido, carro de passeio', tipo: 'reais' },
   {
-    chave: 'deslocamentoPorKm',
+    chave: 'porKmAteVeiculo',
     nome: 'Deslocamento até o veículo',
     detalhe: 'Cotado com o Guincheiro mais próximo',
     tipo: 'reais_km',
   },
-  { chave: 'reboquePorKm', nome: 'Reboque', detalhe: 'Por km rebocado', tipo: 'reais_km' },
+  { chave: 'porKmRebocado', nome: 'Reboque', detalhe: 'Por km rebocado', tipo: 'reais_km' },
   {
     chave: 'adicionalNoturno',
     nome: 'Multiplicador noturno',
-    detalhe: '20:00 às 06:00',
+    // O período noturno não é editável aqui; o detalhe acompanha a tabela do pacote.
+    detalhe: `${hora(TABELA_PADRAO.noturnoDas)} às ${hora(TABELA_PADRAO.noturnoAte)}`,
     tipo: 'pct',
   },
   {
@@ -34,6 +38,12 @@ const COMPONENTES: { chave: Chave; nome: string; detalhe: string; tipo: Tipo }[]
     nome: 'Multiplicador feriado',
     detalhe: 'Calendário nacional e distrital',
     tipo: 'pct',
+  },
+  {
+    chave: 'precoMinimo',
+    nome: 'Preço fechado mínimo',
+    detalhe: 'Piso, aplicado depois dos adicionais',
+    tipo: 'reais',
   },
   {
     chave: 'taxaCancelamento',
@@ -63,7 +73,9 @@ function interpretar(texto: string, tipo: Tipo): number | null {
   const limpo = texto.trim();
   if (!VALOR_VALIDO.test(limpo)) return null;
   const n = Number(limpo.replace(',', '.'));
-  return tipo === 'pct' ? n / 100 : Math.round(n * 100);
+  // O pacote só aceita adicionais de 0 a 100%.
+  if (tipo === 'pct') return n <= 100 ? n / 100 : null;
+  return Math.round(n * 100);
 }
 
 function Campo({
@@ -132,7 +144,7 @@ function Campo({
           id={idErro}
           style={{ font: '500 13px var(--fonte-texto)', color: 'var(--alerta-texto)' }}
         >
-          {tipo === 'pct' ? 'Use só números, como 15' : 'Use só números, como 7,50'}
+          {tipo === 'pct' ? 'Use um número de 0 a 100, como 15' : 'Use só números, como 7,50'}
         </span>
       )}
     </div>
@@ -141,7 +153,7 @@ function Campo({
 
 export function TabelaDePrecos() {
   const { tabela, publicarTabela, avisar } = useOperacao();
-  const [rascunho, setRascunho] = useState<TabelaPrecos>(tabela);
+  const [rascunho, setRascunho] = useState<TabelaDoPainel>(tabela);
   // Texto de cada campo em edição; um campo fora daqui mostra o valor do rascunho.
   const [textos, setTextos] = useState<Partial<Record<Chave, string>>>({});
   const invalido = ({ chave, tipo }: (typeof COMPONENTES)[number]) => {
@@ -150,10 +162,7 @@ export function TabelaDePrecos() {
   };
   const algumInvalido = COMPONENTES.some(invalido);
   const alterada = COMPONENTES.some((c) => rascunho[c.chave] !== tabela[c.chave]);
-  const preco = calcularPrecoFechado(
-    { kmDeslocamento: TRECHO.kmDeslocamento, kmReboque: TRECHO.kmReboque, quando: QUANDO },
-    rascunho,
-  );
+  const preco = calcularPrecoFechado(COTACAO, rascunho);
   const repasse = calcularRepasse(preco.total, rascunho);
 
   return (
@@ -162,7 +171,8 @@ export function TabelaDePrecos() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span className="topo__titulo">Tabela de preços · Distrito Federal</span>
           <span className="topo__sub">
-            Versão {tabela.versao} · em vigor desde {tabela.versao === 4 ? '01/10/2026' : 'hoje'}
+            Versão {tabela.versao} · em vigor desde{' '}
+            {tabela.versao === TABELA_PADRAO.versao ? '01/10/2026' : 'hoje'}
           </span>
         </div>
         <span style={{ font: '500 14px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
@@ -304,6 +314,9 @@ export function TabelaDePrecos() {
               }}
             >
               {[
+                ...(preco.ajustePiso > 0
+                  ? [['Ajuste para o Preço fechado mínimo', formatarReais(preco.ajustePiso)]]
+                  : []),
                 ['Repasse ao Guincheiro', formatarReais(repasse.repasse)],
                 ['Comissão', formatarReais(repasse.comissao)],
                 ['Média de mercado DF, mesmo trecho', MEDIA_MERCADO],

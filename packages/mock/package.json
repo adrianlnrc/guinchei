@@ -2,7 +2,7 @@
   "name": "@guinchei/mock",
   "version": "0.0.0",
   "private": true,
-  "description": "Dados de exemplo e dublês de regra para o protótipo navegável (sai quando preco e estados chegarem)",
+  "description": "Dados de exemplo e dublês das regras de Corrida para o protótipo navegável (sai quando estados chegar)",
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@guinchei/estados": "workspace:*"
+    "@guinchei/estados": "workspace:*",
+    "@guinchei/preco": "workspace:*"
   }
 }

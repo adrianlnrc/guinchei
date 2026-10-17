@@ -2,6 +2,9 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router-dom';
 import { useEffect } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { COTACAO } from '@guinchei/mock';
+import { TABELA_PADRAO, calcularPrecoFechado, calcularRepasse } from '@guinchei/preco';
+import { partesReais } from '@guinchei/ui';
 import { App } from './App';
 
 afterEach(cleanup);
@@ -56,6 +59,14 @@ describe('App guincheiro', () => {
     renderEm('/');
     expect(screen.getByText('Disponível')).toBeTruthy();
     expect(screen.getByText('R$ 412')).toBeTruthy();
+  });
+
+  it('o Chamado oferece o repasse calculado por @guinchei/preco', () => {
+    renderEm('/chamado');
+    const preco = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
+    const { repasse } = calcularRepasse(preco.total, TABELA_PADRAO);
+    expect(screen.getByText(partesReais(repasse).inteiro)).toBeTruthy();
+    expect(screen.getByText(partesReais(repasse).centavos)).toBeTruthy();
   });
 
   it('não encerra a Corrida sem as Fotos de estado', () => {

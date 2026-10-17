@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
+import { COTACAO } from '@guinchei/mock';
+import { TABELA_PADRAO, calcularPrecoFechado, calcularRepasse } from '@guinchei/preco';
+import { formatarReais, partesReais } from '@guinchei/ui';
 import { App } from './App';
 
 afterEach(cleanup);
@@ -17,6 +20,38 @@ describe('App painel', () => {
   it('abre no monitor de Corridas', () => {
     renderEm('/');
     expect(screen.getByText('Pedido 2318 precisa de atribuição manual')).toBeTruthy();
+  });
+
+  it('o simulador mostra o Preço fechado e o repasse calculados por @guinchei/preco', () => {
+    renderEm('/precos');
+    const preco = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
+    const repasse = calcularRepasse(preco.total, TABELA_PADRAO);
+    expect(screen.getByText(partesReais(preco.total).inteiro)).toBeTruthy();
+    expect(screen.getByText(formatarReais(repasse.repasse))).toBeTruthy();
+    expect(screen.getByText(formatarReais(repasse.comissao))).toBeTruthy();
+    expect(screen.queryByText('Ajuste para o Preço fechado mínimo')).toBeNull();
+  });
+
+  it('o Preço fechado mínimo é editável e o simulador mostra o ajuste do piso', () => {
+    renderEm('/precos');
+    const campo = screen.getByLabelText('Preço fechado mínimo');
+    expect((campo as HTMLInputElement).value).toBe('180,00');
+    fireEvent.change(campo, { target: { value: '400,00' } });
+    const preco = calcularPrecoFechado(COTACAO, { ...TABELA_PADRAO, precoMinimo: 40000 });
+    expect(screen.getByText(partesReais(preco.total).inteiro)).toBeTruthy();
+    expect(screen.getByText('Ajuste para o Preço fechado mínimo')).toBeTruthy();
+    expect(screen.getByText(formatarReais(preco.ajustePiso))).toBeTruthy();
+    fireEvent.change(campo, { target: { value: '4o0' } });
+    expect(campo.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('recusa adicional acima de 100% sem derrubar o simulador', () => {
+    renderEm('/precos');
+    const campo = screen.getByLabelText('Multiplicador noturno');
+    fireEvent.change(campo, { target: { value: '150' } });
+    expect(campo.getAttribute('aria-invalid')).toBe('true');
+    expect(screen.getByText('Use um número de 0 a 100, como 15')).toBeTruthy();
+    expect(screen.getByText('R$ 297')).toBeTruthy();
   });
 
   it('o simulador recalcula o Preço fechado ao editar a tabela', () => {
