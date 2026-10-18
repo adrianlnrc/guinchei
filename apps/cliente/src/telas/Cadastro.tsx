@@ -5,6 +5,7 @@ import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { cpfValido, mascararCpf } from '../cpf';
 import { useFluxo } from '../fluxo';
+import { MensagemDeErro } from '../MensagemDeErro';
 import { useSessao } from '../sessao';
 import { TERMOS_TEXTO, TERMOS_VERSAO } from '../termos';
 
@@ -135,14 +136,7 @@ function Formulario() {
             ))}
           </section>
         )}
-        {erro && (
-          <p
-            role="alert"
-            style={{ margin: 0, font: '500 15px var(--fonte-texto)', color: 'var(--alerta-texto)' }}
-          >
-            {erro}
-          </p>
-        )}
+        <MensagemDeErro>{erro}</MensagemDeErro>
         <div className="espaco" />
         <Botao disabled={!completo || enviando} onClick={continuar}>
           Continuar

@@ -4,19 +4,8 @@ import { ErroApi } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { mascararCelular, telefoneE164, useFluxo } from '../fluxo';
+import { MensagemDeErro } from '../MensagemDeErro';
 import { useSessao } from '../sessao';
-
-function Erro({ children }: { children: string | null }) {
-  if (!children) return null;
-  return (
-    <p
-      role="alert"
-      style={{ margin: 0, font: '500 15px var(--fonte-texto)', color: 'var(--alerta-texto)' }}
-    >
-      {children}
-    </p>
-  );
-}
 
 export function BoasVindas() {
   const ir = useNavigate();
@@ -118,7 +107,7 @@ export function Celular() {
             }}
           />
         </div>
-        <Erro>{erro}</Erro>
+        <MensagemDeErro>{erro}</MensagemDeErro>
         <div className="espaco" />
         <p className="apoio" style={{ fontSize: 13, textAlign: 'center' }}>
           Seus dados são tratados conforme a LGPD.
@@ -239,7 +228,7 @@ export function Codigo() {
             Reenviar código
           </Link>
         )}
-        <Erro>{erro}</Erro>
+        <MensagemDeErro>{erro}</MensagemDeErro>
         <div className="espaco" />
         <Botao disabled={codigo.length < TAMANHO_CODIGO || enviando} onClick={confirmar}>
           Confirmar
