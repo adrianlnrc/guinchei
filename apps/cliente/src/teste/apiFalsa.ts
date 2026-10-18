@@ -1,8 +1,10 @@
 import { vi } from 'vitest';
 import {
   ErroApi,
+  type Acompanhamento,
   type ApiGuinchei,
   type CadastroUrgente,
+  type EtapaDoAcompanhamento,
   type CotacaoPedido,
   type OfertaAberta,
   type PagamentoAutorizado,
@@ -51,6 +53,29 @@ export const COTACAO_DO_SERVIDOR: CotacaoPedido = {
   },
 };
 
+/** Um Acompanhamento na etapa dada; a Corrida (com o Wagner) existe do aceite em diante. */
+export function acompanhamentoEm(
+  etapa: EtapaDoAcompanhamento,
+  parcial: Partial<Acompanhamento> = {},
+): Acompanhamento {
+  const naCorrida = ['aceita', 'a_caminho', 'no_local', 'carregado', 'entregue'].includes(etapa);
+  return {
+    pedidoId: 'pedido-novo',
+    etapa,
+    precoTotal: COTACAO_DO_SERVIDOR.preco.total,
+    origemEndereco: 'Eixo Monumental, Brasília',
+    destinoEndereco: 'QNA 12, Taguatinga Norte',
+    corrida: naCorrida
+      ? {
+          id: 'corrida-1',
+          estado: etapa as Exclude<EtapaDoAcompanhamento, 'cotado' | 'em_match'>,
+          guincheiro: { nome: 'Wagner Lopes', frota: 'Reboque Planalto' },
+        }
+      : null,
+    ...parcial,
+  } as Acompanhamento;
+}
+
 /**
  * Dublê de @guinchei/api em memória: guarda sessão e perfil, aceita só o CODIGO_CERTO e
  * recusa o CPF do Rafael como já cadastrado.
@@ -62,8 +87,9 @@ export function apiFalsa({
   let logado = sessao;
   let meuPerfil = perfil;
   let telefoneLogado = perfil?.telefone ?? '5561900000006';
+  const ouvintes = new Set<(acompanhamento: Acompanhamento) => void>();
 
-  return {
+  const api = {
     enviarCodigo: vi.fn<(telefone: string) => Promise<void>>(async () => {}),
     confirmarCodigo: vi.fn(async (telefone: string, codigo: string) => {
       if (codigo !== CODIGO_CERTO) throw new ErroApi('codigo_invalido', 'Código incorreto');
@@ -102,8 +128,28 @@ export function apiFalsa({
       estado: 'estornado',
       valor: COTACAO_DO_SERVIDOR.preco.total,
     })),
+    buscarAcompanhamento: vi.fn<(pedidoId: string) => Promise<Acompanhamento | null>>(
+      async (pedidoId) => acompanhamentoEm('em_match', { pedidoId }),
+    ),
+    buscarAcompanhamentoEmAndamento: vi.fn<() => Promise<Acompanhamento | null>>(async () => null),
+    acompanharPedido: vi.fn<
+      (pedidoId: string, aoMudar: (acompanhamento: Acompanhamento) => void) => () => void
+    >((_pedidoId, aoMudar) => {
+      ouvintes.add(aoMudar);
+      return () => void ouvintes.delete(aoMudar);
+    }),
     buscarOfertasAbertas: vi.fn<() => Promise<OfertaAberta[]>>(async () => []),
     aceitarOferta: vi.fn<(tentativaId: number) => Promise<string>>(async () => 'corrida-1'),
     recusarOferta: vi.fn<(tentativaId: number) => Promise<void>>(async () => {}),
   } satisfies ApiGuinchei;
+
+  return {
+    ...api,
+    /** Faz o "Realtime" entregar este estado a quem assinou o acompanhamento. */
+    emitir(acompanhamento: Acompanhamento) {
+      for (const aoMudar of [...ouvintes]) aoMudar(acompanhamento);
+    },
+    /** Quantas assinaturas do Realtime estão abertas. */
+    assinaturasAbertas: () => ouvintes.size,
+  };
 }

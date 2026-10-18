@@ -149,6 +149,9 @@ describe('Pagamento', () => {
 
     await waitFor(() => expect(api.confirmarPedido).toHaveBeenCalledWith('pedido-novo', 'pix'));
     expect(await screen.findByRole('main', { name: 'Procurando guincho' })).toBeTruthy();
+    // A tela de acompanhamento lê o estado real do Pedido e assina o Realtime.
+    expect(api.buscarAcompanhamento).toHaveBeenCalledWith('pedido-novo');
+    expect(api.acompanharPedido).toHaveBeenCalledWith('pedido-novo', expect.any(Function));
   });
 
   it('confirma com cartão', async () => {

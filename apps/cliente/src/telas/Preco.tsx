@@ -209,7 +209,7 @@ function PagamentoDoPedido({ pedidoId, total }: { pedidoId: string; total: numbe
     try {
       await api.confirmarPedido(pedidoId, metodo);
       avisar('Pagamento autorizado. Chamando o guincho…');
-      ir('/corrida');
+      ir('/acompanhamento');
     } catch (e) {
       setConfirmando(false);
       setErro(
