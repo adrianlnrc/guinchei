@@ -12,3 +12,5 @@ coverage/
 # Supabase
 supabase/.branches
 supabase/.temp
+e2e/resultados/
+e2e/playwright-report/
