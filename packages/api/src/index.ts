@@ -113,7 +113,7 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
           // O banco só aceita o telefone verificado no login (o do JWT).
           telefone: usuario.phone,
           cpf,
-          aceite_termos_em: new Date().toISOString(),
+          // A hora do aceite é a do servidor (o banco grava; o app não pode mandar).
           aceite_termos_versao: termosVersao,
         })
         .select()

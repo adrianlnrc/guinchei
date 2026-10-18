@@ -312,7 +312,7 @@ export type Database = {
         };
         ComputedFields: never;
         Insert: {
-          aceite_termos_em: string;
+          aceite_termos_em?: string;
           aceite_termos_versao: string;
           cpf: string;
           criado_em?: string;
