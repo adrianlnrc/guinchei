@@ -11,11 +11,12 @@
 // perfil no seed, e o 5561900000006, sem perfil. A `service_role` só serve para apagar o
 // usuário do 5561900000006 antes, para o teste poder rodar de novo sem `db reset`.
 import { createClient } from '@supabase/supabase-js';
-import { beforeAll, describe, expect, it } from 'vitest';
-import { criarApi, criarClienteApi, ErroApi } from './index';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { criarApi, criarClienteApi, ErroApi, type ApiGuinchei } from './index';
 
 declare const process: { env: Record<string, string | undefined> };
 declare const console: { info(mensagem: string): void };
+declare function setTimeout(fazer: () => void, ms: number): unknown;
 const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } = process.env;
 /**
  * Diz ao teste com que configuração as Edge Functions estão rodando: com `1`, elas foram
@@ -34,6 +35,30 @@ function novaApi() {
     supabaseAnonKey: SUPABASE_ANON_KEY!,
   });
   return { supabase, api: criarApi(supabase) };
+}
+
+async function pedidoComTrajeto() {
+  // Sem reenviar o código (limite de um envio a cada 5 s): o número de teste confirma direto.
+  const { supabase, api } = novaApi();
+  await api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+  const id = await api.abrirPedido({
+    tipoVeiculo: 'carro',
+    situacao: 'nao_liga',
+    rodasGiram: 'sim',
+  });
+  await api.definirTrajeto(id, {
+    origem: { ponto: { lat: -15.7903, lng: -47.8921 }, rotulo: 'Eixo Monumental, Brasília' },
+    destino: { ponto: { lat: -15.8336, lng: -48.0566 }, rotulo: 'QNA 12, Taguatinga Norte' },
+    kmRebocado: 21.347,
+  });
+  return { supabase, api, id };
+}
+
+function admin() {
+  if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('defina SUPABASE_SERVICE_ROLE_KEY');
+  return createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false },
+  });
 }
 
 describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
@@ -107,30 +132,6 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
   });
 
   describe('cotação e confirmação (Edge Functions cotar-pedido e confirmar-pedido)', () => {
-    async function pedidoComTrajeto() {
-      // Sem reenviar o código (limite de um envio a cada 5 s): o número de teste confirma direto.
-      const { supabase, api } = novaApi();
-      await api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
-      const id = await api.abrirPedido({
-        tipoVeiculo: 'carro',
-        situacao: 'nao_liga',
-        rodasGiram: 'sim',
-      });
-      await api.definirTrajeto(id, {
-        origem: { ponto: { lat: -15.7903, lng: -47.8921 }, rotulo: 'Eixo Monumental, Brasília' },
-        destino: { ponto: { lat: -15.8336, lng: -48.0566 }, rotulo: 'QNA 12, Taguatinga Norte' },
-        kmRebocado: 21.347,
-      });
-      return { supabase, api, id };
-    }
-
-    function admin() {
-      if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('defina SUPABASE_SERVICE_ROLE_KEY');
-      return createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false },
-      });
-    }
-
     it('preço exibido == preço gravado == valor autorizado, com a cotação em menos de 2 s', async () => {
       const { supabase, api, id } = await pedidoComTrajeto();
 
@@ -182,7 +183,8 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         .select('estado, preco_total')
         .eq('id', id)
         .single();
-      expect(confirmado).toEqual({ estado: 'confirmado', preco_total: cotacao.preco.total });
+      // Autorizado, o Pedido passa por `confirmado` e já entra no Match (#11).
+      expect(confirmado).toEqual({ estado: 'em_match', preco_total: cotacao.preco.total });
 
       // Confirmado, o Pedido não é cotado nem confirmado de novo.
       const deNovo = await api.confirmarPedido(id, 'pix').catch((e: unknown) => e);
@@ -261,6 +263,8 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           await teste(id, pedido.api, pedido.supabase);
         } finally {
           if (id) {
+            // Autorizado, o Pedido entrou no Match: as ofertas também saem.
+            await servico.from('tentativas_match').delete().eq('pedido_id', id);
             await servico.from('pagamentos').delete().eq('pedido_id', id);
             await servico.from('pedidos').delete().eq('id', id);
           }
@@ -338,6 +342,236 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         .catch((e: unknown) => e);
       expect((inexistente as ErroApi).motivo).toBe('pedido_indisponivel');
     });
+  });
+
+  describe('Match (Edge Functions ofertar-proximo e estornar-pedido, pg_cron e pg_net)', () => {
+    // Guincheiros do seed, do mais perto ao mais longe do Eixo Monumental.
+    const MARCOS = { telefone: '+5561900000002', id: '22222222-2222-4222-8222-222222222201' };
+    const WAGNER = { telefone: '+5561900000003', id: '22222222-2222-4222-8222-222222222202' };
+    const RITA = { telefone: '+5561900000004', id: '22222222-2222-4222-8222-222222222203' };
+    const GUINCHEIROS = [MARCOS.id, WAGNER.id, RITA.id];
+    /** Timeout curto, para a expiração não demorar 30 s; a varredura roda a cada 5 s. */
+    const TIMEOUT_DE_TESTE_S = 3;
+    const PRAZO_MS = 25_000;
+
+    let timeoutAnterior = 30;
+
+    beforeAll(async () => {
+      const servico = admin();
+      const { data } = await servico
+        .from('parametros_match')
+        .select('timeout_oferta_segundos')
+        .single();
+      timeoutAnterior = data!.timeout_oferta_segundos as number;
+      await servico
+        .from('parametros_match')
+        .update({ timeout_oferta_segundos: TIMEOUT_DE_TESTE_S })
+        .eq('id', true);
+    });
+
+    afterAll(async () => {
+      await admin()
+        .from('parametros_match')
+        .update({ timeout_oferta_segundos: timeoutAnterior })
+        .eq('id', true);
+    });
+
+    // Quem aceita fica indisponível; cada teste começa com os três disponíveis.
+    afterEach(async () => {
+      await admin().from('guincheiros').update({ disponivel: true }).in('id', GUINCHEIROS);
+    });
+
+    async function entrar(telefone: string) {
+      const { api } = novaApi();
+      await api.confirmarCodigo(telefone, CODIGO_DE_TESTE);
+      return api;
+    }
+
+    async function esperar<T>(ler: () => Promise<T | null | undefined>, oQue: string): Promise<T> {
+      const limite = Date.now() + PRAZO_MS;
+      for (;;) {
+        const valor = await ler();
+        if (valor) return valor;
+        if (Date.now() > limite) throw new Error(`esperou demais por: ${oQue}`);
+        await new Promise<void>((r) => setTimeout(r, 300));
+      }
+    }
+
+    /** A oferta aberta deste Pedido para o Guincheiro (ele pode ter ofertas de outros). */
+    function ofertaDoPedido(guincheiro: ApiGuinchei, pedidoId: string) {
+      return esperar(
+        async () => (await guincheiro.buscarOfertasAbertas()).find((o) => o.pedidoId === pedidoId),
+        `oferta do Pedido ${pedidoId}`,
+      );
+    }
+
+    async function estadoDoPedido(pedidoId: string) {
+      const { data } = await admin().from('pedidos').select('estado').eq('id', pedidoId).single();
+      return data!.estado as string;
+    }
+
+    async function pedidoConfirmado() {
+      const pedido = await pedidoComTrajeto();
+      const cotacao = await pedido.api.cotarPedido(pedido.id);
+      await pedido.api.confirmarPedido(pedido.id, 'pix');
+      return { ...pedido, cotacao };
+    }
+
+    it('confirmar oferta ao mais próximo; a recusa passa ao próximo; o aceite cria a Corrida', async () => {
+      const { supabase, id, cotacao } = await pedidoConfirmado();
+      expect(await estadoDoPedido(id)).toBe('em_match');
+      const [marcos, wagner] = await Promise.all([
+        entrar(MARCOS.telefone),
+        entrar(WAGNER.telefone),
+      ]);
+
+      // O Marcos (Cruzeiro, o mais perto) recebe pela distância dele: a da cotação.
+      const primeira = await ofertaDoPedido(marcos, id);
+      expect(primeira).toMatchObject({
+        rodada: 1,
+        kmAteVeiculo: cotacao.kmAteVeiculo,
+        precoRecalculado: cotacao.preco.total,
+        repasse: cotacao.preco.total - Math.round(cotacao.preco.total * 0.2),
+        pedido: {
+          origemEndereco: 'Eixo Monumental, Brasília',
+          destinoEndereco: 'QNA 12, Taguatinga Norte',
+          kmRebocado: 21.35,
+        },
+      });
+      const naoEhDele = await wagner.aceitarOferta(primeira.tentativaId).catch((e: unknown) => e);
+      expect((naoEhDele as ErroApi).motivo).toBe('oferta_indisponivel');
+
+      // Recusa, com chamadas simultâneas a ofertar-proximo junto com o disparo do banco:
+      // nenhuma abre uma segunda oferta.
+      await marcos.recusarOferta(primeira.tentativaId);
+      const servico = admin();
+      await Promise.all(
+        Array.from({ length: 4 }, () =>
+          servico.functions.invoke('ofertar-proximo', { body: { pedido_id: id } }),
+        ),
+      );
+
+      // O Wagner (Asa Norte, mais longe) recebe pela distância dele.
+      const segunda = await ofertaDoPedido(wagner, id);
+      expect(segunda.kmAteVeiculo).toBeGreaterThan(primeira.kmAteVeiculo);
+      expect(segunda.precoRecalculado).toBeGreaterThan(cotacao.preco.total);
+      const { data: tentativas } = await admin()
+        .from('tentativas_match')
+        .select('guincheiro_id, resultado, ordem')
+        .eq('pedido_id', id)
+        .order('ordem');
+      expect(tentativas).toEqual([
+        { guincheiro_id: MARCOS.id, resultado: 'recusada', ordem: 1 },
+        { guincheiro_id: WAGNER.id, resultado: 'oferecida', ordem: 2 },
+      ]);
+
+      const corridaId = await wagner.aceitarOferta(segunda.tentativaId);
+      const deNovo = await wagner.aceitarOferta(segunda.tentativaId).catch((e: unknown) => e);
+      expect((deNovo as ErroApi).motivo).toBe('oferta_indisponivel');
+
+      const { data: corrida } = await servico
+        .from('corridas')
+        .select('id, estado, guincheiro_id, repasse')
+        .eq('pedido_id', id)
+        .single();
+      expect(corrida).toEqual({
+        id: corridaId,
+        estado: 'aceita',
+        guincheiro_id: WAGNER.id,
+        repasse: segunda.repasse,
+      });
+      const { data: guincheiro } = await servico
+        .from('guincheiros')
+        .select('disponivel')
+        .eq('id', WAGNER.id)
+        .single();
+      expect(guincheiro).toEqual({ disponivel: false });
+      expect((await wagner.buscarOfertasAbertas()).some((o) => o.pedidoId === id)).toBe(false);
+
+      // O Cliente acompanha pelo próprio Pedido.
+      const { data: doCliente } = await supabase
+        .from('pedidos')
+        .select('estado')
+        .eq('id', id)
+        .single();
+      expect(doCliente).toEqual({ estado: 'atribuido' });
+    }, 60_000);
+
+    async function esgotarRodada(id: string) {
+      const [marcos, wagner, rita] = await Promise.all([
+        entrar(MARCOS.telefone),
+        entrar(WAGNER.telefone),
+        entrar(RITA.telefone),
+      ]);
+      await marcos.recusarOferta((await ofertaDoPedido(marcos, id)).tentativaId);
+      // O Wagner deixa a oferta expirar: a varredura do pg_cron passa à Rita.
+      await ofertaDoPedido(wagner, id);
+      await rita.recusarOferta((await ofertaDoPedido(rita, id)).tentativaId);
+      await esperar(
+        async () => (await estadoDoPedido(id)) === 'sem_guincheiro',
+        'Pedido em sem_guincheiro',
+      );
+      const { data: tentativas } = await admin()
+        .from('tentativas_match')
+        .select('guincheiro_id, resultado')
+        .eq('pedido_id', id)
+        .order('ordem');
+      expect(tentativas).toEqual([
+        { guincheiro_id: MARCOS.id, resultado: 'recusada' },
+        { guincheiro_id: WAGNER.id, resultado: 'expirada' },
+        { guincheiro_id: RITA.id, resultado: 'recusada' },
+      ]);
+      return { marcos };
+    }
+
+    it('sem aceite, sem_guincheiro com o pagamento autorizado; tentar de novo reoferta e o aceite atribui', async () => {
+      const { api, id, cotacao } = await pedidoConfirmado();
+      const { marcos } = await esgotarRodada(id);
+
+      const { data: pagamento } = await admin()
+        .from('pagamentos')
+        .select('estado, valor')
+        .eq('pedido_id', id)
+        .single();
+      expect(pagamento).toEqual({ estado: 'autorizado', valor: cotacao.preco.total });
+
+      await api.tentarDeNovo(id);
+      const deNovo = await api.tentarDeNovo(id).catch((e: unknown) => e);
+      expect((deNovo as ErroApi).motivo).toBe('pedido_indisponivel');
+
+      // Rodada 2: o Marcos, que recusou na rodada 1, recebe de novo, com o mesmo preço.
+      const reoferta = await ofertaDoPedido(marcos, id);
+      expect(reoferta).toMatchObject({ rodada: 2, precoRecalculado: cotacao.preco.total });
+      await marcos.aceitarOferta(reoferta.tentativaId);
+      expect(await estadoDoPedido(id)).toBe('atribuido');
+      const { data: pagamentos } = await admin()
+        .from('pagamentos')
+        .select('estado')
+        .eq('pedido_id', id);
+      expect(pagamentos).toEqual([{ estado: 'autorizado' }]);
+    }, 90_000);
+
+    it('sem aceite, o Cliente estorna: Pedido e pagamento estornados', async () => {
+      const { api, id, cotacao } = await pedidoConfirmado();
+      await esgotarRodada(id);
+
+      await expect(api.estornarPedido(id)).resolves.toEqual({
+        estado: 'estornado',
+        valor: cotacao.preco.total,
+      });
+      expect(await estadoDoPedido(id)).toBe('estornado');
+      const { data: pagamento } = await admin()
+        .from('pagamentos')
+        .select('estado')
+        .eq('pedido_id', id)
+        .single();
+      expect(pagamento).toEqual({ estado: 'estornado' });
+
+      const outraVez = await api.estornarPedido(id).catch((e: unknown) => e);
+      expect((outraVez as ErroApi).motivo).toBe('pedido_indisponivel');
+      const tentar = await api.tentarDeNovo(id).catch((e: unknown) => e);
+      expect((tentar as ErroApi).motivo).toBe('pedido_indisponivel');
+    }, 90_000);
   });
 
   it('código errado não entra', async () => {

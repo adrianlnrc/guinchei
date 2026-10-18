@@ -2,11 +2,15 @@
 //
 // Confirma o Pedido do Cliente logado (RF06): lê o Preço fechado gravado, autoriza esse
 // mesmo valor no GatewayPagamento (adaptador mock no skeleton, sem PSP real) e registra o
-// resultado. Autorizado: o Pedido vai de `cotado` a `confirmado`. Recusado: o pagamento
-// fica registrado, o Pedido continua `cotado` e a resposta é 402 `pagamento_recusado`.
+// resultado. Autorizado: o Pedido vai de `cotado` a `confirmado` e o banco já abre a rodada
+// 1 do Match (`em_match`); a primeira oferta sai daqui mesmo (RF07). Se ela falhar, a
+// varredura do pg_cron tenta de novo em segundos; a confirmação não falha por isso.
+// Recusado: o pagamento fica registrado, o Pedido continua `cotado` e a resposta é 402
+// `pagamento_recusado`.
 //
 // Resposta: { id, estado: 'autorizado', valor } (valor em centavos).
 import { criarGatewayMock, type MetodoPagamento } from '../../../packages/pagamento/src/index.ts';
+import { ofertarProximo } from '../_compartilhado/match.ts';
 import {
   ErroServidor,
   PEDIDO_INDISPONIVEL,
@@ -73,5 +77,8 @@ servir(async ({ clienteId, corpo }) => {
       'Pagamento recusado. Tente de novo ou use outro meio de pagamento.',
     );
   }
+  await ofertarProximo(pedidoId).catch((e: unknown) => {
+    console.error('primeira oferta do Match falhou; a varredura tenta de novo', e);
+  });
   return { id, estado: 'autorizado', valor: autorizacao.valor };
 }, traduzir);

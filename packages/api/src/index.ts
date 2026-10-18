@@ -66,6 +66,36 @@ export interface PagamentoAutorizado {
   valor: number;
 }
 
+/** Estorno da autorização do Pedido sem Guincheiro (Edge Function `estornar-pedido`). */
+export interface PagamentoEstornado {
+  estado: 'estornado';
+  /** Centavos: o valor autorizado. */
+  valor: number;
+}
+
+/** Oferta do Match aberta para o Guincheiro logado (ADR-0002, ADR-0009). */
+export interface OfertaAberta {
+  tentativaId: number;
+  pedidoId: string;
+  rodada: number;
+  /** Distância deste Guincheiro até o veículo. */
+  kmAteVeiculo: number;
+  /** Centavos: Preço fechado recalculado com a distância dele. */
+  precoRecalculado: number;
+  /** Centavos: o que ele recebe se aceitar (o recalculado menos a Comissão). */
+  repasse: number;
+  /** Prazo para aceitar (ISO 8601, hora do servidor). */
+  expiraEm: string;
+  pedido: {
+    origemEndereco: string | null;
+    destinoEndereco: string | null;
+    kmRebocado: number | null;
+    tipoVeiculo: Enums<'tipo_veiculo'>;
+    situacao: Enums<'situacao_veiculo'>;
+    rodasGiram: Enums<'rodas_giram'>;
+  };
+}
+
 export type MotivoErroApi =
   | 'codigo_invalido'
   | 'cpf_ja_cadastrado'
@@ -78,8 +108,12 @@ export type MotivoErroApi =
   /** O Pedido não tem Preço fechado (ex.: o trajeto mudou depois de cotar). */
   | 'sem_cotacao'
   | 'pagamento_recusado'
-  /** O Pedido não é do Cliente ou já saiu de `cotado`. */
+  /** O Pedido não é do Cliente ou não está no estado que a ação pede. */
   | 'pedido_indisponivel'
+  /** A oferta não é do Guincheiro, já foi respondida ou expirou. */
+  | 'oferta_indisponivel'
+  /** O Guincheiro está indisponível (plantão desligado ou outra Corrida). */
+  | 'guincheiro_indisponivel'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -109,8 +143,21 @@ export interface ApiGuinchei {
   definirTrajeto(id: string, trajeto: TrajetoPedido): Promise<void>;
   /** O servidor calcula o Preço fechado e o grava no Pedido, que continua em `cotado`. */
   cotarPedido(id: string): Promise<CotacaoPedido>;
-  /** Autoriza o Preço fechado gravado (mock) e leva o Pedido a `confirmado`. */
+  /**
+   * Autoriza o Preço fechado gravado (mock) e leva o Pedido a `confirmado`; o Match começa
+   * na hora (`em_match`).
+   */
   confirmarPedido(id: string, metodo: MetodoPagamento): Promise<PagamentoAutorizado>;
+  /** Cliente, em `sem_guincheiro`: nova rodada do Match com o mesmo preço e autorização. */
+  tentarDeNovo(pedidoId: string): Promise<void>;
+  /** Cliente, em `sem_guincheiro`: estorna o pagamento e encerra o Pedido (`estornado`). */
+  estornarPedido(pedidoId: string): Promise<PagamentoEstornado>;
+  /** Guincheiro: ofertas abertas para ele, a que vence primeiro antes. */
+  buscarOfertasAbertas(): Promise<OfertaAberta[]>;
+  /** Guincheiro: aceita a oferta e devolve o id da Corrida criada. */
+  aceitarOferta(tentativaId: number): Promise<string>;
+  /** Guincheiro: recusa a oferta; o Match passa ao próximo. */
+  recusarOferta(tentativaId: number): Promise<void>;
 }
 
 export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): ClienteSupabase {
@@ -124,6 +171,23 @@ export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): Cl
 const CPF_UNICO = 'perfis_cpf_key';
 /** Código do erro de `definir_trajeto_pedido` para ponto fora do DF. */
 const FORA_DO_DF = 'GDF01';
+
+/** Erros de `aceitar_oferta` e `recusar_oferta` (migração do Match). */
+function erroDaOferta(error: { code?: string }, mensagemDeFalha: string): ErroApi {
+  switch (error.code) {
+    case 'P0002':
+    case 'GMT01':
+      return new ErroApi('oferta_indisponivel', 'Esta oferta não está mais disponível', {
+        cause: error,
+      });
+    case 'GMT02':
+      return new ErroApi('guincheiro_indisponivel', 'Fique disponível para aceitar', {
+        cause: error,
+      });
+    default:
+      return new ErroApi('falha', mensagemDeFalha, { cause: error });
+  }
+}
 
 const MOTIVOS_DAS_FUNCOES: readonly MotivoErroApi[] = [
   'sem_sessao',
@@ -280,6 +344,65 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
         { pedido_id: id, metodo },
         'Não foi possível confirmar o pagamento',
       );
+    },
+
+    async tentarDeNovo(pedidoId) {
+      const { error } = await supabase.rpc('tentar_de_novo', { pedido_id: pedidoId });
+      if (error?.code === 'P0002') {
+        throw new ErroApi('pedido_indisponivel', 'O Pedido não está aguardando um Guincheiro', {
+          cause: error,
+        });
+      }
+      if (error) throw new ErroApi('falha', 'Não foi possível tentar de novo', { cause: error });
+    },
+
+    async estornarPedido(pedidoId) {
+      return chamarFuncao<PagamentoEstornado>(
+        supabase,
+        'estornar-pedido',
+        { pedido_id: pedidoId },
+        'Não foi possível estornar o pagamento',
+      );
+    },
+
+    async buscarOfertasAbertas() {
+      // A RLS só mostra as ofertas feitas ao Guincheiro logado (e as do Pedido dele).
+      const { data, error } = await supabase
+        .from('tentativas_match')
+        .select(
+          'id, pedido_id, rodada, km_ate_veiculo, preco_recalculado, repasse_oferecido, expira_em, pedidos (origem_endereco, destino_endereco, km_rebocado, tipo_veiculo, situacao, rodas_giram)',
+        )
+        .eq('resultado', 'oferecida')
+        .order('expira_em');
+      if (error) throw new ErroApi('falha', 'Não foi possível ler as ofertas', { cause: error });
+      return data.map((t) => ({
+        tentativaId: t.id,
+        pedidoId: t.pedido_id,
+        rodada: t.rodada,
+        kmAteVeiculo: t.km_ate_veiculo,
+        precoRecalculado: t.preco_recalculado,
+        repasse: t.repasse_oferecido,
+        expiraEm: t.expira_em!,
+        pedido: {
+          origemEndereco: t.pedidos.origem_endereco,
+          destinoEndereco: t.pedidos.destino_endereco,
+          kmRebocado: t.pedidos.km_rebocado,
+          tipoVeiculo: t.pedidos.tipo_veiculo,
+          situacao: t.pedidos.situacao,
+          rodasGiram: t.pedidos.rodas_giram,
+        },
+      }));
+    },
+
+    async aceitarOferta(tentativaId) {
+      const { data, error } = await supabase.rpc('aceitar_oferta', { tentativa_id: tentativaId });
+      if (error) throw erroDaOferta(error, 'Não foi possível aceitar a oferta');
+      return data;
+    },
+
+    async recusarOferta(tentativaId) {
+      const { error } = await supabase.rpc('recusar_oferta', { tentativa_id: tentativaId });
+      if (error) throw erroDaOferta(error, 'Não foi possível recusar a oferta');
     },
   };
 }

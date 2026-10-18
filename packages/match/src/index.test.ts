@@ -9,9 +9,9 @@ const CANDIDATOS = [MARCOS, WAGNER, RITA];
 
 describe('decidirProximo', () => {
   it('sem candidatos, a rodada está esgotada', () => {
-    expect(
-      decidirProximo({ candidatos: [], tentativasDaRodada: [], limiteTentativas: 3 }),
-    ).toEqual({ tipo: 'esgotado' });
+    expect(decidirProximo({ candidatos: [], tentativasDaRodada: [], limiteTentativas: 3 })).toEqual(
+      { tipo: 'esgotado' },
+    );
   });
 
   it('no começo da rodada, oferta ao mais próximo', () => {
