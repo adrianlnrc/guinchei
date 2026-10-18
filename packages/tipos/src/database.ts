@@ -31,6 +31,7 @@ export type Database = {
           guincheiro_id: string;
           id: string;
           pedido_id: string;
+          repasse: number;
         };
         ComputedFields: never;
         Insert: {
@@ -40,6 +41,7 @@ export type Database = {
           guincheiro_id: string;
           id?: string;
           pedido_id: string;
+          repasse: number;
         };
         Update: {
           atualizado_em?: string;
@@ -48,6 +50,7 @@ export type Database = {
           guincheiro_id?: string;
           id?: string;
           pedido_id?: string;
+          repasse?: number;
         };
         Relationships: [
           {
@@ -250,10 +253,33 @@ export type Database = {
           },
         ];
       };
+      parametros_match: {
+        Row: {
+          atualizado_em: string;
+          id: boolean;
+          limite_tentativas: number;
+          timeout_oferta_segundos: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          atualizado_em?: string;
+          id?: boolean;
+          limite_tentativas?: number;
+          timeout_oferta_segundos?: number;
+        };
+        Update: {
+          atualizado_em?: string;
+          id?: boolean;
+          limite_tentativas?: number;
+          timeout_oferta_segundos?: number;
+        };
+        Relationships: [];
+      };
       pedidos: {
         Row: {
           atualizado_em: string;
           cliente_id: string;
+          cotado_em: string | null;
           criado_em: string;
           destino: unknown;
           destino_endereco: string | null;
@@ -270,6 +296,7 @@ export type Database = {
           preco_rebocado: number | null;
           preco_taxa_base: number | null;
           preco_total: number | null;
+          rodada_match: number;
           rodas_giram: Database['public']['Enums']['rodas_giram'];
           situacao: Database['public']['Enums']['situacao_veiculo'];
           tabela_precos_versao: number | null;
@@ -279,6 +306,7 @@ export type Database = {
         Insert: {
           atualizado_em?: string;
           cliente_id: string;
+          cotado_em?: string | null;
           criado_em?: string;
           destino?: unknown;
           destino_endereco?: string | null;
@@ -295,6 +323,7 @@ export type Database = {
           preco_rebocado?: number | null;
           preco_taxa_base?: number | null;
           preco_total?: number | null;
+          rodada_match?: number;
           rodas_giram: Database['public']['Enums']['rodas_giram'];
           situacao: Database['public']['Enums']['situacao_veiculo'];
           tabela_precos_versao?: number | null;
@@ -303,6 +332,7 @@ export type Database = {
         Update: {
           atualizado_em?: string;
           cliente_id?: string;
+          cotado_em?: string | null;
           criado_em?: string;
           destino?: unknown;
           destino_endereco?: string | null;
@@ -319,6 +349,7 @@ export type Database = {
           preco_rebocado?: number | null;
           preco_taxa_base?: number | null;
           preco_total?: number | null;
+          rodada_match?: number;
           rodas_giram?: Database['public']['Enums']['rodas_giram'];
           situacao?: Database['public']['Enums']['situacao_veiculo'];
           tabela_precos_versao?: number | null;
@@ -433,35 +464,44 @@ export type Database = {
       tentativas_match: {
         Row: {
           criado_em: string;
+          expira_em: string | null;
           guincheiro_id: string;
           id: number;
+          km_ate_veiculo: number;
           ordem: number;
           pedido_id: string;
           preco_recalculado: number;
           repasse_oferecido: number;
+          respondida_em: string | null;
           resultado: Database['public']['Enums']['resultado_tentativa'];
           rodada: number;
         };
         ComputedFields: never;
         Insert: {
           criado_em?: string;
+          expira_em?: string | null;
           guincheiro_id: string;
           id?: never;
+          km_ate_veiculo: number;
           ordem: number;
           pedido_id: string;
           preco_recalculado: number;
           repasse_oferecido: number;
+          respondida_em?: string | null;
           resultado?: Database['public']['Enums']['resultado_tentativa'];
           rodada: number;
         };
         Update: {
           criado_em?: string;
+          expira_em?: string | null;
           guincheiro_id?: string;
           id?: never;
+          km_ate_veiculo?: number;
           ordem?: number;
           pedido_id?: string;
           preco_recalculado?: number;
           repasse_oferecido?: number;
+          respondida_em?: string | null;
           resultado?: Database['public']['Enums']['resultado_tentativa'];
           rodada?: number;
         };
@@ -527,6 +567,8 @@ export type Database = {
         };
         Returns: string;
       };
+      abrir_rodada_match: { Args: { pedido_id: string }; Returns: number };
+      aceitar_oferta: { Args: { tentativa_id: number }; Returns: string };
       assinatura_do_trajeto: {
         Args: { destino: unknown; km_rebocado: number; origem: unknown };
         Returns: string;
@@ -544,6 +586,7 @@ export type Database = {
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
       dados_da_cotacao: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
+      dados_do_match: { Args: { pedido_id: string }; Returns: Json };
       definir_trajeto_pedido: {
         Args: {
           destino_endereco: string;
@@ -557,10 +600,17 @@ export type Database = {
         };
         Returns: undefined;
       };
+      disparar_ofertar_proximo: { Args: { pedido_id: string }; Returns: number };
       eh_operacao: { Args: Record<PropertyKey, never>; Returns: boolean };
+      encerrar_rodada_sem_guincheiro: {
+        Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
+        Returns: undefined;
+      };
+      feriados_perto_de: { Args: { dia: string }; Returns: Json };
       gravar_cotacao: {
         Args: {
           cliente_id: string;
+          instante?: string;
           km_ate_veiculo: number;
           pedido_id: string;
           preco_adicional_feriado: number;
@@ -584,6 +634,7 @@ export type Database = {
         }[];
       };
       limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
+      pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };
       pedido_oferecido_a_mim: { Args: { pedido_id: string }; Returns: boolean };
       perfil_tem_papel: {
@@ -592,6 +643,11 @@ export type Database = {
       };
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
       preco_para_confirmar: { Args: { cliente_id: string; pedido_id: string }; Returns: number };
+      recusar_oferta: { Args: { tentativa_id: number }; Returns: undefined };
+      registrar_estorno: {
+        Args: { cliente_id: string; pedido_id: string; referencia_externa: string };
+        Returns: undefined;
+      };
       registrar_pagamento: {
         Args: {
           cliente_id: string;
@@ -603,6 +659,19 @@ export type Database = {
           valor: number;
         };
         Returns: string;
+      };
+      registrar_tentativa: {
+        Args: {
+          guincheiro_id: string;
+          km_ate_veiculo: number;
+          ordem: number;
+          pedido_id: string;
+          preco_recalculado: number;
+          repasse_oferecido: number;
+          resultado: Database['public']['Enums']['resultado_tentativa'];
+          rodada: number;
+        };
+        Returns: number;
       };
       sou_cliente_do_pedido: { Args: { pedido_id: string }; Returns: boolean };
       tabela_precos_vigente: {
@@ -628,6 +697,35 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      tentar_de_novo: { Args: { pedido_id: string }; Returns: number };
+      travar_match_lido: {
+        Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
+        Returns: undefined;
+      };
+      travar_oferta_aberta: {
+        Args: { tentativa_id: number };
+        Returns: {
+          criado_em: string;
+          expira_em: string | null;
+          guincheiro_id: string;
+          id: number;
+          km_ate_veiculo: number;
+          ordem: number;
+          pedido_id: string;
+          preco_recalculado: number;
+          repasse_oferecido: number;
+          respondida_em: string | null;
+          resultado: Database['public']['Enums']['resultado_tentativa'];
+          rodada: number;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'tentativas_match';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
+      varrer_match: { Args: Record<PropertyKey, never>; Returns: string[] };
     };
     Enums: {
       abrangencia_feriado: 'nacional' | 'df';

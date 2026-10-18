@@ -3,7 +3,8 @@
 --
 -- A Edge Function `confirmar-pedido` lê o Preço fechado gravado, autoriza esse mesmo valor
 -- no GatewayPagamento (mock) e registra o resultado. Autorizado: o Pedido vai a
--- `confirmado`. Recusado: o pagamento fica registrado e o Pedido continua `cotado`.
+-- `confirmado` e, na mesma transação, abre a rodada 1 do Match (`em_match`, #11).
+-- Recusado: o pagamento fica registrado e o Pedido continua `cotado`.
 -- Ninguém escreve em `pagamentos` pela API; o Cliente lê os do próprio Pedido.
 --
 -- Usuários do seed: Cliente A (Rafael). Aqui se cria o Cliente B.
@@ -131,8 +132,8 @@ select results_eq(
             pg.criado_em = now(), p.estado::text, pg.valor = p.preco_total
      from public.pagamentos pg join public.pedidos p on p.id = pg.pedido_id
      where pg.id = current_setting('teste.pagamento')::uuid $$,
-  $$ values (25925, 'autorizado', 'pix', 'mock', 'mock_ok', true, 'confirmado', true) $$,
-  'autorizado: o pagamento tem o valor do Preço fechado e o Pedido vai a confirmado'
+  $$ values (25925, 'autorizado', 'pix', 'mock', 'mock_ok', true, 'em_match', true) $$,
+  'autorizado: o pagamento tem o valor do Preço fechado e o Pedido passa por confirmado e já entra no Match (#11)'
 );
 select throws_ok(
   $$ select public.registrar_pagamento(current_setting('teste.pedido')::uuid,
