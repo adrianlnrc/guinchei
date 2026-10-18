@@ -17,6 +17,12 @@ import { criarApi, criarClienteApi, ErroApi } from './index';
 declare const process: { env: Record<string, string | undefined> };
 declare const console: { info(mensagem: string): void };
 const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+/**
+ * Diz ao teste com que configuração as Edge Functions estão rodando: com `1`, elas foram
+ * servidas com `--env-file supabase/testes-recusa.env` e o mock recusa valores terminados
+ * em 99 centavos; sem ela, o padrão (nunca recusa).
+ */
+const RECUSA_LIGADA = process.env.PAGAMENTO_MOCK_RECUSA_TESTE === '1';
 
 const CODIGO_DE_TESTE = '123456';
 const RAFAEL = { telefone: '+5561900000001', id: '11111111-1111-4111-8111-111111111111' };
@@ -212,6 +218,92 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         api.cotarPedido(id),
       ]);
       expect(new Set(cotacoes.map((c) => c.preco.total)).size).toBe(1);
+    });
+
+    describe('Preço fechado terminado em 99 centavos', () => {
+      // Uma versão temporária da tabela, vigente só durante o teste, com o total fixo em
+      // R$ 179,99 (sem km, adicionais nem piso). Apagada no fim, junto com o Pedido.
+      async function comPrecoTerminadoEm99(
+        teste: (
+          id: string,
+          api: ReturnType<typeof novaApi>['api'],
+          supabase: ReturnType<typeof novaApi>['supabase'],
+        ) => Promise<void>,
+      ) {
+        const servico = admin();
+        const { data: ultima } = await servico
+          .from('tabela_precos')
+          .select('versao')
+          .order('versao', { ascending: false })
+          .limit(1)
+          .single();
+        const versao = (ultima!.versao as number) + 1;
+        const { error } = await servico.from('tabela_precos').insert({
+          versao,
+          vigente_desde: new Date(Date.now() - 1000).toISOString(),
+          taxa_base: 17999,
+          por_km_ate_veiculo: 0,
+          por_km_rebocado: 0,
+          adicional_noturno: 0,
+          noturno_das: 20,
+          noturno_ate: 6,
+          adicional_feriado: 0,
+          preco_minimo: 0,
+          comissao: 0.2,
+        });
+        if (error) throw error;
+        let id: string | undefined;
+        try {
+          const pedido = await pedidoComTrajeto();
+          id = pedido.id;
+          const cotacao = await pedido.api.cotarPedido(id);
+          expect(cotacao.preco.total).toBe(17999);
+          await teste(id, pedido.api, pedido.supabase);
+        } finally {
+          if (id) {
+            await servico.from('pagamentos').delete().eq('pedido_id', id);
+            await servico.from('pedidos').delete().eq('id', id);
+          }
+          await servico.from('tabela_precos').delete().eq('versao', versao);
+        }
+      }
+
+      it.skipIf(RECUSA_LIGADA)(
+        'com a recusa de teste desligada (padrão, como em staging), é autorizado',
+        async () => {
+          await comPrecoTerminadoEm99(async (id, api) => {
+            await expect(api.confirmarPedido(id, 'pix')).resolves.toMatchObject({
+              estado: 'autorizado',
+              valor: 17999,
+            });
+          });
+        },
+      );
+
+      it.skipIf(!RECUSA_LIGADA)(
+        'com PAGAMENTO_MOCK_RECUSA_TESTE=1, é recusado e o Pedido continua cotado',
+        async () => {
+          await comPrecoTerminadoEm99(async (id, api, supabase) => {
+            const recusa = await api.confirmarPedido(id, 'cartao').catch((e: unknown) => e);
+            expect(recusa).toBeInstanceOf(ErroApi);
+            expect((recusa as ErroApi).motivo).toBe('pagamento_recusado');
+
+            const { data: pedido } = await supabase
+              .from('pedidos')
+              .select('estado, preco_total')
+              .eq('id', id)
+              .single();
+            expect(pedido).toEqual({ estado: 'cotado', preco_total: 17999 });
+            const { data: pagamentos } = await supabase
+              .from('pagamentos')
+              .select('valor, estado, metodo, provedor')
+              .eq('pedido_id', id);
+            expect(pagamentos).toEqual([
+              { valor: 17999, estado: 'recusado', metodo: 'cartao', provedor: 'mock' },
+            ]);
+          });
+        },
+      );
     });
 
     it('sem Guincheiro elegível, a cotação responde "Nenhum guincho disponível agora"', async () => {

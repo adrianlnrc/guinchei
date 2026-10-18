@@ -16,8 +16,12 @@ import {
   type ErroBanco,
 } from '../_compartilhado/servidor.ts';
 
-// O PSP real (RF12) troca só esta linha.
-const gateway = criarGatewayMock();
+// O PSP real (RF12) troca só esta linha. A recusa de teste do mock (valores terminados em
+// 99 centavos) só liga com PAGAMENTO_MOCK_RECUSA_TESTE=1, que existe só no ambiente local
+// de testes, nunca em staging.
+const gateway = criarGatewayMock({
+  recusarValoresTerminadosEm99: Deno.env.get('PAGAMENTO_MOCK_RECUSA_TESTE') === '1',
+});
 
 const SEM_COTACAO = new ErroServidor(
   409,

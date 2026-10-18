@@ -19,11 +19,20 @@ describe('GatewayPagamento mock', () => {
     expect(a.referenciaExterna).not.toBe(b.referenciaExterna);
   });
 
-  it('recusa valores terminados em 99 centavos (cenário de teste da recusa)', async () => {
+  it('por padrão, autoriza também valores terminados em 99 centavos (preços reais)', async () => {
     const gateway = criarGatewayMock();
+    const autorizacao = await gateway.autorizar({ pedidoId: PEDIDO, valor: 25899, metodo: 'pix' });
+    expect(autorizacao).toMatchObject({ estado: 'autorizado', valor: 25899 });
+  });
+
+  it('com a recusa de teste ligada, recusa valores terminados em 99 centavos', async () => {
+    const gateway = criarGatewayMock({ recusarValoresTerminadosEm99: true });
     const recusa = await gateway.autorizar({ pedidoId: PEDIDO, valor: 25899, metodo: 'pix' });
     expect(recusa).toMatchObject({ estado: 'recusado', valor: 25899 });
     expect(recusa.referenciaExterna).toMatch(/^mock_/);
+    await expect(
+      gateway.autorizar({ pedidoId: PEDIDO, valor: 25880, metodo: 'pix' }),
+    ).resolves.toMatchObject({ estado: 'autorizado' });
   });
 
   it.each([0, -100, 12.5, Number.NaN])('não autoriza valor inválido (%s)', async (valor) => {

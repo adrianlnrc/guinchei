@@ -60,20 +60,30 @@ function exigirReferenciaDoMock(referenciaExterna: string): void {
   }
 }
 
+export interface OpcoesGatewayMock {
+  /**
+   * Cenário de teste da recusa: recusa os valores terminados em 99 centavos. Desligado por
+   * padrão, para nunca recusar um Preço fechado real; só os testes ligam.
+   */
+  recusarValoresTerminadosEm99?: boolean;
+}
+
 /**
- * Adaptador mock: autoriza sempre, menos os valores terminados em 99 centavos, que ele
- * recusa (o cenário de teste da recusa). Sem estado próprio: quem guarda o estado do
- * pagamento é a tabela `pagamentos`, como seria com o PSP real. Capturar e estornar só
- * conferem que a referência é do mock.
+ * Adaptador mock: autoriza sempre (com a recusa de teste ligada, recusa os valores
+ * terminados em 99 centavos). Sem estado próprio: quem guarda o estado do pagamento é a
+ * tabela `pagamentos`, como seria com o PSP real. Capturar e estornar só conferem que a
+ * referência é do mock.
  */
-export function criarGatewayMock(): GatewayPagamento {
+export function criarGatewayMock({
+  recusarValoresTerminadosEm99 = false,
+}: OpcoesGatewayMock = {}): GatewayPagamento {
   return {
     provedor: 'mock',
 
     async autorizar({ valor }) {
       exigirCentavos(valor);
       const referenciaExterna = `${PREFIXO_MOCK}${crypto.randomUUID()}`;
-      const estado = valor % 100 === 99 ? 'recusado' : 'autorizado';
+      const estado = recusarValoresTerminadosEm99 && valor % 100 === 99 ? 'recusado' : 'autorizado';
       return { estado, referenciaExterna, valor };
     },
 
