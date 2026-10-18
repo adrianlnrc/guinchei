@@ -9,6 +9,9 @@
 -- Em aberto (CONTEXT.md): confirmar resoluções CONTRAN específicas de guincho. O limite e as
 -- categorias estão só aqui, num lugar, para revisar fácil.
 --
+-- A categoria é normalizada com trim e maiúsculas, e as combinadas AB, AC, AD e AE valem pela
+-- parte B–E (AC cobre como C).
+--
 -- Devolve true (coberto), false (não coberto) ou null quando a entrada é inválida (categoria
 -- desconhecida ou nula, PBT nulo, não positivo, NaN ou infinito): o equivalente do resultado
 -- `erro` do TS. Quem usa a função (o vínculo Guincheiro × veículo) decide o que fazer com null;
@@ -25,9 +28,10 @@ as $$
     when pbt_kg is null
       or pbt_kg <= 0
       or pbt_kg in ('NaN'::numeric, 'Infinity'::numeric) then null
-    when categoria in ('ACC', 'A') then false
-    when categoria = 'B' then pbt_kg <= 3500
-    when categoria in ('C', 'D', 'E') then true
+    when upper(btrim(categoria)) in ('ACC', 'A') then false
+    -- as combinadas valem pela parte B–E: AB como B, AC como C, AD como D, AE como E
+    when upper(btrim(categoria)) in ('B', 'AB') then pbt_kg <= 3500
+    when upper(btrim(categoria)) in ('C', 'D', 'E', 'AC', 'AD', 'AE') then true
     else null
   end
 $$;

@@ -8,11 +8,26 @@
 
 /**
  * Categorias de CNH aceitas no cadastro do Guincheiro (ADR-0012), da menos à mais abrangente
- * para conduzir veículo de carga. Combinações como "AB" não existem aqui: o cadastro guarda
- * uma categoria só, a que vale para o guincho (CTB art. 143).
+ * para conduzir veículo de carga, mais as combinadas AB, AC, AD e AE (moto + carro ou caminhão),
+ * comuns na CNH brasileira. A combinada vale pela parte B–E (AC cobre como C): veja
+ * `CATEGORIA_DE_CARGA`. A entrada é normalizada com trim e maiúsculas ("ac " vale AC).
  */
-export const CATEGORIAS_CNH = ['ACC', 'A', 'B', 'C', 'D', 'E'] as const;
+export const CATEGORIAS_CNH = ['ACC', 'A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE'] as const;
 export type CategoriaCnh = (typeof CATEGORIAS_CNH)[number];
+
+/** Categoria que vale para conduzir veículo de carga; as combinadas valem pela parte B–E. */
+export const CATEGORIA_DE_CARGA: Record<CategoriaCnh, CategoriaCnh> = {
+  ACC: 'ACC',
+  A: 'A',
+  B: 'B',
+  C: 'C',
+  D: 'D',
+  E: 'E',
+  AB: 'B',
+  AC: 'C',
+  AD: 'D',
+  AE: 'E',
+};
 
 /**
  * Limite de PBT (kg) que a categoria B cobre, inclusive: CTB art. 143, ADR-0012. Acima dele o
@@ -37,8 +52,11 @@ export type ResultadoCobertura =
   | { situacao: 'nao_coberto'; motivo: string; categoriaMinima: CategoriaCnh }
   | { situacao: 'erro'; motivo: string };
 
-function ehCategoria(valor: string): valor is CategoriaCnh {
-  return (CATEGORIAS_CNH as readonly string[]).includes(valor);
+function normalizarCategoria(valor: string): CategoriaCnh | undefined {
+  const normalizada = valor.trim().toUpperCase();
+  return (CATEGORIAS_CNH as readonly string[]).includes(normalizada)
+    ? (normalizada as CategoriaCnh)
+    : undefined;
 }
 
 /** 4200 → "4.200" (separador de milhar do pt-BR, sem depender do ICU do ambiente). */
@@ -55,32 +73,34 @@ export function categoriaCobrePbt(categoria: string, pbtKg: number): ResultadoCo
   if (!Number.isFinite(pbtKg) || pbtKg <= 0) {
     return { situacao: 'erro', motivo: 'PBT inválido: informe um peso em kg maior que zero' };
   }
-  if (!ehCategoria(categoria)) {
+  const informada = normalizarCategoria(categoria);
+  if (!informada) {
     return { situacao: 'erro', motivo: `Categoria de CNH desconhecida: ${categoria}` };
   }
+  const efetiva = CATEGORIA_DE_CARGA[informada];
 
   const acimaDoLimiteB = pbtKg > LIMITE_PBT_CATEGORIA_B_KG;
   const categoriaMinima: CategoriaCnh = acimaDoLimiteB ? 'C' : 'B';
   const peso = `${formatarKg(pbtKg)} kg`;
 
-  if ((CATEGORIAS_SEM_REBOQUE as readonly string[]).includes(categoria)) {
+  if ((CATEGORIAS_SEM_REBOQUE as readonly string[]).includes(efetiva)) {
     const exigencia = acimaDoLimiteB
       ? 'categoria C ou superior'
       : `categoria B (até ${formatarKg(LIMITE_PBT_CATEGORIA_B_KG)} kg) ou superior`;
     return {
       situacao: 'nao_coberto',
       categoriaMinima,
-      motivo: `CNH ${categoria} não habilita conduzir guincho (reboque de carga): exige ${exigencia}`,
+      motivo: `CNH ${informada} não habilita conduzir guincho (reboque de carga): exige ${exigencia}`,
     };
   }
-  if (categoria === 'B' && acimaDoLimiteB) {
+  if (efetiva === 'B' && acimaDoLimiteB) {
     return {
       situacao: 'nao_coberto',
       categoriaMinima,
-      motivo: `CNH B não cobre guincho de ${peso}: exige categoria C ou superior`,
+      motivo: `CNH ${informada} não cobre guincho de ${peso}: exige categoria C ou superior`,
     };
   }
-  return { situacao: 'coberto', motivo: `CNH ${categoria} cobre guincho de ${peso}` };
+  return { situacao: 'coberto', motivo: `CNH ${informada} cobre guincho de ${peso}` };
 }
 
 export interface Cnh {

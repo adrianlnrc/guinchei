@@ -24,14 +24,23 @@ const CASOS: readonly [categoria: string, pbtKg: number, esperado: Esperado][] =
   ['ACC', 1, 'nao_coberto'],
   ['ACC', 3500, 'nao_coberto'],
   ['ACC', 3501, 'nao_coberto'],
+  ['AB', 3500, 'coberto'],
+  ['AB', 3501, 'nao_coberto'],
+  ['AC', 3501, 'coberto'],
+  ['AC', 16000, 'coberto'],
+  ['AD', 3501, 'coberto'],
+  ['AE', 3501, 'coberto'],
+  ['b', 3501, 'nao_coberto'],
+  ['ac ', 3501, 'coberto'],
+  [' acc', 3000, 'nao_coberto'],
   ['B', 0, 'erro'],
   ['B', -10, 'erro'],
   ['B', Number.NaN, 'erro'],
   ['B', Number.POSITIVE_INFINITY, 'erro'],
   ['C', 0, 'erro'],
   ['X', 3000, 'erro'],
-  ['AB', 3000, 'erro'],
-  ['b', 3000, 'erro'],
+  ['BC', 3000, 'erro'],
+  ['CD', 3000, 'erro'],
   ['', 3000, 'erro'],
 ];
 
@@ -60,6 +69,18 @@ describe('categoriaCobrePbt', () => {
       categoriaMinima: 'C',
       motivo:
         'CNH ACC não habilita conduzir guincho (reboque de carga): exige categoria C ou superior',
+    });
+  });
+
+  it('combinada vale pela parte B–E e a entrada é normalizada', () => {
+    expect(categoriaCobrePbt('AB', 4200)).toEqual({
+      situacao: 'nao_coberto',
+      categoriaMinima: 'C',
+      motivo: 'CNH AB não cobre guincho de 4.200 kg: exige categoria C ou superior',
+    });
+    expect(categoriaCobrePbt('ac ', 9000)).toEqual({
+      situacao: 'coberto',
+      motivo: 'CNH AC cobre guincho de 9.000 kg',
     });
   });
 
