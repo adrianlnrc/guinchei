@@ -187,6 +187,8 @@ export type MotivoErroApi =
   | 'oferta_indisponivel'
   /** O Guincheiro está indisponível (plantão desligado ou outra Corrida). */
   | 'guincheiro_indisponivel'
+  /** O Guincheiro tem Corrida em andamento e não pode ficar disponível (`GDP01`). */
+  | 'em_corrida'
   /** A Corrida não é do Guincheiro logado. */
   | 'corrida_indisponivel'
   /** A Corrida não pode ir do estado atual para o pedido (fora de ordem ou já entregue). */
@@ -361,6 +363,8 @@ const TRANSICAO_RECUSADA = '23514';
 const NENHUMA_LINHA = 'PGRST116';
 /** Código do erro de `definir_trajeto_pedido` para ponto fora do DF. */
 const FORA_DO_DF = 'GDF01';
+/** Código do trigger que recusa `disponivel = true` com Corrida não terminal. */
+const EM_CORRIDA = 'GDP01';
 
 /** Erros de `aceitar_oferta` e `recusar_oferta` (migração do Match). */
 function erroDaOferta(error: { code?: string }, mensagemDeFalha: string): ErroApi {
@@ -947,6 +951,15 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
         .eq('id', id)
         .select('id')
         .single();
+      if (error?.code === EM_CORRIDA) {
+        throw new ErroApi(
+          'em_corrida',
+          'Termine a Corrida em andamento antes de ficar disponível',
+          {
+            cause: error,
+          },
+        );
+      }
       if (error) {
         throw new ErroApi('falha', 'Não foi possível mudar a disponibilidade', { cause: error });
       }
