@@ -48,6 +48,8 @@ export interface ApiGuinchei {
   criarPerfilUrgente(dados: CadastroUrgente): Promise<Perfil>;
   /** Abre o Pedido em `cotado` e devolve o id. */
   abrirPedido(respostas: RespostasPedido): Promise<string>;
+  /** Troca as respostas do próprio Pedido enquanto está em `cotado` (não abre outro). */
+  atualizarPedido(id: string, respostas: RespostasPedido): Promise<void>;
 }
 
 export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): ClienteSupabase {
@@ -135,6 +137,18 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       });
       if (error) throw new ErroApi('falha', 'Não foi possível abrir o Pedido', { cause: error });
       return data;
+    },
+
+    async atualizarPedido(id, { tipoVeiculo, situacao, rodasGiram }) {
+      const { error } = await supabase.rpc('atualizar_pedido_cotado', {
+        pedido_id: id,
+        tipo_veiculo: tipoVeiculo,
+        situacao,
+        rodas_giram: rodasGiram,
+      });
+      if (error) {
+        throw new ErroApi('falha', 'Não foi possível atualizar o Pedido', { cause: error });
+      }
     },
   };
 }

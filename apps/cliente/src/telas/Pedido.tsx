@@ -108,15 +108,19 @@ function Situacao() {
 function RodasGiram() {
   const ir = useNavigate();
   const api = useApi();
-  const { veiculo, situacao, rodas, setRodas, setPedidoId, avisar } = useFluxo();
+  const { veiculo, situacao, rodas, setRodas, pedidoId, setPedidoId, avisar } = useFluxo();
   const [abrindo, setAbrindo] = useState(false);
   const [sim, nao, naoSei] = RODAS;
 
+  // Voltou às perguntas depois de abrir o Pedido? Atualiza o mesmo (ainda em cotado), para o
+  // banco ficar com as respostas que a tela mostra, em vez de abrir outro.
   async function abrirPedido() {
     if (!veiculo || !situacao || !rodas) return;
+    const respostas = { tipoVeiculo: veiculo, situacao, rodasGiram: rodas };
     setAbrindo(true);
     try {
-      setPedidoId(await api.abrirPedido({ tipoVeiculo: veiculo, situacao, rodasGiram: rodas }));
+      if (pedidoId) await api.atualizarPedido(pedidoId, respostas);
+      else setPedidoId(await api.abrirPedido(respostas));
       ir('/local');
     } catch {
       avisar('Não foi possível abrir o Pedido. Tente de novo.');

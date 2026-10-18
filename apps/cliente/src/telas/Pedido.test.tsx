@@ -1,4 +1,6 @@
-import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
+import { useEffect } from 'react';
+import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PERFIL_RAFAEL, apiFalsa } from '../teste/apiFalsa';
 import { renderEm } from '../teste/renderizar';
@@ -6,6 +8,23 @@ import { renderEm } from '../teste/renderizar';
 afterEach(cleanup);
 
 const logado = () => apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
+
+let navegar: NavigateFunction;
+function Navegador() {
+  const ir = useNavigate();
+  useEffect(() => {
+    navegar = ir;
+  }, [ir]);
+  return null;
+}
+
+async function responder(veiculo: string, situacao: string, rodas: string) {
+  fireEvent.click(await screen.findByRole('button', { name: veiculo }));
+  fireEvent.click(screen.getByRole('button', { name: situacao }));
+  fireEvent.click(screen.getByRole('button', { name: rodas }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar local no mapa' }));
+  await screen.findByRole('main', { name: 'Origem e destino' });
+}
 
 describe('Pedido em três toques', () => {
   it('cumprimenta o Cliente pelo primeiro nome do perfil', async () => {
@@ -29,6 +48,21 @@ describe('Pedido em três toques', () => {
       tipoVeiculo: 'suv',
       situacao: 'batida',
       rodasGiram: 'nao',
+    });
+  });
+
+  it('voltar e confirmar de novo atualiza o mesmo Pedido em vez de abrir outro', async () => {
+    const api = logado();
+    renderEm('/pedido/1', api, <Navegador />);
+    await responder('Carro de passeio', 'Parou e não liga', 'Sim');
+    act(() => void navegar('/pedido/1'));
+    await responder('Moto', 'Superaqueceu', 'Não sei');
+
+    expect(api.abrirPedido).toHaveBeenCalledTimes(1);
+    expect(api.atualizarPedido).toHaveBeenCalledWith('pedido-novo', {
+      tipoVeiculo: 'moto',
+      situacao: 'superaqueceu',
+      rodasGiram: 'nao_sei',
     });
   });
 

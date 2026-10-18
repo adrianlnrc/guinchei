@@ -57,6 +57,20 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       rodas_giram: 'sim',
       preco_total: null,
     });
+
+    // Voltou e mudou uma resposta: o mesmo Pedido é atualizado.
+    await api.atualizarPedido(id, { tipoVeiculo: 'van', situacao: 'outro', rodasGiram: 'nao' });
+    const { data: atualizado } = await supabase
+      .from('pedidos')
+      .select('estado, tipo_veiculo, situacao, rodas_giram')
+      .eq('id', id)
+      .single();
+    expect(atualizado).toEqual({
+      estado: 'cotado',
+      tipo_veiculo: 'van',
+      situacao: 'outro',
+      rodas_giram: 'nao',
+    });
   });
 
   it('código errado não entra', async () => {

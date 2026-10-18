@@ -1,5 +1,11 @@
 import { vi } from 'vitest';
-import { ErroApi, type ApiGuinchei, type CadastroUrgente, type Perfil } from '@guinchei/api';
+import {
+  ErroApi,
+  type ApiGuinchei,
+  type CadastroUrgente,
+  type Perfil,
+  type RespostasPedido,
+} from '@guinchei/api';
 
 export const CODIGO_CERTO = '123456';
 
@@ -51,5 +57,8 @@ export function apiFalsa({
       return meuPerfil;
     }),
     abrirPedido: vi.fn(async () => 'pedido-novo'),
+    atualizarPedido: vi.fn<(id: string, respostas: RespostasPedido) => Promise<void>>(
+      async () => {},
+    ),
   } satisfies ApiGuinchei;
 }

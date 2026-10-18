@@ -482,6 +482,15 @@ export type Database = {
         };
         Returns: string;
       };
+      atualizar_pedido_cotado: {
+        Args: {
+          pedido_id: string;
+          rodas_giram: Database['public']['Enums']['rodas_giram'];
+          situacao: Database['public']['Enums']['situacao_veiculo'];
+          tipo_veiculo: Database['public']['Enums']['tipo_veiculo'];
+        };
+        Returns: undefined;
+      };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
