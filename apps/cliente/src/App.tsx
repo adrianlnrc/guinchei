@@ -11,8 +11,8 @@ import { Cadastro } from './telas/Cadastro';
 import { PedidoEtapa } from './telas/Pedido';
 import { Local } from './telas/Local';
 import { Pagamento, Preco } from './telas/Preco';
-import { Corrida } from './telas/Corrida';
-import { Entregue, Historico } from './telas/Depois';
+import { AcompanhamentoDoPedido } from './telas/Acompanhamento';
+import { Historico } from './telas/Depois';
 
 /** `mapas` é `null` sem VITE_MAPBOX_TOKEN: a tela de local usa o mapa do protótipo. */
 export function App({ api, mapas }: { api: ApiGuinchei; mapas: Mapas | null }) {
@@ -38,8 +38,7 @@ export function App({ api, mapas }: { api: ApiGuinchei; mapas: Mapas | null }) {
                 <Route path="/local" element={<Local />} />
                 <Route path="/preco" element={<Preco />} />
                 <Route path="/pagamento" element={<Pagamento />} />
-                <Route path="/corrida" element={<Corrida />} />
-                <Route path="/entregue" element={<Entregue />} />
+                <Route path="/acompanhamento" element={<AcompanhamentoDoPedido />} />
                 <Route path="/historico" element={<Historico />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

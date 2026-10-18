@@ -583,6 +583,13 @@ export type Database = {
         Returns: undefined;
       };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
+      contraparte_da_corrida: {
+        Args: { corrida_id: string };
+        Returns: {
+          frota: string;
+          nome: string;
+        }[];
+      };
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
       dados_da_cotacao: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };

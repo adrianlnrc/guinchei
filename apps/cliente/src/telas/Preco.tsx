@@ -191,7 +191,6 @@ export function Pagamento() {
 function PagamentoDoPedido({ pedidoId, total }: { pedidoId: string; total: number }) {
   const ir = useNavigate();
   const api = useApi();
-  const { avisar } = useFluxo();
   const [meio, setMeio] = useState<MetodoPagamento>('pix');
   const [restante, setRestante] = useState(9 * 60 + 42);
   const [confirmando, setConfirmando] = useState(false);
@@ -208,8 +207,7 @@ function PagamentoDoPedido({ pedidoId, total }: { pedidoId: string; total: numbe
     setConfirmando(true);
     try {
       await api.confirmarPedido(pedidoId, metodo);
-      avisar('Pagamento autorizado. Chamando o guincho…');
-      ir('/corrida');
+      ir('/acompanhamento');
     } catch (e) {
       setConfirmando(false);
       setErro(

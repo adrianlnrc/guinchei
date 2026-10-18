@@ -1,7 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { CotacaoPedido, Perfil } from '@guinchei/api';
 import type { Endereco, Rota } from '@guinchei/geo';
-import type { EstadoCorrida } from '@guinchei/estados';
 import {
   HISTORICO_CLIENTE,
   type CorridaHistorico,
@@ -17,15 +16,13 @@ export interface Trajeto {
   rota: Rota;
 }
 
-export type EstadoAcompanhamento = 'em_match' | EstadoCorrida;
-
 interface Fluxo {
   celular: string;
   setCelular: (v: string) => void;
   /** Perfil do Cliente logado, depois do cadastro urgente. */
   perfil: Perfil | null;
   setPerfil: (p: Perfil) => void;
-  /** Id do Pedido aberto no banco. Da Corrida em diante o fluxo ainda usa o mock (#11, #14). */
+  /** Id do Pedido aberto no banco. O acompanhamento lê o estado dele no banco. */
   pedidoId: string | null;
   setPedidoId: (id: string) => void;
   /** Trajeto já gravado no Pedido; volta preenchido se o Cliente voltar ao mapa. */
@@ -43,7 +40,6 @@ interface Fluxo {
   /** Zera as respostas do rascunho para começar um Pedido novo. */
   novoPedido: () => void;
   historico: CorridaHistorico[];
-  registrar: (c: CorridaHistorico) => void;
   aviso: string | null;
   avisar: (texto: string) => void;
 }
@@ -59,7 +55,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
   const [veiculo, setVeiculo] = useState<Veiculo | null>(null);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
   const [rodas, setRodas] = useState<Rodas | null>(null);
-  const [historico, setHistorico] = useState(HISTORICO_CLIENTE);
+  const historico = HISTORICO_CLIENTE;
   const [aviso, setAviso] = useState<string | null>(null);
 
   const novoPedido = useCallback(() => {
@@ -70,7 +66,6 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
     setTrajeto(null);
     setCotacao(null);
   }, []);
-  const registrar = useCallback((c: CorridaHistorico) => setHistorico((h) => [c, ...h]), []);
   const avisar = useCallback((texto: string) => {
     setAviso(texto);
     setTimeout(() => setAviso((atual) => (atual === texto ? null : atual)), 3200);
@@ -96,7 +91,6 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       setRodas,
       novoPedido,
       historico,
-      registrar,
       aviso,
       avisar,
     }),
@@ -111,7 +105,6 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       rodas,
       novoPedido,
       historico,
-      registrar,
       aviso,
       avisar,
     ],
