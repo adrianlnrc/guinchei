@@ -1,0 +1,9 @@
+{
+  "//": "Só para `pnpm typecheck` conferir as Edge Functions com tsc; o Deno não lê este arquivo.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.ts"]
+}

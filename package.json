@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm -r typecheck && tsc -p supabase/functions",
     "test": "pnpm -r test",
     "test:db": "supabase test db",
     "gen:tipos": "supabase gen types typescript --local > packages/tipos/src/database.ts && prettier --write packages/tipos/src/database.ts",

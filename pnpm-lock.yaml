@@ -206,6 +206,12 @@ importers:
       '@guinchei/geo':
         specifier: workspace:*
         version: link:../geo
+      '@guinchei/pagamento':
+        specifier: workspace:*
+        version: link:../pagamento
+      '@guinchei/preco':
+        specifier: workspace:*
+        version: link:../preco
       '@guinchei/tipos':
         specifier: workspace:*
         version: link:../tipos
