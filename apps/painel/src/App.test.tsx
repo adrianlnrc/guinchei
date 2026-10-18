@@ -1,24 +1,23 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { COTACAO } from '@guinchei/mock';
 import { TABELA_PADRAO, calcularPrecoFechado, calcularRepasse } from '@guinchei/preco';
 import { formatarReais, partesReais } from '@guinchei/ui';
-import { App } from './App';
+import { apiFalsa } from './teste/apiFalsa';
+import { renderEm as renderizar } from './teste/renderizar';
 
 afterEach(cleanup);
 
-function renderEm(rota: string) {
-  return render(
-    <MemoryRouter initialEntries={[rota]}>
-      <App />
-    </MemoryRouter>,
-  );
+/** Abre o Painel já com a operação logada, esperando a sessão ser conferida. */
+async function renderEm(rota: string) {
+  const resultado = renderizar(rota, apiFalsa({ sessao: true }));
+  await screen.findByRole('navigation', { name: 'Painel de operação' });
+  return resultado;
 }
 
 describe('App painel', () => {
-  it('o monitor mostra os Pedidos em Match e sem Guincheiro, só para leitura', () => {
-    renderEm('/');
+  it('o monitor mostra os Pedidos em Match e sem Guincheiro, só para leitura', async () => {
+    await renderEm('/monitor');
     const semGuincheiro = screen.getByText('2318').closest('.linha-tabela') as HTMLElement;
     expect(within(semGuincheiro).getByText('Sem Guincheiro')).toBeTruthy();
     expect(screen.getByText('Aguardando o Cliente: tentar de novo ou estornar')).toBeTruthy();
@@ -30,15 +29,15 @@ describe('App painel', () => {
     expect(screen.getByText('O Match atribui o Guincheiro sozinho.')).toBeTruthy();
   });
 
-  it('o monitor não tem atribuição manual nem broadcast', () => {
-    const { container } = renderEm('/');
+  it('o monitor não tem atribuição manual nem broadcast', async () => {
+    const { container } = await renderEm('/monitor');
     expect(screen.queryByRole('button', { name: /Atribuir/ })).toBeNull();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(container.textContent).not.toMatch(/atribuição manual|broadcast|Precisa de ação/i);
   });
 
-  it('o simulador mostra o Preço fechado e o repasse calculados por @guinchei/preco', () => {
-    renderEm('/precos');
+  it('o simulador mostra o Preço fechado e o repasse calculados por @guinchei/preco', async () => {
+    await renderEm('/precos');
     const preco = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
     const repasse = calcularRepasse(preco.total, TABELA_PADRAO);
     expect(screen.getByText(partesReais(preco.total).inteiro)).toBeTruthy();
@@ -47,8 +46,8 @@ describe('App painel', () => {
     expect(screen.queryByText('Ajuste para o Preço fechado mínimo')).toBeNull();
   });
 
-  it('o Preço fechado mínimo é editável e o simulador mostra o ajuste do piso', () => {
-    renderEm('/precos');
+  it('o Preço fechado mínimo é editável e o simulador mostra o ajuste do piso', async () => {
+    await renderEm('/precos');
     const campo = screen.getByLabelText('Preço fechado mínimo');
     expect((campo as HTMLInputElement).value).toBe('180,00');
     fireEvent.change(campo, { target: { value: '400,00' } });
@@ -60,8 +59,8 @@ describe('App painel', () => {
     expect(campo.getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('recusa adicional acima de 100% sem derrubar o simulador', () => {
-    renderEm('/precos');
+  it('recusa adicional acima de 100% sem derrubar o simulador', async () => {
+    await renderEm('/precos');
     const campo = screen.getByLabelText('Multiplicador noturno');
     fireEvent.change(campo, { target: { value: '150' } });
     expect(campo.getAttribute('aria-invalid')).toBe('true');
@@ -69,23 +68,23 @@ describe('App painel', () => {
     expect(screen.getByText('R$ 297')).toBeTruthy();
   });
 
-  it('o simulador recalcula o Preço fechado ao editar a tabela', () => {
-    renderEm('/precos');
+  it('o simulador recalcula o Preço fechado ao editar a tabela', async () => {
+    await renderEm('/precos');
     expect(screen.getByText('R$ 297')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Reboque'), { target: { value: '7,00' } });
     expect(screen.getByText('R$ 322')).toBeTruthy();
   });
 
-  it('a Disputa mostra as Fotos de estado do lado escolhido', () => {
-    renderEm('/disputas');
+  it('a Disputa mostra as Fotos de estado do lado escolhido', async () => {
+    await renderEm('/disputas');
     fireEvent.click(screen.getByRole('button', { name: 'Frente' }));
     expect(screen.getByText('antes de carregar · frente')).toBeTruthy();
     expect(screen.getByText('Antes · 15/10 19:41')).toBeTruthy();
     expect(screen.queryByText('Antes · 15/10 19:42')).toBeNull();
   });
 
-  it('a Disputa só registra uma decisão escolhida pela operação', () => {
-    renderEm('/disputas');
+  it('a Disputa só registra uma decisão escolhida pela operação', async () => {
+    await renderEm('/disputas');
     const registrar = () =>
       screen.getByRole('button', { name: 'Registrar decisão e avisar as partes' });
     expect(screen.queryByRole('radio', { checked: true })).toBeNull();
@@ -96,14 +95,14 @@ describe('App painel', () => {
     expect(screen.getByRole('radio', { checked: true }).textContent).toMatch(/^Procedente/);
   });
 
-  it('lê o ponto como separador decimal', () => {
-    renderEm('/precos');
+  it('lê o ponto como separador decimal', async () => {
+    await renderEm('/precos');
     fireEvent.change(screen.getByLabelText('Reboque'), { target: { value: '7.00' } });
     expect(screen.getByText('R$ 322')).toBeTruthy();
   });
 
-  it('recusa valor sem dígitos e não deixa publicar', () => {
-    renderEm('/precos');
+  it('recusa valor sem dígitos e não deixa publicar', async () => {
+    await renderEm('/precos');
     const campo = screen.getByLabelText('Reboque');
     fireEvent.change(campo, { target: { value: '7,00' } });
     fireEvent.change(campo, { target: { value: 'abc' } });

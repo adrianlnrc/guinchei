@@ -162,3 +162,79 @@ button.linha-tabela:hover {
   font: 500 14px var(--fonte-texto);
   max-width: 420px;
 }
+
+/* Entrada (telefone + código) e aviso de app sem configuração. */
+.entrada {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: var(--grafite);
+  color: var(--off-white);
+}
+.entrada__cartao {
+  width: 440px;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 36px;
+  border-radius: 20px;
+  background: var(--superficie-escura);
+  border: 1px solid var(--linha-escura);
+}
+.entrada .marca small {
+  font: 500 12px var(--fonte-texto);
+  color: var(--cinza-medio);
+}
+.entrada .rotulo {
+  color: var(--cinza-medio);
+}
+.entrada .apoio {
+  color: var(--cinza-claro);
+  margin: 0;
+}
+.entrada .titulo {
+  margin: 0;
+}
+.entrada .link {
+  color: var(--cinza-medio);
+}
+.entrada__linha {
+  display: flex;
+  gap: 10px;
+}
+.entrada__ddi {
+  height: 60px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--grafite);
+  border: 1px solid var(--linha-escura);
+  display: flex;
+  align-items: center;
+  font: 500 18px var(--fonte-texto);
+}
+.entrada__campo {
+  flex: 1;
+  min-width: 0;
+  height: 60px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--grafite);
+  color: var(--off-white);
+  border: 2px solid var(--off-white);
+  font: 500 20px var(--fonte-titulo);
+  letter-spacing: 0.02em;
+}
+.entrada__campo--codigo {
+  flex: none;
+  width: 100%;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-size: 26px;
+}
+.entrada__erro {
+  margin: 0;
+  font: 500 15px var(--fonte-texto);
+  color: var(--alerta-texto);
+}

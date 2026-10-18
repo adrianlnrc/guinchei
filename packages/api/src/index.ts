@@ -1044,3 +1044,42 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     },
   };
 }
+
+/** Operador logado no Painel. */
+export interface MeuOperador {
+  nome: string;
+}
+
+/**
+ * O que o Painel de operação usa: a entrada por telefone do `ApiGuinchei`, mais sair e a
+ * leitura do operador. O Painel só admite perfis com papel `operacao`.
+ */
+export interface ApiPainel extends Pick<
+  ApiGuinchei,
+  'enviarCodigo' | 'confirmarCodigo' | 'temSessao' | 'buscarMeuPerfil'
+> {
+  /** Encerra a sessão no aparelho. */
+  sair(): Promise<void>;
+  /** `null` sem sessão ou se o perfil logado não é da operação. */
+  buscarMeuOperador(): Promise<MeuOperador | null>;
+}
+
+export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
+  const base = criarApi(supabase);
+  return {
+    enviarCodigo: base.enviarCodigo,
+    confirmarCodigo: base.confirmarCodigo,
+    temSessao: base.temSessao,
+    buscarMeuPerfil: base.buscarMeuPerfil,
+
+    async sair() {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw new ErroApi('falha', 'Não foi possível sair', { cause: error });
+    },
+
+    async buscarMeuOperador() {
+      const perfil = await base.buscarMeuPerfil();
+      return perfil?.papel === 'operacao' ? { nome: perfil.nome } : null;
+    },
+  };
+}

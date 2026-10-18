@@ -154,6 +154,9 @@ importers:
 
   apps/painel:
     dependencies:
+      '@guinchei/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados
