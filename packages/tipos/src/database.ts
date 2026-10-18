@@ -23,6 +23,52 @@ export type Database = {
   };
   public: {
     Tables: {
+      auditoria_homologacao: {
+        Row: {
+          de: Database['public']['Enums']['estado_homologacao'] | null;
+          em: string;
+          id: number;
+          item_id: string;
+          motivo: string | null;
+          para: Database['public']['Enums']['estado_homologacao'];
+          por: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          de?: Database['public']['Enums']['estado_homologacao'] | null;
+          em?: string;
+          id?: never;
+          item_id: string;
+          motivo?: string | null;
+          para: Database['public']['Enums']['estado_homologacao'];
+          por?: string | null;
+        };
+        Update: {
+          de?: Database['public']['Enums']['estado_homologacao'] | null;
+          em?: string;
+          id?: never;
+          item_id?: string;
+          motivo?: string | null;
+          para?: Database['public']['Enums']['estado_homologacao'];
+          por?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'auditoria_homologacao_item_id_fkey';
+            columns: ['item_id'];
+            isOneToOne: false;
+            referencedRelation: 'itens_homologacao';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'auditoria_homologacao_por_fkey';
+            columns: ['por'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       corridas: {
         Row: {
           atualizado_em: string;
@@ -207,6 +253,83 @@ export type Database = {
             columns: ['id'];
             isOneToOne: true;
             referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      itens_homologacao: {
+        Row: {
+          alvo: Database['public']['Enums']['alvo_homologacao'];
+          alvo_id: string;
+          arquivo: string;
+          atualizado_em: string;
+          criado_em: string;
+          decidido_em: string | null;
+          decidido_por: string | null;
+          dono_id: string;
+          enviado_em: string;
+          estado: Database['public']['Enums']['estado_homologacao'];
+          frota_id: string;
+          id: string;
+          motivo: string | null;
+          tipo: Database['public']['Enums']['tipo_item_homologacao'];
+          validade: string | null;
+        };
+        ComputedFields: never;
+        Insert: {
+          alvo: Database['public']['Enums']['alvo_homologacao'];
+          alvo_id: string;
+          arquivo: string;
+          atualizado_em?: string;
+          criado_em?: string;
+          decidido_em?: string | null;
+          decidido_por?: string | null;
+          dono_id: string;
+          enviado_em?: string;
+          estado?: Database['public']['Enums']['estado_homologacao'];
+          frota_id: string;
+          id?: string;
+          motivo?: string | null;
+          tipo: Database['public']['Enums']['tipo_item_homologacao'];
+          validade?: string | null;
+        };
+        Update: {
+          alvo?: Database['public']['Enums']['alvo_homologacao'];
+          alvo_id?: string;
+          arquivo?: string;
+          atualizado_em?: string;
+          criado_em?: string;
+          decidido_em?: string | null;
+          decidido_por?: string | null;
+          dono_id?: string;
+          enviado_em?: string;
+          estado?: Database['public']['Enums']['estado_homologacao'];
+          frota_id?: string;
+          id?: string;
+          motivo?: string | null;
+          tipo?: Database['public']['Enums']['tipo_item_homologacao'];
+          validade?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'itens_homologacao_decidido_por_fkey';
+            columns: ['decidido_por'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'itens_homologacao_dono_id_fkey';
+            columns: ['dono_id'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'itens_homologacao_frota_id_fkey';
+            columns: ['frota_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
             referencedColumns: ['id'];
           },
         ];
@@ -587,6 +710,7 @@ export type Database = {
       };
       categoria_cnh_cobre_pbt: { Args: { categoria: string; pbt_kg: number }; Returns: boolean };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
+      conferir_arquivo_homologacao: { Args: { arquivo: string; dono: string }; Returns: undefined };
       contraparte_da_corrida: {
         Args: { corrida_id: string };
         Returns: {
@@ -598,6 +722,14 @@ export type Database = {
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
       dados_da_cotacao: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       dados_do_match: { Args: { pedido_id: string }; Returns: Json };
+      decidir_item_homologacao: {
+        Args: {
+          decisao: Database['public']['Enums']['estado_homologacao'];
+          item_id: string;
+          motivo?: string;
+        };
+        Returns: undefined;
+      };
       definir_trajeto_pedido: {
         Args: {
           destino_endereco: string;
@@ -616,6 +748,16 @@ export type Database = {
       encerrar_rodada_sem_guincheiro: {
         Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
         Returns: undefined;
+      };
+      enviar_item_homologacao: {
+        Args: {
+          alvo: Database['public']['Enums']['alvo_homologacao'];
+          alvo_id: string;
+          arquivo: string;
+          tipo: Database['public']['Enums']['tipo_item_homologacao'];
+          validade?: string;
+        };
+        Returns: string;
       };
       feriados_perto_de: { Args: { dia: string }; Returns: Json };
       gravar_cotacao: {
@@ -644,8 +786,10 @@ export type Database = {
           guincheiro_id: string;
         }[];
       };
+      hoje_em_brasilia: { Args: Record<PropertyKey, never>; Returns: string };
       hora_do_servidor: { Args: Record<PropertyKey, never>; Returns: string };
       limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
+      marcar_itens_vencidos: { Args: Record<PropertyKey, never>; Returns: number };
       pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };
       pedido_oferecido_a_mim: { Args: { pedido_id: string }; Returns: boolean };
@@ -656,6 +800,10 @@ export type Database = {
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
       preco_para_confirmar: { Args: { cliente_id: string; pedido_id: string }; Returns: number };
       recusar_oferta: { Args: { tentativa_id: number }; Returns: undefined };
+      reenviar_item_homologacao: {
+        Args: { arquivo: string; item_id: string; validade?: string };
+        Returns: undefined;
+      };
       registrar_estorno: {
         Args: { cliente_id: string; pedido_id: string; referencia_externa: string };
         Returns: undefined;
@@ -710,6 +858,13 @@ export type Database = {
         };
       };
       tentar_de_novo: { Args: { pedido_id: string }; Returns: number };
+      transicao_homologacao_valida: {
+        Args: {
+          de: Database['public']['Enums']['estado_homologacao'];
+          para: Database['public']['Enums']['estado_homologacao'];
+        };
+        Returns: boolean;
+      };
       travar_match_lido: {
         Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
         Returns: undefined;
@@ -741,7 +896,9 @@ export type Database = {
     };
     Enums: {
       abrangencia_feriado: 'nacional' | 'df';
+      alvo_homologacao: 'frota' | 'guincheiro' | 'veiculo';
       estado_corrida: 'aceita' | 'a_caminho' | 'no_local' | 'carregado' | 'entregue';
+      estado_homologacao: 'pendente' | 'aprovado' | 'recusado' | 'vencido';
       estado_pagamento: 'autorizado' | 'capturado' | 'estornado' | 'recusado';
       estado_pedido:
         'cotado' | 'confirmado' | 'em_match' | 'atribuido' | 'sem_guincheiro' | 'estornado';
@@ -752,6 +909,8 @@ export type Database = {
       rodas_giram: 'sim' | 'nao' | 'nao_sei';
       situacao_veiculo: 'nao_liga' | 'batida' | 'superaqueceu' | 'outro';
       tipo_frota: 'empresa' | 'autonomo';
+      tipo_item_homologacao:
+        'alvara' | 'apolice_rc' | 'crlv' | 'foto_veiculo' | 'cnh' | 'antecedentes' | 'selfie';
       tipo_midia: 'foto' | 'video';
       tipo_veiculo: 'carro' | 'suv' | 'moto' | 'van';
     };
@@ -869,7 +1028,9 @@ export const Constants = {
   public: {
     Enums: {
       abrangencia_feriado: ['nacional', 'df'],
+      alvo_homologacao: ['frota', 'guincheiro', 'veiculo'],
       estado_corrida: ['aceita', 'a_caminho', 'no_local', 'carregado', 'entregue'],
+      estado_homologacao: ['pendente', 'aprovado', 'recusado', 'vencido'],
       estado_pagamento: ['autorizado', 'capturado', 'estornado', 'recusado'],
       estado_pedido: [
         'cotado',
@@ -886,6 +1047,15 @@ export const Constants = {
       rodas_giram: ['sim', 'nao', 'nao_sei'],
       situacao_veiculo: ['nao_liga', 'batida', 'superaqueceu', 'outro'],
       tipo_frota: ['empresa', 'autonomo'],
+      tipo_item_homologacao: [
+        'alvara',
+        'apolice_rc',
+        'crlv',
+        'foto_veiculo',
+        'cnh',
+        'antecedentes',
+        'selfie',
+      ],
       tipo_midia: ['foto', 'video'],
       tipo_veiculo: ['carro', 'suv', 'moto', 'van'],
     },

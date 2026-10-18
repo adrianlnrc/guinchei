@@ -31,7 +31,7 @@ e2e/
 supabase/
   config.toml   config do Supabase CLI (auth por telefone, números de teste)
   functions/    Edge Functions (Deno): cotar-pedido, confirmar-pedido, ofertar-proximo e estornar-pedido
-  migrations/   schema, transições de estado, RLS e bucket de Fotos de estado
+  migrations/   schema, transições de estado, RLS, buckets de Fotos de estado e de documentos de prestadores, homologação
   seeds/        dados de referência e usuários de teste
   tests/        testes de banco (pgTAP)
 ```
@@ -107,6 +107,7 @@ O schema está em `supabase/migrations/`, uma migração por assunto:
 | `*_acompanhamento.sql` | `pedidos` e `corridas` na publicação `supabase_realtime` (idempotente, para não colidir com outras migrações que adicionem tabelas); `contraparte_da_corrida` (só nome e Frota, só para quem participa da Corrida) |
 | `*_guarda_disponivel.sql` | trigger `guincheiros_disponivel_sem_corrida`: recusa `disponivel = true` enquanto o Guincheiro tem Corrida não terminal (`GDP01`); `disponivel = false` é sempre permitido, e a volta ao plantão em `entregue` passa porque a Corrida já saiu dos estados não terminais |
 | `*_cnh_pbt.sql` | `categoria_cnh_cobre_pbt(categoria, pbt_kg)`: regra CNH × PBT do ADR-0012 (B até 3.500 kg, C ou superior acima, A e ACC nada); `true`, `false` ou `null` para entrada inválida |
+| `*_homologacao.sql` | itens de homologação (`itens_homologacao`), trilha imutável (`auditoria_homologacao`), bucket privado `documentos-prestadores`; `enviar_item_homologacao`, `reenviar_item_homologacao` (o dono) e `decidir_item_homologacao` (só a operação) pela API; `marcar_itens_vencidos` (só `service_role`) e o job `homologacao-vencer` do pg_cron |
 
 Mudança de schema: `pnpm supabase migration new <nome>`, escreva o SQL, `pnpm supabase db reset`, `pnpm test:db` e `pnpm gen:tipos` (commite o `database.ts` gerado; ele já sai formatado pelo Prettier).
 
@@ -121,6 +122,7 @@ Regras que o banco garante (e que os testes de banco cobrem):
 - **Aceite dos termos:** `aceite_termos_em` é sempre a hora do servidor, como `fotos_estado.criado_em`; o app não tem permissão de mandar a coluna e só grava `aceite_termos_versao`. A hora muda quando a versão muda.
 - **Transições:** a fonte da verdade é `packages/estados`. O banco tem a mesma tabela; `packages/estados/src/sincronia-sql.test.ts` (Vitest) compara a TS com a migração e `supabase/tests/transicoes.test.sql` (pgTAP) percorre todos os pares de estados e confere que o trigger aceita exatamente os da tabela. Mudou a máquina? Altere a TS, crie migração nova ajustando as tabelas e aponte o teste de sincronia para ela.
 - **CNH × PBT:** a fonte da verdade é `packages/cnh` (`categoriaCobrePbt`; `cnhHabilitaConduzir` soma a pré-condição EAR). O banco tem `categoria_cnh_cobre_pbt`; `packages/cnh/src/sincronia-sql.test.ts` (Vitest) confere a tabela de verdade do pgTAP `supabase/tests/cnh_pbt.test.sql` contra a TS. Mudou a regra? Altere a TS, crie migração nova, e atualize a tabela do pgTAP e os imports do teste de sincronia. O vínculo Guincheiro × veículo (ticket próprio) usa os dois lados.
+- **Homologação (RN03, ADR-0012):** veja [Homologação por item](#homologação-por-item). Cada documento ou dado de uma Frota, de um Guincheiro ou de um veículo é um item em `itens_homologacao` (`pendente`, `aprovado`, `recusado` ou `vencido`). Só a operação decide, por `decidir_item_homologacao`; ninguém escreve na tabela direto e a trilha `auditoria_homologacao` não aceita update, delete nem truncate, nem do `service_role` (trigger).
 - **Fotos de estado:** veja [Fotos de estado](#fotos-de-estado). Objeto em `fotos-estado/<corrida_id>/<arquivo>` e uma linha em `fotos_estado`. `criado_em` é sempre a hora do servidor, `papel_autor` vem da Corrida e `etapa` é conferida contra o estado da Corrida; o app não consegue forjar nenhum dos três. Cliente e Guincheiro da Corrida leem e enviam; a operação lê; não há update nem delete de foto registrada. Nenhuma transição da Corrida exige foto.
 
 ### Seed
@@ -128,7 +130,7 @@ Regras que o banco garante (e que os testes de banco cobrem):
 `supabase db reset` carrega, em ordem, os arquivos de `supabase/seeds/`:
 
 - `01_referencia.sql`: tabela de preços versão 1 (valores do ADR-0009) e feriados nacionais e do DF de 2026 e 2027. Carnaval e Corpus Christi ficam de fora por serem ponto facultativo. É o único seed que vale para staging.
-- `02_usuarios_de_teste.sql`: os usuários abaixo, a Frota empresa "Reboque Planalto" e a Frota autônoma "Rita Campos", ambas ativas, e os três Guincheiros disponíveis com posição fixa. Só local.
+- `02_usuarios_de_teste.sql`: os usuários abaixo, a Frota empresa "Reboque Planalto" e a Frota autônoma "Rita Campos", ambas ativas, e os três Guincheiros disponíveis com posição fixa; mais a Frota pendente "Guincho Capital" (inativa, com o Guincheiro Paulo Mendes indisponível) e quatro itens de homologação para a demo do Painel. Só local.
 - `03_match_local.sql`: os dois segredos do Vault que o Match usa para chamar a Edge Function `ofertar-proximo` pelo pg_net (URL `http://kong:8000/functions/v1` e a `service_role` padrão do Supabase CLI local). Só local; em staging, veja [Match](#match).
 
 ### Usuários de teste
@@ -142,6 +144,7 @@ Login por telefone + código (ADR-0010). Os números são fictícios e estão em
 | Guincheiro | Wagner Lopes | +55 61 90000-0003 | Reboque Planalto · Asa Norte, ~4,9 km |
 | Guincheiro | Rita Campos | +55 61 90000-0004 | autônoma · Guará, ~9,6 km |
 | Operação | Operação Guinchei | +55 61 90000-0005 | entra no Painel (porta 5175) |
+| Guincheiro | Paulo Mendes | +55 61 90000-0007 | Guincho Capital · Frota pendente de homologação (inativa, indisponível, fora do Match); dono dos itens da demo |
 | Cliente sem perfil | (nenhum) | +55 61 90000-0006 | só em `[auth.sms.test_otp]`, sem usuário nem perfil no seed: no primeiro login cai no cadastro urgente |
 
 No app do Cliente, digite o celular com DDD, sem o +55 (ex.: `(61) 90000-0001`); o app envia em E.164 (`+5561900000001`). Os ids fixos dos usuários estão no seed, e os testes de banco contam com eles: rode `pnpm supabase db reset` antes de `pnpm test:db` se tiver mexido nos dados locais.
@@ -255,8 +258,26 @@ select vault.create_secret('<service_role key do projeto>', 'match_chave_servico
 
 - **Entrada:** telefone + código (ADR-0010), com o número da operação do seed (**61 90000-0005**, "Operação Guinchei"; código 123456). Só entra quem tem perfil com papel `operacao`: telefone verificado de Cliente, Guincheiro ou sem perfil encerra a sessão e mostra "Este número não está cadastrado como operação". Todas as rotas do Painel exigem a operação (`ExigeOperacao`); uma sessão guardada de outro papel é encerrada ao abrir.
 - **API:** `ApiPainel` em `@guinchei/api` (`criarApiPainel`): `enviarCodigo`, `confirmarCodigo`, `temSessao`, `buscarMeuPerfil`, `sair` e `buscarMeuOperador` (`null` se o perfil não é `operacao`). Os testes de integração estão em `packages/api/src/integracao.test.ts` (bloco "Painel de operação") e incluem a prova de que a RLS de `eh_operacao()` deixa a operação, e só ela, ler o perfil de outra pessoa. Os testes do app usam o dublê em memória `src/teste/apiFalsa.ts`.
-- **Dados:** o nome na lateral vem do perfil da sessão. Monitor, Homologação, Disputas e Tabela de preços continuam com dados de exemplo (`@guinchei/mock`).
-- **Fora de escopo:** não há botão de sair nem expiração visível da sessão; o e2e (`pnpm e2e`) ainda não cobre o Painel.
+- **Sair:** o botão "Sair" na lateral chama `ApiPainel.sair()` e volta para `/entrar`; se a chamada falhar, o Painel avisa e a sessão continua.
+- **Dados:** o nome na lateral vem do perfil da sessão e a Homologação lê o banco (veja [Homologação por item](#homologação-por-item)). Monitor, Disputas e Tabela de preços continuam com dados de exemplo (`@guinchei/mock`).
+- **Fora de escopo:** não há expiração visível da sessão; o e2e (`pnpm e2e`) ainda não cobre o Painel. A entrada "Frotas" da lateral segue inativa: a lista de Frotas ativas é de outro ticket, e apontá-la para a Homologação duplicaria o link.
+
+## Homologação por item
+
+ADR-0012, invariante 3 e RN03 (issue #42). A homologação é por **item**: um documento ou dado a verificar de uma Frota (alvará, apólice de RC), de um Guincheiro (CNH, certidão de antecedentes, selfie) ou de um veículo (CRLV, foto). Esta fatia só **decide itens**; ativar a Frota (`frotas.ativa`) é do ticket de elegibilidade.
+
+- **Tabela `itens_homologacao`:** `frota_id`, `alvo` (`frota`, `guincheiro` ou `veiculo`) e `alvo_id`, `tipo`, `dono_id` (quem enviou e pode reenviar), `arquivo` (caminho no bucket, sempre `<dono_id>/<arquivo>`), `validade` (último dia, quando houver), `estado`, `motivo` e `enviado_em` (a ordem da fila). Um item por documento de cada alvo (`alvo`, `alvo_id`, `tipo`): refazer é reenviar. O veículo ainda não tem tabela, então `alvo_id` de veículo não tem FK.
+- **Estados e transições:** `pendente` → `aprovado` ou `recusado` (a operação; recusar exige motivo); `aprovado` → `vencido` (job, quando a validade passa); `recusado` e `vencido` → `pendente` (o dono reenvia). Qualquer outra é recusada por trigger, até para o `service_role`: aprovar item `vencido` ou `recusado` sem reenvio não passa. O item nasce `pendente`. A validade vale até o fim do dia em Brasília; aprovar com validade já passada é recusado.
+- **Funções (todas `security definer`):** `decidir_item_homologacao(item_id, decisao, motivo)` só para a operação; `enviar_item_homologacao(alvo, alvo_id, tipo, arquivo, validade)` e `reenviar_item_homologacao(item_id, arquivo, validade)` para o Guincheiro dono (o arquivo precisa já estar no bucket, na pasta dele); `marcar_itens_vencidos()` só para o `service_role` e para o job `homologacao-vencer` (pg_cron, 00:05 em Brasília). Quem não pode agir recebe `42501`; item inexistente ou de outro dono, `P0002`.
+- **Erros:** `GHM03` transição inválida, `GHM04` recusa sem motivo, `GHM05` validade já vencida, `GHM06` arquivo fora do bucket, `GHM07` alvo inválido. A API os traduz em `ErroApi` (`transicao_invalida`, `motivo_obrigatorio`, `documento_vencido`, `sem_permissao`, `item_indisponivel`).
+- **Auditoria (`auditoria_homologacao`):** um trigger grava uma linha na entrada do item e em cada mudança de estado: item, `de` (nulo na entrada), `para`, `motivo` (o da recusa; "Validade vencida em ..." no vencimento), `por` (quem agiu; nulo quando foi o job) e `em` (hora do servidor, `default now()`). Só a operação lê. Ninguém tem GRANT de escrita, e um trigger recusa update, delete e truncate para qualquer papel; o item não pode ser apagado porque a trilha o referencia.
+- **Bucket `documentos-prestadores`:** privado, 10 MiB, PDF e imagens (JPEG, PNG, WebP, HEIC/HEIF). Objetos em `<dono_id>/<arquivo>`. O dono (Guincheiro) lê e envia na própria pasta; a operação lê tudo; mais ninguém. Sem update nem delete pela API. Como no bucket de Fotos de estado, o banco confere na função que o arquivo existe, mas um arquivo enviado e nunca registrado fica órfão (limpeza periódica é melhoria futura).
+- **RLS:** o dono lê os próprios itens e a operação lê todos; a trilha é só da operação. Outro Guincheiro, Cliente ou `anon` não lê nada.
+- **`@guinchei/api` (`ApiPainel`):** `listarFilaHomologacao()` (Frotas com item `pendente`, a de envio mais antigo primeiro, com a contagem de pendentes), `buscarFrotaHomologacao(frotaId)` (a Frota com todos os itens), `aprovarItem(itemId)`, `recusarItem(itemId, motivo)` e `urlDoDocumento(itemId)` (URL assinada de **5 min**, `VALIDADE_URL_DOCUMENTO_SEGUNDOS`).
+- **Painel:** a tela Homologação mostra a fila à esquerda (só Frotas com item pendente; a Frota some quando todos os itens estão decididos, e o número ao lado de "Homologação" na lateral é o tamanho da fila), o detalhe da Frota com todos os itens, o estado de cada um (o vencido em destaque, sem Aprovar nem Recusar, "Aguardando novo envio do documento"), "Ver documento" (abre a URL assinada numa aba nova), "Aprovar" e "Recusar" (pede o motivo; o botão de confirmar só habilita com texto). Erros da API aparecem no aviso do Painel e o detalhe e a fila são relidos.
+- **Demo:** `supabase db reset` cria a Frota pendente "Guincho Capital" (alvará aprovado; apólice de RC, CNH do Paulo e CRLV pendentes). Os arquivos do seed não existem no bucket, então "Ver documento" mostra "Documento indisponível" nela; para ver um documento de verdade, entre como Paulo (+55 61 90000-0007) num cliente Supabase, envie um PDF a `documentos-prestadores/<id do Paulo>/` e aponte o item para ele.
+- **Provisório:** não há ainda quem represente a Frota nem formulário de cadastro (tickets de cadastro): o dono do item é o Guincheiro que o enviou, e a Frota de um item é a do Guincheiro que o envia. Não há notificação ao dono quando o item é decidido.
+- **Testes:** pgTAP `homologacao.test.sql` (transições, auditoria e imutabilidade, RLS da tabela e do bucket, job de vencimento); integração do `@guinchei/api` (bloco "Homologação por item", com Storage e URL assinada reais); Vitest do Painel (`Homologacao.test.tsx`: fila, detalhe, aprovar, recusar com motivo, documento, vencido destacado; `Entrada.test.tsx`: Sair).
 
 ## Acompanhamento do Cliente
 

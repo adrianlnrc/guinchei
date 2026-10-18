@@ -1,12 +1,16 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import {
-  FILA_HOMOLOGACAO,
-  MONITOR,
-  TAXA_CANCELAMENTO,
-  type CorridaMonitor,
-  type FrotaHomologacao,
-} from '@guinchei/mock';
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import type { FrotaNaFila } from '@guinchei/api';
+import { MONITOR, TAXA_CANCELAMENTO, type CorridaMonitor } from '@guinchei/mock';
 import { TABELA_PADRAO, type TabelaPrecos } from '@guinchei/preco';
+import { useApi } from './api';
 
 /** Tabela de preços do pacote mais a taxa de cancelamento, que a operação edita junto. */
 export interface TabelaDoPainel extends TabelaPrecos {
@@ -17,8 +21,11 @@ const TABELA_INICIAL: TabelaDoPainel = { ...TABELA_PADRAO, taxaCancelamento: TAX
 
 interface Operacao {
   corridas: CorridaMonitor[];
-  fila: FrotaHomologacao[];
-  atualizarFrota: (f: FrotaHomologacao) => void;
+  /** Frotas com item pendente, a mais antiga primeiro; `null` até a fila carregar. */
+  fila: FrotaNaFila[] | null;
+  /** A leitura da fila falhou (a tela não deve mostrar "fila vazia"). */
+  erroFila: boolean;
+  recarregarFila: () => Promise<void>;
   homologacoesPendentes: number;
   disputasAbertas: number;
   /** Decisão registrada na Disputa do protótipo; `null` enquanto está em análise. */
@@ -33,8 +40,10 @@ interface Operacao {
 const Contexto = createContext<Operacao | null>(null);
 
 export function OperacaoProvider({ children }: { children: ReactNode }) {
+  const api = useApi();
   const corridas = MONITOR;
-  const [fila, setFila] = useState(FILA_HOMOLOGACAO);
+  const [fila, setFila] = useState<FrotaNaFila[] | null>(null);
+  const [erroFila, setErroFila] = useState(false);
   const [decisaoDisputa, setDecisaoDisputa] = useState<string | null>(null);
   const disputasAbertas = decisaoDisputa === null ? 1 : 0;
   const [tabela, setTabela] = useState(TABELA_INICIAL);
@@ -45,23 +54,45 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setAviso((atual) => (atual === texto ? null : atual)), 3600);
   }, []);
 
-  const atualizarFrota = useCallback(
-    (f: FrotaHomologacao) => setFila((fs) => fs.map((x) => (x.id === f.id ? f : x))),
-    [],
-  );
+  const recarregarFila = useCallback(async () => {
+    try {
+      setFila(await api.listarFilaHomologacao());
+      setErroFila(false);
+    } catch {
+      setErroFila(true);
+    }
+  }, [api]);
+  useEffect(() => {
+    let vigente = true;
+    api.listarFilaHomologacao().then(
+      (lida) => {
+        if (!vigente) return;
+        setFila(lida);
+        setErroFila(false);
+      },
+      () => {
+        if (vigente) setErroFila(true);
+      },
+    );
+    return () => {
+      vigente = false;
+    };
+  }, [api]);
+
   const resolverDisputa = useCallback((decisao: string) => setDecisaoDisputa(decisao), []);
   const publicarTabela = useCallback(
     (t: TabelaDoPainel) => setTabela({ ...t, versao: t.versao + 1 }),
     [],
   );
 
-  const homologacoesPendentes = fila.filter((f) => !f.ativada).length;
+  const homologacoesPendentes = fila?.length ?? 0;
 
   const valor = useMemo(
     () => ({
       corridas,
       fila,
-      atualizarFrota,
+      erroFila,
+      recarregarFila,
       homologacoesPendentes,
       disputasAbertas,
       decisaoDisputa,
@@ -74,7 +105,8 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     [
       corridas,
       fila,
-      atualizarFrota,
+      erroFila,
+      recarregarFila,
       homologacoesPendentes,
       disputasAbertas,
       decisaoDisputa,

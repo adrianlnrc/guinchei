@@ -215,10 +215,10 @@ set local request.jwt.claims to '{"sub": "33333333-3333-4333-8333-333333333333",
 select is((select count(*) from public.pedidos), 2::bigint, 'operação lê todos os Pedidos');
 select is((select count(*) from public.corridas), 1::bigint, 'operação lê todas as Corridas');
 select is(
-  (select count(*) from public.perfis), 7::bigint,
-  'operação lê todos os perfis (5 do seed + Cliente B + o Cliente novo)'
+  (select count(*) from public.perfis), 8::bigint,
+  'operação lê todos os perfis (6 do seed + Cliente B + o Cliente novo)'
 );
-select is((select count(*) from public.guincheiros), 3::bigint, 'operação lê todos os Guincheiros');
+select is((select count(*) from public.guincheiros), 4::bigint, 'operação lê todos os Guincheiros');
 
 reset role;
 
