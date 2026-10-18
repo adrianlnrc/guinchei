@@ -15,6 +15,7 @@ createRoot(document.getElementById('root')!).render(
         <Inicio
           supabaseUrl={import.meta.env.VITE_SUPABASE_URL}
           supabaseAnonKey={import.meta.env.VITE_SUPABASE_ANON_KEY}
+          mapboxToken={import.meta.env.VITE_MAPBOX_TOKEN}
         />
       </BrowserRouter>
     </QueryClientProvider>

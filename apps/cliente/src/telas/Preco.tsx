@@ -3,59 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { PRECO, TRECHO } from '@guinchei/mock';
 import { TABELA_PADRAO } from '@guinchei/preco';
 import { formatarKm, formatarPercentual, formatarReais } from '@guinchei/ui';
-import {
-  Botao,
-  Corpo,
-  Heroi,
-  IndicadorHome,
-  Link,
-  Mapa,
-  Rotulo,
-  Segmentado,
-  Tela,
-  Trecho,
-  Valores,
-} from '@guinchei/ui';
+import { Botao, Corpo, Heroi, Link, Rotulo, Segmentado, Tela, Valores } from '@guinchei/ui';
 import { useFluxo } from '../fluxo';
-
-export function Local() {
-  const ir = useNavigate();
-  return (
-    <Tela mapa rotulo="Origem e destino">
-      <Mapa
-        ruas={[
-          { top: 300, esp: 18, giro: -12 },
-          { top: 150, esp: 10, giro: 6 },
-          { left: 120, esp: 12, giro: 8 },
-          { left: 290, esp: 10 },
-        ]}
-        quadras={[
-          { left: 170, top: 190, w: 90, h: 60 },
-          { left: 24, top: 360, w: 70, h: 90 },
-        ]}
-        rota="272,140 272,262 130,292 112,470 70,540"
-        marcadores={[
-          { left: 260, top: 128, tamanho: 24, tipo: 'origem' },
-          { left: 58, top: 528, tamanho: 24, tipo: 'destino' },
-        ]}
-      />
-      <div className="folha" style={{ gap: 14 }}>
-        <div style={{ font: '700 22px var(--fonte-titulo)' }}>Para onde levamos o carro?</div>
-        <Trecho
-          rotuloOrigem="Pela sua localização"
-          origem={TRECHO.origem}
-          rotuloDestino="Destino"
-          destino={TRECHO.destino}
-        />
-        <div style={{ font: '400 13px/1.45 var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-          {formatarKm(TRECHO.kmReboque)} de reboque · atendemos origem e destino dentro do DF
-        </div>
-        <Botao onClick={() => ir('/preco')}>Ver preço fechado</Botao>
-        <IndicadorHome />
-      </div>
-    </Tela>
-  );
-}
 
 export function Preco() {
   const ir = useNavigate();

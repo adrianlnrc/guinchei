@@ -1,0 +1,13 @@
+/* Logo e atribuição do Mapbox no topo (a folha cobre o rodapé), abaixo da área segura. */
+.mapa .mapboxgl-ctrl-top-left,
+.mapa .mapboxgl-ctrl-top-right {
+  top: env(safe-area-inset-top, 0px);
+}
+
+/* Na moldura de celular (telas largas), abaixo da barra de status desenhada. */
+@media (min-width: 600px) {
+  .mapa .mapboxgl-ctrl-top-left,
+  .mapa .mapboxgl-ctrl-top-right {
+    top: 54px;
+  }
+}

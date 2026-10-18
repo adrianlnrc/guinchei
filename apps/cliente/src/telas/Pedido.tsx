@@ -167,7 +167,7 @@ function RodasGiram() {
           {naoSei.rotulo}
         </button>
         <div className="espaco" />
-        {/* Abre o Pedido no banco; do mapa em diante o fluxo ainda é o mock do protótipo. */}
+        {/* Abre o Pedido no banco; do preço em diante o fluxo ainda é o mock do protótipo. */}
         <Botao disabled={!veiculo || !situacao || !rodas || abrindo} onClick={abrirPedido}>
           Confirmar local no mapa
         </Botao>

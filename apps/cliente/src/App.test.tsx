@@ -22,7 +22,7 @@ function Navegador() {
   return null;
 }
 
-/** O Rafael logado; as telas do mapa em diante ainda usam o mock. */
+/** O Rafael logado; sem VITE_MAPBOX_TOKEN, as telas do mapa em diante usam o mock. */
 function renderEm(rota: string) {
   return renderComApi(rota, apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL }), <Navegador />);
 }
