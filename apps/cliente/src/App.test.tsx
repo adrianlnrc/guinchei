@@ -1,11 +1,12 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { useEffect } from 'react';
-import { MemoryRouter, useNavigate, type NavigateFunction } from 'react-router-dom';
+import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { COTACAO } from '@guinchei/mock';
 import { TABELA_PADRAO, calcularPrecoFechado } from '@guinchei/preco';
 import { formatarReais, partesReais } from '@guinchei/ui';
-import { App } from './App';
+import { PERFIL_RAFAEL, apiFalsa } from './teste/apiFalsa';
+import { renderEm as renderComApi } from './teste/renderizar';
 
 afterEach(() => {
   cleanup();
@@ -21,13 +22,9 @@ function Navegador() {
   return null;
 }
 
+/** O Rafael logado; as telas do mapa em diante ainda usam o mock. */
 function renderEm(rota: string) {
-  return render(
-    <MemoryRouter initialEntries={[rota]}>
-      <App />
-      <Navegador />
-    </MemoryRouter>,
-  );
+  return renderComApi(rota, apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL }), <Navegador />);
 }
 
 const passar = (ms: number) => act(() => void vi.advanceTimersByTime(ms));
@@ -47,11 +44,6 @@ function guinchoAMeioCaminho() {
 }
 
 describe('App cliente', () => {
-  it('abre nas boas-vindas', () => {
-    renderEm('/');
-    expect(screen.getByRole('heading', { name: /Carro parou\? Respira/ })).toBeTruthy();
-  });
-
   it('mostra o Preço fechado e a decomposição calculados por @guinchei/preco', () => {
     renderEm('/preco');
     const preco = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
@@ -66,19 +58,9 @@ describe('App cliente', () => {
     expect(screen.queryByText(/Preço fechado mínimo/)).toBeNull();
   });
 
-  it('o Pedido em três toques só libera o mapa depois da última resposta', () => {
+  it('"Pedir" a partir do Histórico começa um Pedido sem as respostas anteriores', async () => {
     renderEm('/pedido/1');
-    fireEvent.click(screen.getByRole('button', { name: 'Carro de passeio' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Parou e não liga' }));
-    const confirmar = screen.getByRole('button', { name: 'Confirmar local no mapa' });
-    expect((confirmar as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Não sei' }));
-    expect((confirmar as HTMLButtonElement).disabled).toBe(false);
-  });
-
-  it('"Pedir" a partir do Histórico começa um Pedido sem as respostas anteriores', () => {
-    renderEm('/pedido/1');
-    fireEvent.click(screen.getByRole('button', { name: 'Carro de passeio' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Carro de passeio' }));
     fireEvent.click(screen.getByRole('button', { name: 'Parou e não liga' }));
     fireEvent.click(screen.getByRole('button', { name: 'Não sei' }));
     act(() => void navegar('/historico'));

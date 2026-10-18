@@ -38,6 +38,9 @@ importers:
 
   apps/cliente:
     dependencies:
+      '@guinchei/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados
@@ -194,6 +197,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@guinchei/tipos':
+        specifier: workspace:*
+        version: link:../tipos
       '@supabase/supabase-js':
         specifier: ^2.118.0
         version: 2.118.0

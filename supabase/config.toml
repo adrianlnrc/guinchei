@@ -275,6 +275,7 @@ max_frequency = "5s"
 5561900000003 = "123456" # Guincheiro: Wagner Lopes (Reboque Planalto)
 5561900000004 = "123456" # Guincheiro: Rita Campos (autônoma)
 5561900000005 = "123456" # Operação
+5561900000006 = "123456" # Cliente novo, sem perfil no seed (testa o cadastro urgente)
 
 # Configure logged in session timeouts.
 # [auth.sessions]

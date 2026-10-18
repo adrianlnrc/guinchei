@@ -65,6 +65,15 @@ cp apps/cliente/.env.example apps/cliente/.env.local
 
 Para testar um pacote só: `pnpm --filter @guinchei/preco test`.
 
+O `@guinchei/api` tem um teste de integração (`packages/api/src/integracao.test.ts`) que só roda com `SUPABASE_URL` definida; sem ela, fica pulado (o CI ainda não sobe o Supabase). Com o Supabase local de pé, passe as chaves que o `pnpm supabase status -o env` mostra:
+
+```bash
+SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY=<ANON_KEY> SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY> \
+  pnpm --filter @guinchei/api test
+```
+
+Ele entra como o Rafael e como o 5561900000006 (cadastro urgente); a `service_role` só apaga esse segundo usuário antes, para o teste poder rodar de novo sem `db reset`.
+
 O CI (`.github/workflows/ci.yml`) roda `format:check`, `lint`, `typecheck`, `test` e `build` em todo PR. Os testes de banco ainda não rodam no CI (entram junto com o e2e); rode `pnpm test:db` antes de abrir PR que mexa em `supabase/`.
 
 ## Banco de dados
@@ -78,12 +87,17 @@ O schema está em `supabase/migrations/`, uma migração por assunto:
 | `*_guincheiros_elegiveis.sql` | `guincheiros_elegiveis_proximos(latitude, longitude, limite)`, só para `service_role` |
 | `*_rls.sql` | GRANTs e políticas de RLS por papel |
 | `*_storage_fotos_estado.sql` | bucket privado `fotos-estado` e suas políticas |
+| `*_abrir_pedido.sql` | `abrir_pedido(tipo_veiculo, situacao, rodas_giram)` para o Cliente; trajeto e Preço fechado nulos até a cotação |
+| `*_aceite_termos_hora_do_servidor.sql` | `perfis.aceite_termos_em` gravado pelo servidor (o app manda só a versão dos termos) |
+| `*_atualizar_pedido_cotado.sql` | `atualizar_pedido_cotado(pedido_id, ...)`: o Cliente troca as três respostas do próprio Pedido em `cotado` |
 
 Mudança de schema: `pnpm supabase migration new <nome>`, escreva o SQL, `pnpm supabase db reset`, `pnpm test:db` e `pnpm gen:tipos` (commite o `database.ts` gerado; ele já sai formatado pelo Prettier).
 
 Regras que o banco garante (e que os testes de banco cobrem):
 
-- **RLS:** o Cliente lê só os próprios Pedidos e Corridas; o Guincheiro lê os Pedidos oferecidos a ele (uma tentativa de Match que não foi `pulada_teto`) e a própria Corrida; a operação lê tudo. Ninguém lê perfil, Frota ou posição de outro, a não ser a operação. Criar Pedido, avançar o Pedido, registrar ofertas e criar Corrida ficam com `service_role` (Edge Functions). Pela API, o usuário só cria o próprio perfil de Cliente (com o telefone verificado no login), edita os dados opcionais, e o Guincheiro liga a disponibilidade e avança a própria Corrida.
+- **RLS:** o Cliente lê só os próprios Pedidos e Corridas; o Guincheiro lê os Pedidos oferecidos a ele (uma tentativa de Match que não foi `pulada_teto`) e a própria Corrida; a operação lê tudo. Ninguém lê perfil, Frota ou posição de outro, a não ser a operação. Cotar e avançar o Pedido, registrar ofertas e criar Corrida ficam com `service_role` (Edge Functions). Pela API, o usuário só cria o próprio perfil de Cliente (com o telefone verificado no login), edita os dados opcionais, o Cliente abre o próprio Pedido por `abrir_pedido` e, se voltar às perguntas, troca as respostas por `atualizar_pedido_cotado` (só as três respostas, só em `cotado`; nada de INSERT ou UPDATE direto em `pedidos`), e o Guincheiro liga a disponibilidade e avança a própria Corrida.
+- **Pedido antes da cotação:** o Pedido nasce `cotado` sem origem, destino, distâncias nem Preço fechado; o mapa (#9) e a cotação (#10) preenchem pelo servidor. O banco exige o Preço fechado inteiro ou nenhum, cotação só com trajeto completo, e preço em todo Pedido fora de `cotado`. No app, voltar às perguntas e confirmar de novo atualiza o mesmo Pedido (o id fica no fluxo) em vez de abrir outro.
+- **Aceite dos termos:** `aceite_termos_em` é sempre a hora do servidor, como `fotos_estado.criado_em`; o app não tem permissão de mandar a coluna e só grava `aceite_termos_versao`. A hora muda quando a versão muda.
 - **Transições:** a fonte da verdade é `packages/estados`. O banco tem a mesma tabela; `packages/estados/src/sincronia-sql.test.ts` (Vitest) compara a TS com a migração e `supabase/tests/transicoes.test.sql` (pgTAP) percorre todos os pares de estados e confere que o trigger aceita exatamente os da tabela. Mudou a máquina? Altere a TS, crie migração nova ajustando as tabelas e aponte o teste de sincronia para ela.
 - **Fotos de estado:** objeto em `fotos-estado/<corrida_id>/<arquivo>` e uma linha em `fotos_estado`. `criado_em` é sempre a hora do servidor e `papel_autor` vem da Corrida; o app não consegue enviar nenhum dos dois. Cliente e Guincheiro da Corrida leem e enviam; a operação lê; não há update nem delete.
 
@@ -105,8 +119,9 @@ Login por telefone + código (ADR-0010). Os números são fictícios e estão em
 | Guincheiro | Wagner Lopes | +55 61 90000-0003 | Reboque Planalto · Asa Norte, ~4,9 km |
 | Guincheiro | Rita Campos | +55 61 90000-0004 | autônoma · Guará, ~9,6 km |
 | Operação | Operação Guinchei | +55 61 90000-0005 | |
+| Cliente sem perfil | (nenhum) | +55 61 90000-0006 | só em `[auth.sms.test_otp]`, sem usuário nem perfil no seed: no primeiro login cai no cadastro urgente |
 
-No app, informe o número como `+5561900000001` (E.164). Os ids fixos dos usuários estão no seed, e os testes de banco contam com eles: rode `pnpm supabase db reset` antes de `pnpm test:db` se tiver mexido nos dados locais.
+No app do Cliente, digite o celular com DDD, sem o +55 (ex.: `(61) 90000-0001`); o app envia em E.164 (`+5561900000001`). Os ids fixos dos usuários estão no seed, e os testes de banco contam com eles: rode `pnpm supabase db reset` antes de `pnpm test:db` se tiver mexido nos dados locais.
 
 ## Convenções
 

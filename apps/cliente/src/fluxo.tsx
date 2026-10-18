@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import type { Perfil } from '@guinchei/api';
 import type { EstadoCorrida } from '@guinchei/estados';
 import {
   HISTORICO_CLIENTE,
@@ -13,6 +14,12 @@ export type EstadoAcompanhamento = 'em_match' | EstadoCorrida;
 interface Fluxo {
   celular: string;
   setCelular: (v: string) => void;
+  /** Perfil do Cliente logado, depois do cadastro urgente. */
+  perfil: Perfil | null;
+  setPerfil: (p: Perfil) => void;
+  /** Id do Pedido aberto no banco. Do mapa em diante o fluxo ainda usa o mock (#9 em diante). */
+  pedidoId: string | null;
+  setPedidoId: (id: string) => void;
   veiculo: Veiculo | null;
   setVeiculo: (v: Veiculo) => void;
   situacao: Situacao | null;
@@ -31,6 +38,8 @@ const Contexto = createContext<Fluxo | null>(null);
 
 export function FluxoProvider({ children }: { children: ReactNode }) {
   const [celular, setCelular] = useState('');
+  const [perfil, setPerfil] = useState<Perfil | null>(null);
+  const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [veiculo, setVeiculo] = useState<Veiculo | null>(null);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
   const [rodas, setRodas] = useState<Rodas | null>(null);
@@ -41,6 +50,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
     setVeiculo(null);
     setSituacao(null);
     setRodas(null);
+    setPedidoId(null);
   }, []);
   const registrar = useCallback((c: CorridaHistorico) => setHistorico((h) => [c, ...h]), []);
   const avisar = useCallback((texto: string) => {
@@ -52,6 +62,10 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
     () => ({
       celular,
       setCelular,
+      perfil,
+      setPerfil,
+      pedidoId,
+      setPedidoId,
       veiculo,
       setVeiculo,
       situacao,
@@ -64,7 +78,19 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       aviso,
       avisar,
     }),
-    [celular, veiculo, situacao, rodas, novoPedido, historico, registrar, aviso, avisar],
+    [
+      celular,
+      perfil,
+      pedidoId,
+      veiculo,
+      situacao,
+      rodas,
+      novoPedido,
+      historico,
+      registrar,
+      aviso,
+      avisar,
+    ],
   );
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }
@@ -73,6 +99,11 @@ export function useFluxo() {
   const ctx = useContext(Contexto);
   if (!ctx) throw new Error('useFluxo fora do FluxoProvider');
   return ctx;
+}
+
+/** "61900000001" → "+5561900000001" (E.164, como o Supabase Auth recebe). */
+export function telefoneE164(celular: string): string {
+  return `+55${celular.replace(/\D/g, '')}`;
 }
 
 /** "61998124470" → "(61) 99812-4470" */
