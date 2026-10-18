@@ -94,6 +94,7 @@ export type Database = {
           caminho: string;
           corrida_id: string;
           criado_em: string;
+          etapa: Database['public']['Enums']['etapa_foto'];
           id: string;
           latitude: number | null;
           longitude: number | null;
@@ -106,6 +107,7 @@ export type Database = {
           caminho: string;
           corrida_id: string;
           criado_em?: string;
+          etapa: Database['public']['Enums']['etapa_foto'];
           id?: string;
           latitude?: number | null;
           longitude?: number | null;
@@ -117,6 +119,7 @@ export type Database = {
           caminho?: string;
           corrida_id?: string;
           criado_em?: string;
+          etapa?: Database['public']['Enums']['etapa_foto'];
           id?: string;
           latitude?: number | null;
           longitude?: number | null;
@@ -741,6 +744,7 @@ export type Database = {
       estado_pagamento: 'autorizado' | 'capturado' | 'estornado' | 'recusado';
       estado_pedido:
         'cotado' | 'confirmado' | 'em_match' | 'atribuido' | 'sem_guincheiro' | 'estornado';
+      etapa_foto: 'antes' | 'depois';
       metodo_pagamento: 'pix' | 'cartao';
       papel: 'cliente' | 'guincheiro' | 'operacao';
       resultado_tentativa: 'oferecida' | 'aceita' | 'recusada' | 'expirada' | 'pulada_teto';
@@ -874,6 +878,7 @@ export const Constants = {
         'sem_guincheiro',
         'estornado',
       ],
+      etapa_foto: ['antes', 'depois'],
       metodo_pagamento: ['pix', 'cartao'],
       papel: ['cliente', 'guincheiro', 'operacao'],
       resultado_tentativa: ['oferecida', 'aceita', 'recusada', 'expirada', 'pulada_teto'],

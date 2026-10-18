@@ -7,7 +7,10 @@ import {
 import type { Endereco } from '@guinchei/geo';
 import type { MetodoPagamento } from '@guinchei/pagamento';
 import type { PrecoFechado } from '@guinchei/preco';
-import type { Database, Enums, Tables } from '@guinchei/tipos';
+import type { Database, Enums, Tables, TablesInsert } from '@guinchei/tipos';
+
+// O pacote compila só com a lib ES2022 (sem DOM); `crypto` existe em todo navegador e no Node 22.
+declare const crypto: { randomUUID(): string };
 
 export interface ConfigApi {
   supabaseUrl: string;
@@ -126,6 +129,46 @@ export interface Acompanhamento {
   } | null;
 }
 
+/** Etapa das Fotos de estado: "antes" até o "Carreguei", "depois" de carregado em diante. */
+export type EtapaFoto = Enums<'etapa_foto'>;
+
+/** Itens por etapa e por autor (ADR-0011). O banco recusa o 7º. */
+export const LIMITE_FOTOS_POR_ETAPA = 6;
+/** Vídeo de até 30 s (ADR-0011); o app confere antes de enviar, o banco só limita o tamanho. */
+export const DURACAO_MAXIMA_VIDEO_SEGUNDOS = 30;
+/** Limite do bucket `fotos-estado` (50 MiB). */
+export const TAMANHO_MAXIMO_MIDIA_BYTES = 52_428_800;
+/** Quanto tempo vale a URL assinada de uma Foto de estado. */
+export const VALIDADE_URL_FOTO_SEGUNDOS = 900;
+
+/** Foto ou vídeo escolhido no aparelho (um `File` ou `Blob` do navegador serve). */
+export interface ArquivoDeMidia {
+  readonly type: string;
+  readonly size: number;
+}
+
+export interface OpcoesFotoEstado {
+  etapa: EtapaFoto;
+  /** Coordenadas do navegador, opcionais e sempre em par. */
+  latitude?: number;
+  longitude?: number;
+}
+
+/** Uma Foto de estado (foto ou vídeo) de uma Corrida, como Cliente e Guincheiro a veem. */
+export interface FotoEstado {
+  id: string;
+  corridaId: string;
+  papelAutor: 'cliente' | 'guincheiro';
+  tipo: Enums<'tipo_midia'>;
+  etapa: EtapaFoto;
+  /** ISO 8601, hora do servidor. */
+  criadoEm: string;
+  latitude: number | null;
+  longitude: number | null;
+  /** URL assinada de curta duração (`VALIDADE_URL_FOTO_SEGUNDOS`); `null` se não foi gerada. */
+  url: string | null;
+}
+
 export type MotivoErroApi =
   | 'codigo_invalido'
   | 'cpf_ja_cadastrado'
@@ -148,6 +191,14 @@ export type MotivoErroApi =
   | 'corrida_indisponivel'
   /** A Corrida não pode ir do estado atual para o pedido (fora de ordem ou já entregue). */
   | 'transicao_invalida'
+  /** O arquivo não é uma imagem ou um vídeo dos formatos aceitos. */
+  | 'arquivo_invalido'
+  /** O arquivo passa de 50 MiB. */
+  | 'arquivo_grande'
+  /** Já são 6 itens do autor na etapa. */
+  | 'limite_de_fotos'
+  /** A Corrida mudou de etapa entre abrir a tela e registrar. */
+  | 'etapa_mudou'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -211,6 +262,19 @@ export interface ApiGuinchei {
   aceitarOferta(tentativaId: number): Promise<string>;
   /** Guincheiro: recusa a oferta; o Match passa ao próximo. */
   recusarOferta(tentativaId: number): Promise<void>;
+  /**
+   * Cliente ou Guincheiro da Corrida: envia a foto ou o vídeo ao bucket `fotos-estado`
+   * (`<corrida_id>/<uuid>.<ext>`) e registra em `fotos_estado`. A hora é a do servidor e o
+   * autor, a conta logada. Se o registro falha, apaga o arquivo enviado. Erros:
+   * `arquivo_invalido`, `arquivo_grande`, `limite_de_fotos` e `etapa_mudou`.
+   */
+  registrarFotoEstado(
+    corridaId: string,
+    arquivo: ArquivoDeMidia,
+    opcoes: OpcoesFotoEstado,
+  ): Promise<FotoEstado>;
+  /** As Fotos de estado da Corrida (dos dois lados), da mais antiga à mais nova, com URL assinada. */
+  listarFotosEstado(corridaId: string): Promise<FotoEstado[]>;
 }
 
 /** Guincheiro logado, para o plantão. */
@@ -253,6 +317,8 @@ export interface ApiGuincheiro extends Pick<
   | 'buscarOfertasAbertas'
   | 'aceitarOferta'
   | 'recusarOferta'
+  | 'registrarFotoEstado'
+  | 'listarFotosEstado'
 > {
   /** Encerra a sessão no aparelho. */
   sair(): Promise<void>;
@@ -371,12 +437,82 @@ function etapaDoPedido(
   }
 }
 
+const BUCKET_FOTOS = 'fotos-estado';
+const COLUNAS_DA_FOTO =
+  'id, corrida_id, papel_autor, tipo, caminho, etapa, criado_em, latitude, longitude';
+type LinhaDaFoto = Pick<
+  Tables<'fotos_estado'>,
+  | 'id'
+  | 'corrida_id'
+  | 'papel_autor'
+  | 'tipo'
+  | 'caminho'
+  | 'etapa'
+  | 'criado_em'
+  | 'latitude'
+  | 'longitude'
+>;
+
+/** Tipos aceitos pelo bucket e a extensão de cada um no nome do objeto. */
+const EXTENSAO_DA_MIDIA: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'video/mp4': 'mp4',
+  'video/quicktime': 'mov',
+  'video/webm': 'webm',
+};
+
+function erroDoRegistroDaFoto(error: { code?: string }): ErroApi {
+  switch (error.code) {
+    case 'GFT01':
+      return new ErroApi('etapa_mudou', 'A Corrida mudou de etapa. Registre de novo.', {
+        cause: error,
+      });
+    case 'GFT02':
+      return new ErroApi(
+        'limite_de_fotos',
+        `Limite de ${LIMITE_FOTOS_POR_ETAPA} itens por etapa atingido.`,
+        { cause: error },
+      );
+    default:
+      return new ErroApi('falha', 'Não foi possível registrar a foto', { cause: error });
+  }
+}
+
 let assinaturas = 0;
 
 export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
   async function usuarioLogado() {
     const { data } = await supabase.auth.getSession();
     return data.session?.user ?? null;
+  }
+
+  async function comUrlsAssinadas(linhas: LinhaDaFoto[]): Promise<FotoEstado[]> {
+    // Se não conseguir assinar, a foto aparece sem imagem em vez de derrubar a lista.
+    const urls = new Map<string, string>();
+    if (linhas.length > 0) {
+      const { data } = await supabase.storage.from(BUCKET_FOTOS).createSignedUrls(
+        linhas.map((l) => l.caminho),
+        VALIDADE_URL_FOTO_SEGUNDOS,
+      );
+      for (const item of data ?? []) {
+        if (item.path && item.signedUrl) urls.set(item.path, item.signedUrl);
+      }
+    }
+    return linhas.map((l) => ({
+      id: l.id,
+      corridaId: l.corrida_id,
+      papelAutor: l.papel_autor === 'guincheiro' ? 'guincheiro' : 'cliente',
+      tipo: l.tipo,
+      etapa: l.etapa,
+      criadoEm: l.criado_em,
+      latitude: l.latitude,
+      longitude: l.longitude,
+      url: urls.get(l.caminho) ?? null,
+    }));
   }
 
   async function lerAcompanhamento(pedidoId: string): Promise<Acompanhamento | null> {
@@ -656,6 +792,60 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       const { error } = await supabase.rpc('recusar_oferta', { tentativa_id: tentativaId });
       if (error) throw erroDaOferta(error, 'Não foi possível recusar a oferta');
     },
+
+    async registrarFotoEstado(corridaId, arquivo, { etapa, latitude, longitude }) {
+      const usuario = await usuarioLogado();
+      if (!usuario) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+      const extensao = EXTENSAO_DA_MIDIA[arquivo.type];
+      if (!extensao) {
+        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Use uma foto ou um vídeo.');
+      }
+      if (arquivo.size > TAMANHO_MAXIMO_MIDIA_BYTES) {
+        throw new ErroApi('arquivo_grande', 'O arquivo passa de 50 MB.');
+      }
+      const caminho = `${corridaId}/${crypto.randomUUID()}.${extensao}`;
+      const envio = await supabase.storage
+        .from(BUCKET_FOTOS)
+        .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+      if (envio.error) {
+        throw new ErroApi('falha', 'Não foi possível enviar o arquivo', { cause: envio.error });
+      }
+      // O app não pode mandar `papel_autor` nem `criado_em` (sem GRANT): o servidor deriva o
+      // papel da Corrida e grava a hora. O tipo gerado só exige o campo, daí o `as`.
+      const linha = {
+        corrida_id: corridaId,
+        autor_id: usuario.id,
+        tipo: arquivo.type.startsWith('video/') ? 'video' : 'foto',
+        caminho,
+        etapa,
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+      } as TablesInsert<'fotos_estado'>;
+      const { data, error } = await supabase
+        .from('fotos_estado')
+        .insert(linha)
+        .select(COLUNAS_DA_FOTO)
+        .single();
+      if (error) {
+        // Arquivo sem registro não é prova de nada: a política de limpeza deixa o autor
+        // apagar. Se a limpeza falhar, o arquivo fica órfão no bucket (inofensivo).
+        await supabase.storage.from(BUCKET_FOTOS).remove([caminho]);
+        throw erroDoRegistroDaFoto(error);
+      }
+      const [foto] = await comUrlsAssinadas([data]);
+      return foto!;
+    },
+
+    async listarFotosEstado(corridaId) {
+      const { data, error } = await supabase
+        .from('fotos_estado')
+        .select(COLUNAS_DA_FOTO)
+        .eq('corrida_id', corridaId)
+        .order('criado_em', { ascending: true })
+        .order('id', { ascending: true });
+      if (error) throw new ErroApi('falha', 'Não foi possível ler as fotos', { cause: error });
+      return comUrlsAssinadas(data);
+    },
   };
 }
 
@@ -727,6 +917,8 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     buscarOfertasAbertas: base.buscarOfertasAbertas,
     aceitarOferta: base.aceitarOferta,
     recusarOferta: base.recusarOferta,
+    registrarFotoEstado: base.registrarFotoEstado,
+    listarFotosEstado: base.listarFotosEstado,
 
     async sair() {
       const { error } = await supabase.auth.signOut();

@@ -3,6 +3,7 @@ import {
   ESTADOS_CORRIDA,
   ESTADOS_PEDIDO,
   TransicaoInvalida,
+  etapaDaFoto,
   podeTransitar,
   transitar,
 } from './index';
@@ -78,5 +79,17 @@ describe('transitar', () => {
     expect(() => transitar('pedido', 'confirmado', 'atribuido')).toThrow(
       'Pedido não pode ir de confirmado para atribuido',
     );
+  });
+});
+
+describe('etapaDaFoto', () => {
+  it('é "antes" até o Guincheiro tocar em "Carreguei" e "depois" de carregado em diante', () => {
+    expect(ESTADOS_CORRIDA.map((estado) => [estado, etapaDaFoto(estado)])).toEqual([
+      ['aceita', 'antes'],
+      ['a_caminho', 'antes'],
+      ['no_local', 'antes'],
+      ['carregado', 'depois'],
+      ['entregue', 'depois'],
+    ]);
   });
 });

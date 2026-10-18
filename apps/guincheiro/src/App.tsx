@@ -8,7 +8,7 @@ import { Celular, Codigo } from './telas/Entrada';
 import { Plantao } from './telas/Plantao';
 import { Chamado } from './telas/Chamado';
 import { Corrida } from './telas/Corrida';
-import { Camera, Checklist } from './telas/Fotos';
+import { Fotos } from './telas/Fotos';
 import { Historico, Repasse } from './telas/Entrega';
 
 function AvisoGlobal() {
@@ -50,18 +50,10 @@ export function App({ api }: { api: ApiGuincheiro }) {
                 }
               />
               <Route
-                path="/fotos/:etapa"
+                path="/fotos"
                 element={
                   <ExigeGuincheiro>
-                    <Checklist />
-                  </ExigeGuincheiro>
-                }
-              />
-              <Route
-                path="/camera/:etapa/:lado"
-                element={
-                  <ExigeGuincheiro>
-                    <Camera />
+                    <Fotos />
                   </ExigeGuincheiro>
                 }
               />

@@ -22,11 +22,19 @@ import {
   type ApiGuincheiro,
   type ClienteSupabase,
   type EtapaDoAcompanhamento,
+  type MotivoErroApi,
 } from './index';
 
 declare const process: { env: Record<string, string | undefined> };
 declare const console: { info(mensagem: string): void };
 declare function setTimeout(fazer: () => void, ms: number): unknown;
+declare function atob(base64: string): string;
+declare function fetch(url: string): Promise<{ ok: boolean; arrayBuffer(): Promise<ArrayBuffer> }>;
+declare class Blob {
+  constructor(partes: Uint8Array[], opcoes?: { type: string });
+  readonly type: string;
+  readonly size: number;
+}
 const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } = process.env;
 /**
  * Diz ao teste com que configuração as Edge Functions estão rodando: com `1`, elas foram
@@ -1007,6 +1015,199 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         });
         expect(await api.buscarAcompanhamento('00000000-0000-4000-8000-000000000000')).toBeNull();
       }, 30_000);
+    });
+
+    describe('Fotos de estado (#13): Storage, RLS e Corrida sem fotos', () => {
+      // PNG de 1x1 pixel, gerado em memória.
+      const PNG = Uint8Array.from(
+        atob(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        ),
+        (c) => c.charCodeAt(0),
+      );
+      const imagem = () => new Blob([PNG], { type: 'image/png' });
+      const video = () => new Blob([PNG], { type: 'video/mp4' });
+
+      async function entrarComoGuincheiro(telefone: string) {
+        const { api, supabase } = novaApi();
+        await api.confirmarCodigo(telefone, CODIGO_DE_TESTE);
+        return { api, supabase };
+      }
+
+      async function avancar(
+        guincheiro: ClienteSupabase,
+        corridaId: string,
+        estado: 'a_caminho' | 'no_local' | 'carregado' | 'entregue',
+      ) {
+        const { error } = await guincheiro.from('corridas').update({ estado }).eq('id', corridaId);
+        expect(error).toBeNull();
+      }
+
+      /** Pedido pago e aceito pelo Marcos: a Corrida em `aceita`, com os dois lados logados. */
+      async function corridaAceita() {
+        const { api: cliente, id } = await pedidoConfirmado();
+        const marcos = await entrarComoGuincheiro(MARCOS.telefone);
+        const oferta = await ofertaDoPedido(marcos.api, id);
+        const corridaId = await marcos.api.aceitarOferta(oferta.tentativaId);
+        return { cliente, guincheiro: marcos.api, doGuincheiro: marcos.supabase, corridaId };
+      }
+
+      async function esperarErro(promessa: Promise<unknown>): Promise<MotivoErroApi | 'sem_erro'> {
+        try {
+          await promessa;
+          return 'sem_erro';
+        } catch (e) {
+          return e instanceof ErroApi ? e.motivo : 'falha';
+        }
+      }
+
+      async function objetosDaCorrida(corridaId: string) {
+        const { data } = await admin().storage.from('fotos-estado').list(corridaId);
+        return (data ?? []).map((o) => o.name);
+      }
+
+      const corridasCriadas: string[] = [];
+      afterAll(async () => {
+        // Apaga o que o bloco registrou, para o teste rodar de novo sem `db reset`.
+        const servico = admin();
+        for (const corridaId of corridasCriadas) {
+          await servico.from('fotos_estado').delete().eq('corrida_id', corridaId);
+          const nomes = await objetosDaCorrida(corridaId);
+          if (nomes.length) {
+            await servico.storage
+              .from('fotos-estado')
+              .remove(nomes.map((n) => `${corridaId}/${n}`));
+          }
+          await servico.from('corridas').delete().eq('id', corridaId);
+        }
+      });
+
+      it('Cliente e Guincheiro enviam uma imagem e cada um lê a do outro; o outro Cliente não lê', async () => {
+        const { cliente, guincheiro, corridaId } = await corridaAceita();
+        corridasCriadas.push(corridaId);
+
+        const doCliente = await cliente.registrarFotoEstado(corridaId, imagem(), {
+          etapa: 'antes',
+          latitude: -15.7903,
+          longitude: -47.8921,
+        });
+        const doGuincheiro = await guincheiro.registrarFotoEstado(corridaId, video(), {
+          etapa: 'antes',
+        });
+        expect(doCliente).toMatchObject({
+          corridaId,
+          papelAutor: 'cliente',
+          tipo: 'foto',
+          etapa: 'antes',
+          latitude: -15.7903,
+          longitude: -47.8921,
+        });
+        expect(doGuincheiro).toMatchObject({ papelAutor: 'guincheiro', tipo: 'video' });
+        // A hora é a do servidor: recente e igual à gravada.
+        expect(Math.abs(Date.now() - Date.parse(doCliente.criadoEm))).toBeLessThan(60_000);
+
+        for (const lado of [cliente, guincheiro]) {
+          const fotos = await lado.listarFotosEstado(corridaId);
+          expect(fotos.map((f) => f.papelAutor)).toEqual(['cliente', 'guincheiro']);
+          // A URL assinada entrega o arquivo enviado.
+          const resposta = await fetch(fotos[0]!.url!);
+          expect(resposta.ok).toBe(true);
+          expect(new Uint8Array(await resposta.arrayBuffer())).toEqual(PNG);
+        }
+
+        // Outro Cliente (o 5561900000006) não lê nem registra na Corrida.
+        const { api: estranho } = novaApi();
+        await estranho.enviarCodigo(SEM_PERFIL);
+        await estranho.confirmarCodigo(SEM_PERFIL, CODIGO_DE_TESTE);
+        if (!(await estranho.buscarMeuPerfil())) {
+          await estranho.criarPerfilUrgente({
+            nome: 'Bia Costa',
+            cpf: '11144477735',
+            termosVersao: 'v-teste',
+          });
+        }
+        expect(await estranho.listarFotosEstado(corridaId)).toEqual([]);
+        expect(
+          await esperarErro(estranho.registrarFotoEstado(corridaId, imagem(), { etapa: 'antes' })),
+        ).toBe('falha');
+        // O envio do estranho foi barrado pelo Storage: só os 2 arquivos dos participantes.
+        expect(await objetosDaCorrida(corridaId)).toHaveLength(2);
+      }, 90_000);
+
+      it('o 7º item na etapa é recusado e o arquivo enviado é apagado; etapa errada e formato inválido também', async () => {
+        const { cliente, guincheiro, corridaId } = await corridaAceita();
+        corridasCriadas.push(corridaId);
+
+        for (let i = 0; i < 6; i++) {
+          await cliente.registrarFotoEstado(corridaId, imagem(), { etapa: 'antes' });
+        }
+        expect(
+          await esperarErro(cliente.registrarFotoEstado(corridaId, imagem(), { etapa: 'antes' })),
+        ).toBe('limite_de_fotos');
+        // O limite é por autor: o Guincheiro ainda registra as dele.
+        await guincheiro.registrarFotoEstado(corridaId, imagem(), { etapa: 'antes' });
+        // A limpeza do arquivo órfão funcionou: 7 linhas, 7 arquivos.
+        expect(await cliente.listarFotosEstado(corridaId)).toHaveLength(7);
+        expect(await objetosDaCorrida(corridaId)).toHaveLength(7);
+
+        // Corrida em aceita: a etapa é "antes".
+        expect(
+          await esperarErro(
+            guincheiro.registrarFotoEstado(corridaId, imagem(), { etapa: 'depois' }),
+          ),
+        ).toBe('etapa_mudou');
+        const texto = new Blob([PNG], { type: 'text/plain' });
+        expect(
+          await esperarErro(cliente.registrarFotoEstado(corridaId, texto, { etapa: 'antes' })),
+        ).toBe('arquivo_invalido');
+        expect(await objetosDaCorrida(corridaId)).toHaveLength(7);
+      }, 90_000);
+
+      it('a etapa muda em carregado; a Corrida encerra sem nenhuma foto; arquivo registrado não se apaga', async () => {
+        const { cliente, guincheiro, doGuincheiro, corridaId } = await corridaAceita();
+        corridasCriadas.push(corridaId);
+        await avancar(doGuincheiro, corridaId, 'a_caminho');
+        await avancar(doGuincheiro, corridaId, 'no_local');
+        await avancar(doGuincheiro, corridaId, 'carregado');
+        expect(
+          await esperarErro(
+            guincheiro.registrarFotoEstado(corridaId, imagem(), { etapa: 'antes' }),
+          ),
+        ).toBe('etapa_mudou');
+        const foto = await cliente.registrarFotoEstado(corridaId, imagem(), { etapa: 'depois' });
+        expect(foto.etapa).toBe('depois');
+
+        // Prova de Disputa: nem o autor apaga o arquivo registrado.
+        const { supabase: doCliente } = await (async () => {
+          const c = novaApi();
+          await c.api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+          return c;
+        })();
+        const nome = (await objetosDaCorrida(corridaId))[0]!;
+        await doCliente.storage.from('fotos-estado').remove([`${corridaId}/${nome}`]);
+        expect(await objetosDaCorrida(corridaId)).toHaveLength(1);
+
+        // Nenhuma guarda de fotos: entrega sem ter registrado nada pelo Guincheiro.
+        await avancar(doGuincheiro, corridaId, 'entregue');
+        const { data } = await admin()
+          .from('corridas')
+          .select('estado')
+          .eq('id', corridaId)
+          .single();
+        expect(data?.estado).toBe('entregue');
+        // Depois de entregue ainda dá para registrar (etapa "depois").
+        await guincheiro.registrarFotoEstado(corridaId, imagem(), { etapa: 'depois' });
+      }, 90_000);
+
+      it('encerrar a Corrida sem nenhuma Foto de estado funciona', async () => {
+        const { guincheiro, doGuincheiro, cliente, corridaId } = await corridaAceita();
+        corridasCriadas.push(corridaId);
+        for (const estado of ['a_caminho', 'no_local', 'carregado', 'entregue'] as const) {
+          await avancar(doGuincheiro, corridaId, estado);
+        }
+        expect(await guincheiro.listarFotosEstado(corridaId)).toEqual([]);
+        expect(await cliente.listarFotosEstado(corridaId)).toEqual([]);
+      }, 90_000);
     });
   });
 

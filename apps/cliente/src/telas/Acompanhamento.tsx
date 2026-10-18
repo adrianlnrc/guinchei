@@ -1,8 +1,25 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { ErroApi, type Acompanhamento, type EtapaDoAcompanhamento } from '@guinchei/api';
+import {
+  DURACAO_MAXIMA_VIDEO_SEGUNDOS,
+  ErroApi,
+  LIMITE_FOTOS_POR_ETAPA,
+  type Acompanhamento,
+  type EtapaDoAcompanhamento,
+} from '@guinchei/api';
+import { etapaDaFoto } from '@guinchei/estados';
 import { formatarReais } from '@guinchei/ui';
-import { Avatar, Botao, Corpo, Link, Ponto, Tela } from '@guinchei/ui';
+import {
+  Avatar,
+  Botao,
+  Corpo,
+  GaleriaFotosEstado,
+  Link,
+  Ponto,
+  RegistrarFotoEstado,
+  Tela,
+  useFotosEstado,
+} from '@guinchei/ui';
 import { useApi } from '../api';
 import { useFluxo } from '../fluxo';
 import { MensagemDeErro } from '../MensagemDeErro';
@@ -478,9 +495,92 @@ function NaCorrida({
             </div>
           </div>
         )}
+        {acompanhamento.corrida && (
+          <FotosDaCorrida corridaId={acompanhamento.corrida.id} estado={etapa} />
+        )}
         <div className="espaco" />
         {entregue ? <NovoPedido /> : <CancelarEmBreve />}
       </Corpo>
     </Tela>
+  );
+}
+
+const AVISO_DAS_FOTOS = 'Registrar fotos protege você se houver reclamação de avaria.';
+
+/** Quando o app sugere, em destaque, o Cliente registrar fotos (o resto do tempo é opcional). */
+const SUGESTAO_DAS_FOTOS: Partial<Record<EtapaDaCorrida, string>> = {
+  no_local: 'O guincho chegou. Registre fotos do seu veículo antes do carregamento.',
+  entregue: 'Seu veículo foi entregue. Registre fotos dele na entrega.',
+};
+
+/**
+ * Fotos de estado da Corrida (ADR-0011): o Cliente registra de `aceita` a `entregue`, com
+ * sugestão em destaque na chegada e na entrega, e vê as dos dois lados. Opcionais: nada
+ * aqui trava a Corrida.
+ */
+function FotosDaCorrida({ corridaId, estado }: { corridaId: string; estado: EtapaDaCorrida }) {
+  const api = useApi();
+  const [aberto, setAberto] = useState(false);
+  // Relê a galeria a cada mudança de etapa: assim chegam as fotos que o Guincheiro registrou.
+  const { fotos, erro, recarregar } = useFotosEstado(api, corridaId, estado);
+  const sugestao = SUGESTAO_DAS_FOTOS[estado];
+
+  return (
+    <section
+      aria-label="Fotos da Corrida"
+      style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+    >
+      <h2 style={{ font: '600 18px var(--fonte-titulo)', margin: 0 }}>Fotos da Corrida</h2>
+      {sugestao && (
+        <div
+          role="note"
+          className="cartao"
+          style={{
+            padding: 14,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            border: '2px solid var(--tinta)',
+          }}
+        >
+          <span style={{ font: '600 16px/1.35 var(--fonte-texto)' }}>{sugestao}</span>
+          <span className="apoio" style={{ fontSize: 14 }}>
+            {AVISO_DAS_FOTOS}
+          </span>
+        </div>
+      )}
+      {aberto ? (
+        <>
+          <p className="apoio" style={{ fontSize: 14, margin: 0 }}>
+            São opcionais e valem para a etapa em que a Corrida está. Recomendado: pelo menos 2
+            fotos antes do carregamento e 2 na entrega. Vídeos de até{' '}
+            {DURACAO_MAXIMA_VIDEO_SEGUNDOS} s.
+          </p>
+          <RegistrarFotoEstado
+            api={api}
+            corridaId={corridaId}
+            etapa={etapaDaFoto(estado)}
+            papel="cliente"
+            fotos={fotos}
+            limite={LIMITE_FOTOS_POR_ETAPA}
+            duracaoMaximaSegundos={DURACAO_MAXIMA_VIDEO_SEGUNDOS}
+            aoRegistrar={recarregar}
+          />
+          <Link centro onClick={() => setAberto(false)}>
+            Fechar
+          </Link>
+        </>
+      ) : (
+        <Botao variante={sugestao ? 'primario' : 'contorno'} onClick={() => setAberto(true)}>
+          Registrar fotos
+        </Botao>
+      )}
+      {erro && (
+        <p role="alert" className="apoio" style={{ fontSize: 14, margin: 0 }}>
+          Não foi possível carregar as fotos da Corrida.
+        </p>
+      )}
+      <GaleriaFotosEstado fotos={fotos} />
+    </section>
   );
 }

@@ -1,7 +1,11 @@
 import { vi } from 'vitest';
 import {
   ErroApi,
+  LIMITE_FOTOS_POR_ETAPA,
   type ApiGuincheiro,
+  type ArquivoDeMidia,
+  type FotoEstado,
+  type OpcoesFotoEstado,
   type CorridaDoGuincheiro,
   type EstadoCorrida,
   type MeuGuincheiro,
@@ -87,12 +91,15 @@ export function apiFalsa({
   disponivel = true,
   corrida = null,
   ofertas = [],
+  fotos = [],
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
   disponivel?: boolean;
   corrida?: CorridaDoGuincheiro | null;
   ofertas?: OfertaAberta[];
+  /** Fotos de estado que a Corrida já tem (dos dois lados). */
+  fotos?: FotoEstado[];
 } = {}) {
   let logado = sessao;
   let estaDisponivel = disponivel;
@@ -100,6 +107,7 @@ export function apiFalsa({
   let atual = corrida;
   const entregues = new Map<string, CorridaDoGuincheiro>();
   const ouvintes = new Set<() => void>();
+  const registradas = [...fotos];
 
   const api = {
     enviarCodigo: vi.fn<(telefone: string) => Promise<void>>(async () => {}),
@@ -151,6 +159,31 @@ export function apiFalsa({
       }
       return para;
     }),
+    // Como o banco: até 6 itens por autor e etapa; a hora e o autor são do servidor.
+    registrarFotoEstado: vi.fn(
+      async (corridaId: string, arquivo: ArquivoDeMidia, opcoes: OpcoesFotoEstado) => {
+        const meus = registradas.filter(
+          (f) => f.papelAutor === 'guincheiro' && f.etapa === opcoes.etapa,
+        );
+        if (meus.length >= LIMITE_FOTOS_POR_ETAPA) {
+          throw new ErroApi('limite_de_fotos', 'Limite de 6 itens por etapa atingido.');
+        }
+        const foto: FotoEstado = {
+          id: `foto-${registradas.length + 1}`,
+          corridaId,
+          papelAutor: 'guincheiro',
+          tipo: arquivo.type.startsWith('video/') ? 'video' : 'foto',
+          etapa: opcoes.etapa,
+          criadoEm: new Date(agoraNoServidor()).toISOString(),
+          latitude: opcoes.latitude ?? null,
+          longitude: opcoes.longitude ?? null,
+          url: `https://armazenamento.teste/foto-${registradas.length + 1}`,
+        };
+        registradas.push(foto);
+        return foto;
+      },
+    ),
+    listarFotosEstado: vi.fn(async () => [...registradas]),
     assinarOfertas: vi.fn((aoMudar: () => void) => {
       ouvintes.add(aoMudar);
       aoMudar();
