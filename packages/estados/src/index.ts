@@ -87,3 +87,15 @@ export function transitar<M extends Maquina>(
   if (!podeTransitar(maquina, de, para)) throw new TransicaoInvalida(maquina, de, para);
   return para;
 }
+
+export type EtapaFoto = 'antes' | 'depois';
+
+/**
+ * Etapa das Fotos de estado registradas com a Corrida neste estado (ADR-0011): "antes" até o
+ * Guincheiro tocar em "Carreguei" (`aceita`, `a_caminho` e `no_local`) e "depois" de
+ * `carregado` em diante. O banco deriva a mesma etapa do estado da Corrida ao gravar
+ * (`fotos_estado_preencher`, migração `*_fotos_de_estado_etapa_e_limite.sql`).
+ */
+export function etapaDaFoto(estado: EstadoCorrida): EtapaFoto {
+  return estado === 'carregado' || estado === 'entregue' ? 'depois' : 'antes';
+}
