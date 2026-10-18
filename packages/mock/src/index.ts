@@ -142,7 +142,10 @@ export interface CorridaMonitor {
   trecho: string;
   guincheiro?: string;
   detalhe?: string;
-  estado: EstadoCorrida | 'sem_aceite';
+  /** Corrida em curso, ou Pedido que ainda está no Match (`em_match`, `sem_guincheiro`). */
+  estado: EstadoCorrida | 'em_match' | 'sem_guincheiro';
+  /** Tentativa atual do Match, só para `em_match`. */
+  tentativa?: number;
   minutos: number;
 }
 
@@ -150,9 +153,16 @@ export const MONITOR: CorridaMonitor[] = [
   {
     id: 2318,
     trecho: 'Ceilândia → Samambaia',
-    detalhe: '3 recusas · broadcast enviado',
-    estado: 'sem_aceite',
+    detalhe: 'Aguardando o Cliente: tentar de novo ou estornar',
+    estado: 'sem_guincheiro',
     minutos: 4,
+  },
+  {
+    id: 2316,
+    trecho: 'Taguatinga → Águas Claras',
+    estado: 'em_match',
+    tentativa: 2,
+    minutos: 1,
   },
   {
     id: 2317,
@@ -189,12 +199,6 @@ export const MONITOR: CorridaMonitor[] = [
     estado: 'aceita',
     minutos: 1,
   },
-];
-
-export const GUINCHEIROS_DISPONIVEIS = [
-  { nome: 'Wagner Lopes', frota: 'Guincho Norte', km: 5.8 },
-  { nome: 'Fábio Nunes', frota: 'SOS Gama', km: 7.1 },
-  { nome: 'Rita Campos', frota: 'Reboque Planalto', km: 9.4 },
 ];
 
 export const INDICADORES = {

@@ -1,11 +1,10 @@
-import { useState } from 'react';
-import { GUINCHEIROS_DISPONIVEIS, INDICADORES } from '@guinchei/mock';
-import { formatarKm } from '@guinchei/ui';
+import { INDICADORES } from '@guinchei/mock';
 import { Mapa, type Marcador } from '@guinchei/ui';
 import { useOperacao } from '../operacao';
 
 const ROTULO_ESTADO = {
-  sem_aceite: 'Sem aceite',
+  em_match: 'Procurando Guincheiro',
+  sem_guincheiro: 'Sem Guincheiro',
   aceita: 'Aceita',
   a_caminho: 'A caminho',
   no_local: 'No local',
@@ -17,6 +16,7 @@ const COLUNAS = '64px 1fr 110px 70px';
 const POSICOES: Record<number, { left: number; top: number }> = {
   2318: { left: 90, top: 220 },
   2317: { left: 340, top: 150 },
+  2316: { left: 230, top: 90 },
   2315: { left: 150, top: 330 },
   2314: { left: 470, top: 410 },
   2312: { left: 250, top: 470 },
@@ -24,14 +24,18 @@ const POSICOES: Record<number, { left: number; top: number }> = {
 };
 
 export function Monitor() {
-  const { corridas, atribuir, avisar } = useOperacao();
-  const [escolhendo, setEscolhendo] = useState(false);
-  const pendente = corridas.find((c) => c.estado === 'sem_aceite');
+  const { corridas } = useOperacao();
+  const semGuincheiro = corridas.filter((c) => c.estado === 'sem_guincheiro');
+  const emMatch = corridas.filter((c) => c.estado === 'em_match');
+  const emCurso = corridas.length - semGuincheiro.length - emMatch.length;
+  const destacado = semGuincheiro[0];
   const marcadores: Marcador[] = corridas.map((c) => ({
     ...(POSICOES[c.id] ?? { left: 0, top: 0 }),
     tamanho: 26,
-    tipo: c.estado === 'sem_aceite' ? 'alerta' : 'guincho',
+    tipo: c.estado === 'sem_guincheiro' ? 'alerta' : 'guincho',
   }));
+
+  const resumo = `${emMatch.length} ${emMatch.length === 1 ? 'Pedido procurando' : 'Pedidos procurando'} Guincheiro · ${semGuincheiro.length} sem Guincheiro, aguardando o Cliente`;
 
   return (
     <main className="conteudo">
@@ -76,7 +80,7 @@ export function Monitor() {
           </span>
         </div>
         {[
-          ['Corridas em curso', corridas.filter((c) => c.estado !== 'sem_aceite').length],
+          ['Corridas em curso', emCurso],
           ['Guincheiros disponíveis', INDICADORES.disponiveis],
           ['Nota média · 7 dias', INDICADORES.notaMedia],
         ].map(([rotulo, valor]) => (
@@ -132,7 +136,7 @@ export function Monitor() {
             ]}
             marcadores={marcadores}
           />
-          {pendente && (
+          {destacado && (
             <div
               style={{
                 position: 'absolute',
@@ -156,7 +160,7 @@ export function Monitor() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                #{pendente.id} · sem aceite {pendente.minutos} min
+                #{destacado.id} · sem Guincheiro {destacado.minutos} min
               </div>
             </div>
           )}
@@ -183,7 +187,7 @@ export function Monitor() {
               <span
                 style={{ width: 10, height: 10, borderRadius: '50%', background: 'var(--alerta)' }}
               />
-              Precisa de ação
+              Sem Guincheiro
             </span>
           </div>
         </div>
@@ -215,7 +219,7 @@ export function Monitor() {
           </div>
           <div style={{ overflowY: 'auto' }}>
             {corridas.map((c) => {
-              const alerta = c.estado === 'sem_aceite';
+              const alerta = c.estado === 'sem_guincheiro';
               return (
                 <div
                   key={c.id}
@@ -229,7 +233,10 @@ export function Monitor() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                     <span style={{ font: '500 14px var(--fonte-texto)' }}>{c.trecho}</span>
                     <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-                      {c.guincheiro ?? c.detalhe}
+                      {c.guincheiro ??
+                        (c.estado === 'em_match'
+                          ? `Tentativa ${c.tentativa} · há ${c.minutos} min`
+                          : c.detalhe)}
                     </span>
                   </div>
                   <span
@@ -254,40 +261,6 @@ export function Monitor() {
             })}
           </div>
           <div className="espaco" />
-          {escolhendo && pendente && (
-            <div
-              role="dialog"
-              aria-label={`Atribuir Guincheiro ao Pedido ${pendente.id}`}
-              style={{
-                borderTop: '1px solid var(--linha-suave)',
-                padding: '14px 18px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 8,
-                background: '#fff',
-              }}
-            >
-              <span className="rotulo rotulo--12">Disponíveis perto de Ceilândia</span>
-              {GUINCHEIROS_DISPONIVEIS.map((g) => (
-                <button
-                  key={g.nome}
-                  type="button"
-                  className="escolha"
-                  style={{ display: 'flex', justifyContent: 'space-between' }}
-                  onClick={() => {
-                    atribuir(pendente.id, `${g.nome} · ${g.frota}`);
-                    setEscolhendo(false);
-                    avisar(`Pedido ${pendente.id} atribuído a ${g.nome}. Cliente avisado.`);
-                  }}
-                >
-                  <span>
-                    {g.nome} · {g.frota}
-                  </span>
-                  <span style={{ color: 'var(--tinta-2)' }}>{formatarKm(g.km)}</span>
-                </button>
-              ))}
-            </div>
-          )}
           <div
             style={{
               padding: '14px 18px',
@@ -298,22 +271,12 @@ export function Monitor() {
               gap: 12,
             }}
           >
-            <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-              {pendente
-                ? `Pedido ${pendente.id} precisa de atribuição manual`
-                : 'Nenhum Pedido precisa de ação'}
-            </span>
-            {pendente && (
-              <button
-                type="button"
-                className="acao acao--tinta"
-                style={{ padding: '10px 16px', fontSize: 14, borderRadius: 10 }}
-                onClick={() => setEscolhendo((v) => !v)}
-                aria-expanded={escolhendo}
-              >
-                {escolhendo ? 'Fechar' : 'Atribuir Guincheiro'}
-              </button>
-            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ font: '500 13px var(--fonte-texto)' }}>{resumo}</span>
+              <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
+                O Match atribui o Guincheiro sozinho.
+              </span>
+            </div>
           </div>
         </div>
       </div>

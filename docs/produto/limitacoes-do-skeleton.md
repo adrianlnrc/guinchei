@@ -23,12 +23,12 @@ Lista para a demo (issue #15): o que o skeleton faz de verdade, o que é simulad
 - **Tabela de preços, piso e repasse são provisórios** (ADR-0009), a revisar com dados do piloto. Quem aceita recebe pela própria distância e a plataforma absorve a diferença até o teto da Comissão.
 - Um Guincheiro pode receber ofertas de Pedidos diferentes ao mesmo tempo; ao aceitar uma, as outras falham até expirarem.
 - Estorno: se o Cliente pedir "tentar de novo" entre o estorno no provedor e o registro, o registro falha; com PSP real é preciso conciliar.
-- Sem broadcast nem atribuição manual quando ninguém aceita (RF08 é do Incremento 1).
+- Quando ninguém aceita, não há broadcast (RF08 é do Incremento 1) e o Painel não atribui: o Cliente decide entre tentar de novo e estornar.
 
 ## Fora do skeleton
 
 - **Push e GPS no iOS ficam pendentes do spike #3.** O app do Guincheiro precisa ficar aberto para receber chamados; não promete avisar com a tela bloqueada, e não há rastreamento ao vivo (RF09) no mapa do Cliente, só a etapa.
-- **Painel de operação ainda é protótipo.** Mostra dados de exemplo (inclusive fotos e "atribuição manual" para Pedido sem aceite, que a decisão do ADR-0008 descarta); a RLS já permite à operação ler tudo.
+- **Painel de operação ainda é protótipo.** Mostra dados de exemplo (inclusive fotos; o Monitor mostra Pedidos no Match e sem Guincheiro só para leitura); a RLS já permite à operação ler tudo.
 - **Cancelar o Pedido** (RN05, RF14) e a taxa de cancelamento: o botão aparece desabilitado.
 - Avaliação mútua (RF13), histórico de Corridas (RF18), homologação de Frotas (RF02) e histórico/ganhos do plantão do Guincheiro (dados de exemplo, só na sessão).
 - Cadastro de prestadores, empresa e autônomo (ADR-0012): Incremento 1.

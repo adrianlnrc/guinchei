@@ -232,7 +232,7 @@ select vault.create_secret('<service_role key do projeto>', 'match_chave_servico
 - **Guarda de disponibilidade:** o banco recusa `guincheiros.disponivel = true` (`GDP01`, `em_corrida` na API) enquanto o Guincheiro tem Corrida em `aceita`, `a_caminho`, `no_local` ou `carregado`, por qualquer caminho (outra aba, SQL). O App do Guincheiro volta o interruptor e mostra "Termine a Corrida em andamento antes de ficar disponível".
 - Um Guincheiro pode receber ofertas de Pedidos diferentes ao mesmo tempo; ao aceitar uma, fica indisponível e as outras falham com `guincheiro_indisponivel` (`GMT02`) até expirarem.
 - Estorno: se o Cliente pedir "tentar de novo" entre o estorno no provedor e o registro, o registro falha com o valor já estornado. Com o PSP real (RF12), conciliar.
-- O Painel do protótipo ainda mostra "atribuição manual" para Pedido sem aceite; a decisão do ADR-0008 é não ter atribuição manual.
+- O Monitor do Painel só observa o Match (Pedidos `em_match` e `sem_guincheiro`, sobre dados de exemplo) e não tem ação de atribuição; quem decide em `sem_guincheiro` é o Cliente. Ligar o Monitor ao banco fica para outro ticket.
 
 ## App do Guincheiro
 

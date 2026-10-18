@@ -17,7 +17,6 @@ const TABELA_INICIAL: TabelaDoPainel = { ...TABELA_PADRAO, taxaCancelamento: TAX
 
 interface Operacao {
   corridas: CorridaMonitor[];
-  atribuir: (id: number, guincheiro: string) => void;
   fila: FrotaHomologacao[];
   atualizarFrota: (f: FrotaHomologacao) => void;
   homologacoesPendentes: number;
@@ -34,7 +33,7 @@ interface Operacao {
 const Contexto = createContext<Operacao | null>(null);
 
 export function OperacaoProvider({ children }: { children: ReactNode }) {
-  const [corridas, setCorridas] = useState(MONITOR);
+  const corridas = MONITOR;
   const [fila, setFila] = useState(FILA_HOMOLOGACAO);
   const [decisaoDisputa, setDecisaoDisputa] = useState<string | null>(null);
   const disputasAbertas = decisaoDisputa === null ? 1 : 0;
@@ -44,14 +43,6 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   const avisar = useCallback((texto: string) => {
     setAviso(texto);
     setTimeout(() => setAviso((atual) => (atual === texto ? null : atual)), 3600);
-  }, []);
-
-  const atribuir = useCallback((id: number, guincheiro: string) => {
-    setCorridas((cs) =>
-      cs.map((c) =>
-        c.id === id ? { ...c, estado: 'aceita', guincheiro, detalhe: undefined, minutos: 0 } : c,
-      ),
-    );
   }, []);
 
   const atualizarFrota = useCallback(
@@ -69,7 +60,6 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   const valor = useMemo(
     () => ({
       corridas,
-      atribuir,
       fila,
       atualizarFrota,
       homologacoesPendentes,
@@ -83,7 +73,6 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     }),
     [
       corridas,
-      atribuir,
       fila,
       atualizarFrota,
       homologacoesPendentes,
