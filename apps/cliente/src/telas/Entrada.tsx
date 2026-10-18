@@ -68,8 +68,8 @@ export function Celular() {
         <Rotulo style={{ marginTop: 16 }}>Só um passo</Rotulo>
         <h1 className="titulo">Qual é o seu celular?</h1>
         <p className="apoio">
-          Vamos mandar um código por SMS. É por esse número que avisamos quando o guincho estiver
-          chegando.
+          Vamos mandar um código pelo WhatsApp. É por esse número que avisamos quando o guincho
+          estiver chegando.
         </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <div
@@ -171,12 +171,14 @@ export function Codigo() {
   }
 
   return (
-    <Tela rotulo="Código SMS">
+    <Tela rotulo="Código do WhatsApp">
       <Corpo style={{ padding: '16px 24px 32px', gap: 18 }}>
         <Link onClick={() => ir('/entrar')}>Voltar</Link>
         <Rotulo style={{ marginTop: 16 }}>Confirmação</Rotulo>
         <h1 className="titulo">Digite o código</h1>
-        <p className="apoio">Enviado para {mascararCelular(celular) || 'seu celular'}.</p>
+        <p className="apoio">
+          Enviamos um código pelo WhatsApp para {mascararCelular(celular) || 'seu celular'}.
+        </p>
         <label
           style={{
             position: 'relative',

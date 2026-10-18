@@ -31,6 +31,15 @@ describe('Entrada por telefone e código', () => {
     expect(api.confirmarCodigo).toHaveBeenCalledWith('+5561900000001', CODIGO_CERTO);
   });
 
+  it('o código vai pelo WhatsApp (ADR-0010), não por SMS', async () => {
+    renderEm('/entrar', apiFalsa());
+    expect(screen.getByRole('main', { name: 'Celular' }).textContent).toMatch(/pelo WhatsApp/);
+    pedirCodigo('61900000001');
+    const tela = await screen.findByRole('main', { name: 'Código do WhatsApp' });
+    expect(tela.textContent).toContain('Enviamos um código pelo WhatsApp para (61) 90000-0001.');
+    expect(tela.textContent).not.toMatch(/SMS/);
+  });
+
   it('o número sem perfil vai para o cadastro urgente', async () => {
     renderEm('/entrar', apiFalsa());
     pedirCodigo('61900000006');
