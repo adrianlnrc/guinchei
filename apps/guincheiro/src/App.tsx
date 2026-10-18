@@ -4,6 +4,8 @@ import { Aviso, LimiteDeErro, Moldura } from '@guinchei/ui';
 import { ApiContexto } from './api';
 import { PlantaoProvider, usePlantao } from './plantao';
 import { ExigeGuincheiro } from './sessao';
+import { Cadastro } from './telas/Cadastro';
+import { MinhaFrota } from './telas/MinhaFrota';
 import { Celular, Codigo } from './telas/Entrada';
 import { Plantao } from './telas/Plantao';
 import { Chamado } from './telas/Chamado';
@@ -25,6 +27,8 @@ export function App({ api }: { api: ApiGuincheiro }) {
             <Routes>
               <Route path="/entrar" element={<Celular />} />
               <Route path="/codigo" element={<Codigo />} />
+              <Route path="/cadastro" element={<Cadastro />} />
+              <Route path="/frota" element={<MinhaFrota />} />
               <Route
                 path="/"
                 element={

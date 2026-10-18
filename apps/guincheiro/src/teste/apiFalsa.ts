@@ -2,6 +2,7 @@ import { vi } from 'vitest';
 import {
   ErroApi,
   LIMITE_FOTOS_POR_ETAPA,
+  TAMANHO_MAXIMO_DOCUMENTO_BYTES,
   type ApiGuincheiro,
   type ArquivoDeMidia,
   type FotoEstado,
@@ -9,8 +10,10 @@ import {
   type CorridaDoGuincheiro,
   type EstadoCorrida,
   type MeuGuincheiro,
+  type MinhaFrota,
   type OfertaAberta,
   type Perfil,
+  type RascunhoFrota,
 } from '@guinchei/api';
 import { podeTransitar } from '@guinchei/estados';
 
@@ -28,6 +31,17 @@ export const PERFIL_MARCOS: Perfil = {
   data_nascimento: null,
   telefone_secundario: null,
   criado_em: '2026-10-17T12:00:00Z',
+};
+
+/** Quem acabou de cadastrar a Frota: representante, ainda sem linha em `guincheiros`. */
+export const PERFIL_AURORA: Perfil = {
+  ...PERFIL_MARCOS,
+  id: '55555555-5555-4555-8555-555555555555',
+  papel: 'representante',
+  nome: 'Aurora Lima',
+  telefone: '5561900000008',
+  cpf: '52998224725',
+  aceite_termos_versao: 'prestadores-provisoria-2026-10',
 };
 
 export const PERFIL_RAFAEL: Perfil = {
@@ -67,6 +81,26 @@ export function ofertaDeTeste(segundosParaVencer = 25): OfertaAberta {
   };
 }
 
+export const ITEM_ALVARA: MinhaFrota['itens'][number] = {
+  id: 'item-alvara',
+  alvo: 'frota',
+  tipo: 'alvara',
+  estado: 'pendente',
+  motivo: null,
+  validade: null,
+  enviadoEm: '2026-10-18T12:00:00Z',
+};
+
+export const ITEM_APOLICE: MinhaFrota['itens'][number] = {
+  id: 'item-apolice',
+  alvo: 'frota',
+  tipo: 'apolice_rc',
+  estado: 'pendente',
+  motivo: null,
+  validade: '2027-10-18',
+  enviadoEm: '2026-10-18T12:00:00Z',
+};
+
 function corridaDaOferta(oferta: OfertaAberta, estado: EstadoCorrida): CorridaDoGuincheiro {
   return {
     id: 'corrida-1',
@@ -92,6 +126,9 @@ export function apiFalsa({
   corrida = null,
   ofertas = [],
   fotos = [],
+  rascunho = null,
+  frota = null,
+  telefone = '5561900000008',
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
@@ -100,8 +137,18 @@ export function apiFalsa({
   ofertas?: OfertaAberta[];
   /** Fotos de estado que a Corrida já tem (dos dois lados). */
   fotos?: FotoEstado[];
+  /** Cadastro de Frota em andamento, guardado no banco. */
+  rascunho?: RascunhoFrota | null;
+  /** A Frota que a pessoa logada já cadastrou. */
+  frota?: MinhaFrota | null;
+  /** Telefone do login (dígitos, com o 55). */
+  telefone?: string;
 } = {}) {
   let logado = sessao;
+  let perfilAtual = perfil;
+  let rascunhoAtual = rascunho;
+  let frotaAtual = frota;
+  const arquivosEnviados: string[] = [];
   let estaDisponivel = disponivel;
   let abertas = [...ofertas];
   let atual = corrida;
@@ -116,15 +163,60 @@ export function apiFalsa({
       logado = true;
     }),
     temSessao: vi.fn(async () => logado),
-    buscarMeuPerfil: vi.fn(async () => (logado ? perfil : null)),
+    buscarMeuPerfil: vi.fn(async () => (logado ? perfilAtual : null)),
     sair: vi.fn(async () => {
       logado = false;
     }),
     buscarMeuGuincheiro: vi.fn(async (): Promise<MeuGuincheiro | null> =>
-      logado && perfil?.papel === 'guincheiro'
-        ? { nome: perfil.nome, frota: 'Reboque Planalto', disponivel: estaDisponivel }
+      logado && perfilAtual?.papel === 'guincheiro'
+        ? { nome: perfilAtual.nome, frota: 'Reboque Planalto', disponivel: estaDisponivel }
         : null,
     ),
+    telefoneDaSessao: vi.fn(async () => (logado ? telefone : null)),
+    buscarRascunhoFrota: vi.fn(async () => rascunhoAtual),
+    salvarRascunhoFrota: vi.fn(async (novo: RascunhoFrota) => {
+      rascunhoAtual = structuredClone(novo);
+    }),
+    // Como o servidor: PDF ou imagem de até 10 MiB, na pasta de quem envia.
+    enviarDocumentoDaFrota: vi.fn(async (arquivo: ArquivoDeMidia) => {
+      if (arquivo.type !== 'application/pdf' && !arquivo.type.startsWith('image/')) {
+        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+      }
+      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+      }
+      const caminho = `${PERFIL_AURORA.id}/documento-${arquivosEnviados.length + 1}.pdf`;
+      arquivosEnviados.push(caminho);
+      return caminho;
+    }),
+    enviarCadastroFrota: vi.fn(async () => {
+      if (!rascunhoAtual) {
+        throw new ErroApi('sem_cadastro_em_andamento', 'Não há cadastro em andamento');
+      }
+      const d = rascunhoAtual.dados;
+      perfilAtual = {
+        ...PERFIL_AURORA,
+        nome: d.representanteNome ?? '',
+        cpf: d.representanteCpf ?? '',
+      };
+      frotaAtual = {
+        id: 'frota-nova',
+        tipo: 'autonomo',
+        documento: d.documento ?? '',
+        nome: d.nome ?? '',
+        ativa: false,
+        baseCep: d.baseCep ?? null,
+        baseEndereco: d.baseEndereco ?? null,
+        baseBairro: d.baseBairro ?? null,
+        chavePix: d.chavePix ?? null,
+        apoliceValidade: d.apoliceValidade ?? null,
+        termosPrestadorVersao: d.termosVersao ?? null,
+        itens: [ITEM_ALVARA, { ...ITEM_APOLICE, validade: d.apoliceValidade ?? null }],
+      };
+      rascunhoAtual = null;
+      return frotaAtual.id;
+    }),
+    buscarMinhaFrota: vi.fn(async () => (logado ? frotaAtual : null)),
     definirDisponibilidade: vi.fn(async (valor: boolean) => {
       estaDisponivel = valor;
     }),
