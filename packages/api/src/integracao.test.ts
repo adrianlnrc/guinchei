@@ -551,6 +551,48 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(pagamentos).toEqual([{ estado: 'autorizado' }]);
     }, 90_000);
 
+    it('candidato longe demais (absorção acima da Comissão) é pulado pelo teto e não recebe', async () => {
+      const pedido = await pedidoComTrajeto();
+      const cotacao = await pedido.api.cotarPedido(pedido.id);
+      // Depois da cotação (com o Marcos a ~4,2 km), só a Rita fica elegível, e em Planaltina
+      // (~35 km do Eixo Monumental): o repasse pela distância dela passaria da Comissão.
+      const servico = admin();
+      const { data: rita } = await servico
+        .from('guincheiros')
+        .select('posicao')
+        .eq('id', RITA.id)
+        .single();
+      await servico
+        .from('guincheiros')
+        .update({ disponivel: false })
+        .in('id', [MARCOS.id, WAGNER.id]);
+      await servico
+        .from('guincheiros')
+        .update({ posicao: 'SRID=4326;POINT(-47.65 -15.62)' })
+        .eq('id', RITA.id);
+      try {
+        await pedido.api.confirmarPedido(pedido.id, 'pix');
+        // A primeira oferta sai na confirmação: a Rita é pulada e a rodada se esgota.
+        expect(await estadoDoPedido(pedido.id)).toBe('sem_guincheiro');
+        const { data: tentativas } = await servico
+          .from('tentativas_match')
+          .select('guincheiro_id, resultado, expira_em, preco_recalculado')
+          .eq('pedido_id', pedido.id);
+        const [pulada, ...outras] = tentativas ?? [];
+        expect(outras).toEqual([]);
+        expect(pulada).toMatchObject({
+          guincheiro_id: RITA.id,
+          resultado: 'pulada_teto',
+          expira_em: null,
+        });
+        expect(pulada!.preco_recalculado as number).toBeGreaterThan(cotacao.preco.total);
+        const ritaApi = await entrar(RITA.telefone);
+        expect(await ritaApi.buscarOfertasAbertas()).toEqual([]);
+      } finally {
+        await servico.from('guincheiros').update({ posicao: rita!.posicao }).eq('id', RITA.id);
+      }
+    }, 30_000);
+
     it('sem aceite, o Cliente estorna: Pedido e pagamento estornados', async () => {
       const { api, id, cotacao } = await pedidoConfirmado();
       await esgotarRodada(id);

@@ -152,7 +152,10 @@ export interface ApiGuinchei {
   tentarDeNovo(pedidoId: string): Promise<void>;
   /** Cliente, em `sem_guincheiro`: estorna o pagamento e encerra o Pedido (`estornado`). */
   estornarPedido(pedidoId: string): Promise<PagamentoEstornado>;
-  /** Guincheiro: ofertas abertas para ele, a que vence primeiro antes. */
+  /**
+   * Guincheiro: ofertas abertas para ele, a que vence primeiro antes. Uma oferta vencida
+   * aparece até a varredura (a cada 5 s) marcá-la expirada; aceitar já é recusado.
+   */
   buscarOfertasAbertas(): Promise<OfertaAberta[]>;
   /** Guincheiro: aceita a oferta e devolve o id da Corrida criada. */
   aceitarOferta(tentativaId: number): Promise<string>;
