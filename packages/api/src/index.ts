@@ -96,6 +96,36 @@ export interface OfertaAberta {
   };
 }
 
+/**
+ * Em que ponto o Cliente está, do Pedido pago até a entrega. `em_match` cobre `confirmado`
+ * (o Pedido pago entra no Match na mesma transação); `atribuido` vira o estado da Corrida.
+ */
+export type EtapaDoAcompanhamento =
+  'cotado' | 'em_match' | 'sem_guincheiro' | 'estornado' | Enums<'estado_corrida'>;
+
+/** O que o Cliente vê do Guincheiro: só o nome e a Frota (sem CPF nem telefone). */
+export interface GuincheiroDaCorrida {
+  nome: string;
+  frota: string | null;
+}
+
+/** O Pedido do Cliente e, depois do aceite, a Corrida, como o Cliente acompanha (RF09 enxuto). */
+export interface Acompanhamento {
+  pedidoId: string;
+  etapa: EtapaDoAcompanhamento;
+  /** Centavos: o Preço fechado, quando já cotado. */
+  precoTotal: number | null;
+  origemEndereco: string | null;
+  destinoEndereco: string | null;
+  /** `null` até um Guincheiro aceitar (e depois do estorno). */
+  corrida: {
+    id: string;
+    estado: Enums<'estado_corrida'>;
+    /** `null` se a contraparte não pôde ser lida. */
+    guincheiro: GuincheiroDaCorrida | null;
+  } | null;
+}
+
 export type MotivoErroApi =
   | 'codigo_invalido'
   | 'cpf_ja_cadastrado'
@@ -152,6 +182,22 @@ export interface ApiGuinchei {
   tentarDeNovo(pedidoId: string): Promise<void>;
   /** Cliente, em `sem_guincheiro`: estorna o pagamento e encerra o Pedido (`estornado`). */
   estornarPedido(pedidoId: string): Promise<PagamentoEstornado>;
+  /**
+   * Cliente: o Pedido e a Corrida de hoje, com o nome do Guincheiro. `null` se o Pedido não
+   * existe ou não é do Cliente (a RLS esconde o dos outros).
+   */
+  buscarAcompanhamento(pedidoId: string): Promise<Acompanhamento | null>;
+  /**
+   * Cliente: o Pedido mais recente que ainda não terminou (pago e sem estorno nem entrega),
+   * para reabrir o acompanhamento depois de recarregar. `null` se não há nenhum.
+   */
+  buscarAcompanhamentoEmAndamento(): Promise<Acompanhamento | null>;
+  /**
+   * Cliente: chama `aoMudar` com o estado atual assim que a assinatura do Supabase Realtime
+   * fica de pé (e a cada reconexão) e a cada mudança do Pedido ou da Corrida dele. Devolve a
+   * função que cancela a assinatura.
+   */
+  acompanharPedido(pedidoId: string, aoMudar: (acompanhamento: Acompanhamento) => void): () => void;
   /**
    * Guincheiro: ofertas abertas para ele, a que vence primeiro antes. Uma oferta vencida
    * aparece até a varredura (a cada 5 s) marcá-la expirada; aceitar já é recusado.
@@ -225,10 +271,78 @@ async function chamarFuncao<T>(
   throw new ErroApi('falha', mensagemDeFalha, { cause: error });
 }
 
+/** Estados do Pedido que contam como "em andamento" para o Cliente que reabre o app. */
+const PEDIDO_EM_ANDAMENTO: Enums<'estado_pedido'>[] = [
+  'confirmado',
+  'em_match',
+  'sem_guincheiro',
+  'atribuido',
+];
+
+function etapaDoPedido(
+  estado: Enums<'estado_pedido'>,
+  corrida: Enums<'estado_corrida'> | undefined,
+): EtapaDoAcompanhamento {
+  switch (estado) {
+    case 'cotado':
+    case 'sem_guincheiro':
+    case 'estornado':
+      return estado;
+    case 'confirmado':
+    case 'em_match':
+      return 'em_match';
+    case 'atribuido':
+      return corrida ?? 'aceita';
+  }
+}
+
+let assinaturas = 0;
+
 export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
   async function usuarioLogado() {
     const { data } = await supabase.auth.getSession();
     return data.session?.user ?? null;
+  }
+
+  async function lerAcompanhamento(pedidoId: string): Promise<Acompanhamento | null> {
+    const [pedido, corrida] = await Promise.all([
+      supabase
+        .from('pedidos')
+        .select('id, estado, preco_total, origem_endereco, destino_endereco')
+        .eq('id', pedidoId)
+        .maybeSingle(),
+      supabase.from('corridas').select('id, estado').eq('pedido_id', pedidoId).maybeSingle(),
+    ]);
+    if (pedido.error || corrida.error) {
+      throw new ErroApi('falha', 'Não foi possível ler o acompanhamento', {
+        cause: pedido.error ?? corrida.error,
+      });
+    }
+    if (!pedido.data) return null;
+    let guincheiro: GuincheiroDaCorrida | null = null;
+    if (corrida.data) {
+      // O perfil do Guincheiro não é legível (tem CPF e telefone): só nome e Frota, pela função.
+      const contraparte = await supabase.rpc('contraparte_da_corrida', {
+        corrida_id: corrida.data.id,
+      });
+      if (contraparte.error) {
+        throw new ErroApi('falha', 'Não foi possível ler o Guincheiro', {
+          cause: contraparte.error,
+        });
+      }
+      const linha = contraparte.data[0];
+      if (linha) guincheiro = { nome: linha.nome, frota: linha.frota ?? null };
+    }
+    return {
+      pedidoId: pedido.data.id,
+      etapa: etapaDoPedido(pedido.data.estado, corrida.data?.estado),
+      precoTotal: pedido.data.preco_total,
+      origemEndereco: pedido.data.origem_endereco,
+      destinoEndereco: pedido.data.destino_endereco,
+      corrida: corrida.data
+        ? { id: corrida.data.id, estado: corrida.data.estado, guincheiro }
+        : null,
+    };
   }
 
   return {
@@ -366,6 +480,66 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
         { pedido_id: pedidoId },
         'Não foi possível estornar o pagamento',
       );
+    },
+
+    buscarAcompanhamento: lerAcompanhamento,
+
+    async buscarAcompanhamentoEmAndamento() {
+      const usuario = await usuarioLogado();
+      if (!usuario) return null;
+      const { data: pedidos, error } = await supabase
+        .from('pedidos')
+        .select('id, estado')
+        .eq('cliente_id', usuario.id)
+        .in('estado', PEDIDO_EM_ANDAMENTO)
+        .order('criado_em', { ascending: false })
+        .limit(20);
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o Pedido', { cause: error });
+      // `atribuido` é terminal para o Pedido, mas a Corrida pode já ter sido entregue.
+      const { data: corridas, error: erroCorridas } = await supabase
+        .from('corridas')
+        .select('pedido_id')
+        .in(
+          'pedido_id',
+          pedidos.map((p) => p.id),
+        )
+        .eq('estado', 'entregue');
+      if (erroCorridas) {
+        throw new ErroApi('falha', 'Não foi possível ler a Corrida', { cause: erroCorridas });
+      }
+      const entregues = new Set(corridas.map((c) => c.pedido_id));
+      const atual = pedidos.find((p) => !entregues.has(p.id));
+      return atual ? lerAcompanhamento(atual.id) : null;
+    },
+
+    acompanharPedido(pedidoId, aoMudar) {
+      let ativo = true;
+      let leitura = 0;
+      // Qualquer evento relê o estado inteiro: a Corrida e o nome do Guincheiro chegam juntos,
+      // e uma leitura atrasada nunca sobrepõe uma mais nova.
+      async function atualizar() {
+        const minha = ++leitura;
+        try {
+          const atual = await lerAcompanhamento(pedidoId);
+          if (ativo && minha === leitura && atual) aoMudar(atual);
+        } catch {
+          // Falha de rede: o próximo evento ou a reconexão relê.
+        }
+      }
+      const filtroPedido = { event: '*', schema: 'public', table: 'pedidos' } as const;
+      const filtroCorrida = { event: '*', schema: 'public', table: 'corridas' } as const;
+      const canal = supabase
+        .channel(`acompanhamento-${pedidoId}-${++assinaturas}`)
+        .on('postgres_changes', { ...filtroPedido, filter: `id=eq.${pedidoId}` }, atualizar)
+        .on('postgres_changes', { ...filtroCorrida, filter: `pedido_id=eq.${pedidoId}` }, atualizar)
+        .subscribe((status) => {
+          // Cobre o que mudou entre a leitura inicial e a assinatura, e as reconexões.
+          if (status === 'SUBSCRIBED') void atualizar();
+        });
+      return () => {
+        ativo = false;
+        void supabase.removeChannel(canal);
+      };
     },
 
     async buscarOfertasAbertas() {
