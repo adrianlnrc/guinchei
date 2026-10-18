@@ -47,7 +47,7 @@ values
   ('22222222-2222-4222-8222-222222222202', 'guincheiro', 'Wagner Lopes', '5561900000003', '34567891228', now(), 'provisoria-2026-10'),
   ('22222222-2222-4222-8222-222222222203', 'guincheiro', 'Rita Campos', '5561900000004', '45678912364', now(), 'provisoria-2026-10'),
   ('33333333-3333-4333-8333-333333333333', 'operacao', 'Operação Guinchei', '5561900000005', '56789123482', now(), 'provisoria-2026-10'),
-  ('22222222-2222-4222-8222-222222222204', 'guincheiro', 'Paulo Mendes', '5561900000007', '52998224725', now(), 'provisoria-2026-10');
+  ('22222222-2222-4222-8222-222222222204', 'guincheiro', 'Paulo Mendes', '5561900000007', '67321845982', now(), 'provisoria-2026-10');
 
 -- Uma empresa e uma autônoma (Frota de uma pessoa só, ADR-0012), ambas ativas.
 insert into public.frotas (id, tipo, documento, nome, ativa) values

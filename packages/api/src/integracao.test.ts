@@ -1338,7 +1338,7 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         .single();
       if (error) throw error;
       const itens: string[] = [];
-      for (const tipo of tipos) {
+      for (const [posicao, tipo] of tipos.entries()) {
         const { data, error: erroItem } = await servidor
           .from('itens_homologacao')
           .insert({
@@ -1348,7 +1348,7 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
             tipo,
             dono_id: PAULO.id,
             arquivo: `${PAULO.id}/${crypto.randomUUID()}.pdf`,
-            enviado_em: enviadoEm,
+            enviado_em: new Date(Date.parse(enviadoEm) + posicao * 1000).toISOString(),
           })
           .select('id')
           .single();
