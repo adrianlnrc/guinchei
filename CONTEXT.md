@@ -33,6 +33,7 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 | **Cliente** | Pessoa com veículo parado que abre um Pedido. Evite "usuário", "passageiro". |
 | **Guincheiro** | Operador que executa a Corrida. Pertence a uma Frota. Evite "motorista" (ambíguo com o Cliente). |
 | **Frota** | Prestador de guincho cadastrado e verificado: empresa (CNPJ) ou autônomo (CPF/MEI, Frota de uma pessoa só). Ver ADR-0012. |
+| **Representante** | Pessoa que cadastra e responde por uma Frota (nome, CPF e telefone no cadastro). Na empresa pode não dirigir; no autônomo é a própria pessoa, também Guincheiro da Frota de uma pessoa só. Papel `representante`, distinto de `guincheiro` (ver ADR-0012). |
 | **Frota âncora** | Frota do lançamento, com Ganho mínimo garantido por plantão nos primeiros 90 dias. |
 | **Pedido** | Solicitação de reboque criada pelo Cliente: tipo de veículo, situação, "as 4 rodas giram?", origem, destino. É o "chamado" antes do aceite. |
 | **Corrida** | Um Pedido aceito e em execução por um Guincheiro, do aceite à entrega. Estados: aceita → a_caminho → no_local → carregado → entregue (ver ADR-0008). Evite "viagem". |
