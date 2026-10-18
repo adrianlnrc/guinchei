@@ -2,5 +2,5 @@
 // e tipos compartilhados escritos à mão.
 export * from './database';
 
-export const PAPEIS = ['cliente', 'guincheiro', 'operacao'] as const;
+export const PAPEIS = ['cliente', 'guincheiro', 'operacao', 'representante'] as const;
 export type Papel = (typeof PAPEIS)[number];

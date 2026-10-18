@@ -2,8 +2,8 @@ import { describe, expect, expectTypeOf, it } from 'vitest';
 import { Constants, PAPEIS, type Enums, type Papel, type Tables } from './index';
 
 describe('@guinchei/tipos', () => {
-  it('lista os três papéis', () => {
-    expect(PAPEIS).toEqual(['cliente', 'guincheiro', 'operacao']);
+  it('lista os quatro papéis, com o representante da Frota distinto do Guincheiro', () => {
+    expect(PAPEIS).toEqual(['cliente', 'guincheiro', 'operacao', 'representante']);
   });
 
   it('PAPEIS é igual ao enum papel do banco', () => {
