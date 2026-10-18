@@ -12,7 +12,8 @@ const TODOS_OS_GUINCHEIROS = Object.values(GUINCHEIROS);
 
 function exigir(nome: string): string {
   const valor = process.env[nome];
-  if (!valor) throw new Error(`Falta ${nome}. Rode o e2e por \`pnpm e2e\` (veja docs/desenvolvimento.md).`);
+  if (!valor)
+    throw new Error(`Falta ${nome}. Rode o e2e por \`pnpm e2e\` (veja docs/desenvolvimento.md).`);
   return valor;
 }
 
@@ -20,7 +21,13 @@ const banco = createClient(exigir('SUPABASE_URL'), exigir('SUPABASE_SERVICE_ROLE
   auth: { persistSession: false },
 });
 
-function conferir<T>({ data, error }: { data: T; error: { message: string } | null }): NonNullable<T> {
+function conferir<T>({
+  data,
+  error,
+}: {
+  data: T;
+  error: { message: string } | null;
+}): NonNullable<T> {
   if (error) throw new Error(`Banco do e2e: ${error.message}`);
   return data as NonNullable<T>;
 }
@@ -49,7 +56,12 @@ export async function prepararBanco(): Promise<void> {
 }
 
 export async function definirPlantao(ids: readonly string[], disponivel: boolean): Promise<void> {
-  conferir(await banco.from('guincheiros').update({ disponivel }).in('id', [...ids]));
+  conferir(
+    await banco
+      .from('guincheiros')
+      .update({ disponivel })
+      .in('id', [...ids]),
+  );
 }
 
 export async function tirarTodosDoPlantao(): Promise<void> {

@@ -2,8 +2,6 @@
 // revisão de 2026-10-17). Cliente e Guincheiro em dois navegadores ao mesmo tempo, contra os
 // apps em build de produção, o Supabase local (Auth, Realtime, Storage, pg_cron e pg_net) e as
 // Edge Functions. Simulados: o Mapbox (fixtures, suporte/mapbox.ts) e o PSP (adaptador mock).
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   colocarTodosNoPlantao,
   corridaDoPedido,
@@ -24,7 +22,7 @@ import {
 } from './suporte/fluxo';
 import { expect, test } from './suporte/navegadores';
 
-const FOTO = path.join(path.dirname(fileURLToPath(import.meta.url)), 'suporte/carro.png');
+const FOTO = decodeURIComponent(new URL('suporte/carro.png', import.meta.url).pathname);
 
 test.beforeEach(prepararBanco);
 // Quem vem depois encontra o banco limpo e o plantão ligado, qualquer que tenha sido o resultado.
@@ -49,7 +47,9 @@ test('Cliente pede, paga, o Guincheiro mais próximo atende e o Cliente acompanh
 
   await test.step('Cliente paga (PSP mock) e o Pedido entra no Match', async () => {
     await pagarComPix(cliente);
-    await expect(cliente.getByRole('heading', { name: /Chamando o guincho mais próximo/ })).toBeVisible();
+    await expect(
+      cliente.getByRole('heading', { name: /Chamando o guincho mais próximo/ }),
+    ).toBeVisible();
     const pedido = (await pedidoAtual())!;
     expect(await pagamentosDoPedido(pedido.id)).toEqual([
       { estado: 'autorizado', valor: total, metodo: 'pix' },
@@ -62,7 +62,9 @@ test('Cliente pede, paga, o Guincheiro mais próximo atende e o Cliente acompanh
     const ofertas = await ofertasDoPedido((await pedidoAtual())!.id);
     expect(ofertas.map((o) => o.guincheiro_id)).toEqual([GUINCHEIROS.marcos]);
     await guincheiro.getByRole('button', { name: 'Aceitar Corrida' }).click();
-    await expect(cliente.getByRole('heading', { name: /Guincheiro aceitou, saindo em instantes/ })).toBeVisible();
+    await expect(
+      cliente.getByRole('heading', { name: /Guincheiro aceitou, saindo em instantes/ }),
+    ).toBeVisible();
     await expect(cliente.getByText('Marcos Alves', { exact: true })).toBeVisible();
   });
 
@@ -73,7 +75,9 @@ test('Cliente pede, paga, o Guincheiro mais próximo atende e o Cliente acompanh
 
   await test.step('"Cheguei": o Cliente registra uma foto do veículo', async () => {
     await guincheiro.getByRole('button', { name: 'Cheguei' }).click();
-    await expect(cliente.getByRole('heading', { name: /O guincho chegou ao seu veículo/ })).toBeVisible();
+    await expect(
+      cliente.getByRole('heading', { name: /O guincho chegou ao seu veículo/ }),
+    ).toBeVisible();
     await expect(cliente.getByRole('note')).toContainText('Registre fotos do seu veículo');
 
     await cliente.getByRole('button', { name: 'Registrar fotos' }).click();
@@ -110,7 +114,9 @@ test('Cliente pede, paga, o Guincheiro mais próximo atende e o Cliente acompanh
   await test.step('"Entreguei" sem foto de depois pede para confirmar o aviso', async () => {
     await guincheiro.getByRole('button', { name: 'Entreguei' }).click();
     const aviso = guincheiro.getByRole('alertdialog');
-    await expect(aviso).toContainText('Registrar fotos protege você se houver reclamação de avaria.');
+    await expect(aviso).toContainText(
+      'Registrar fotos protege você se houver reclamação de avaria.',
+    );
     await expect(guincheiro.getByText('Seu repasse')).toHaveCount(0);
     expect((await corridaDoPedido((await pedidoAtual())!.id))?.estado).toBe('carregado');
 
@@ -119,7 +125,9 @@ test('Cliente pede, paga, o Guincheiro mais próximo atende e o Cliente acompanh
   });
 
   await test.step('O Cliente vê "entregue" e o Guincheiro volta ao plantão', async () => {
-    await expect(cliente.getByRole('heading', { name: /Entregue\. Seu veículo chegou ao destino/ })).toBeVisible();
+    await expect(
+      cliente.getByRole('heading', { name: /Entregue\. Seu veículo chegou ao destino/ }),
+    ).toBeVisible();
     await expect(cliente.getByText(`Total do Pedido: ${reais(total)}.`)).toBeVisible();
     expect((await corridaDoPedido((await pedidoAtual())!.id))?.estado).toBe('entregue');
     await expect.poll(() => guincheiroDisponivel(GUINCHEIROS.marcos)).toBe(true);
@@ -155,7 +163,9 @@ test('sem Guincheiro: o Cliente tenta de novo e o Match recomeça', async ({ cli
   // Os Guincheiros voltam ao plantão; "Tentar de novo" abre a rodada 2 com o mesmo pagamento.
   await colocarTodosNoPlantao();
   await cliente.getByRole('button', { name: 'Tentar de novo' }).click();
-  await expect(cliente.getByRole('heading', { name: /Chamando o guincho mais próximo/ })).toBeVisible();
+  await expect(
+    cliente.getByRole('heading', { name: /Chamando o guincho mais próximo/ }),
+  ).toBeVisible();
   await expect
     .poll(async () => (await ofertasDoPedido(pedidoId)).map((o) => [o.rodada, o.guincheiro_id]))
     .toEqual([[2, GUINCHEIROS.marcos]]);

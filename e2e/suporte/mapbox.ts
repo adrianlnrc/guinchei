@@ -56,7 +56,7 @@ const ESTILO_VAZIO = { version: 8, name: 'e2e', sources: {}, layers: [] };
  * Registra as respostas do Mapbox no contexto (vale também para os workers do mapbox-gl).
  * Devolve a lista do que o app pediu e não tinha fixture, para o teste conferir.
  */
-export async function simularMapbox(context: BrowserContext): Promise<string[]>  {
+export async function simularMapbox(context: BrowserContext): Promise<string[]> {
   const semFixture: string[] = [];
 
   await context.route('https://events.mapbox.com/**', (route) =>
