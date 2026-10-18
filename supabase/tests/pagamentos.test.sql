@@ -31,7 +31,8 @@ reset role;
 set local role service_role;
 select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
   '11111111-1111-4111-8111-111111111111',
-  (select atualizado_em from public.pedidos where id = current_setting('teste.pedido')::uuid),
+  (select public.dados_da_cotacao(current_setting('teste.pedido')::uuid,
+     '11111111-1111-4111-8111-111111111111') ->> 'trajeto'),
   4.23, 1, 11000, 2115, 12810, 0, 0, 0, 25925);
 reset role;
 

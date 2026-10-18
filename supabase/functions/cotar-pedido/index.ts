@@ -4,7 +4,7 @@
 // apps) e o grava no Pedido, que continua em `cotado` (RF05, ADR-0003, ADR-0009). O banco
 // fornece a distância do Guincheiro elegível mais próximo até a origem (linha reta,
 // provisório), o km rebocado do trajeto, a tabela vigente, os feriados e a hora do
-// servidor; a gravação confere que o Pedido não mudou desde a leitura.
+// servidor; a gravação confere que o trajeto não mudou desde a leitura.
 //
 // Resposta: a cotação gravada (km, versão da tabela, frações dos adicionais e a
 // decomposição em centavos). Erros: { erro, mensagem } (ver _compartilhado/servidor.ts).
@@ -36,7 +36,8 @@ interface DadosDaCotacao {
   instante: string;
   km_ate_veiculo: number;
   km_rebocado: number;
-  atualizado_em: string;
+  /** Assinatura do trajeto lido; a gravação confere que ele não mudou. */
+  trajeto: string;
   tabela: LinhaTabelaPrecos;
   feriados: string[];
 }
@@ -65,14 +66,14 @@ function traduzir(erro: ErroBanco): ErroServidor | null {
     case 'GCT02':
       return new ErroServidor(409, 'sem_trajeto', 'Marque origem e destino antes de ver o preço');
     case 'GCT03':
-      return new ErroServidor(409, 'falha', 'O Pedido mudou durante a cotação. Tente de novo.');
+      return new ErroServidor(409, 'falha', 'O trajeto mudou durante a cotação. Tente de novo.');
     default:
       return null;
   }
 }
 
-servir(async ({ clienteId, corpo }) => {
-  const pedidoId = pedidoIdDoCorpo(corpo);
+/** Lê os dados, calcula e grava; devolve a cotação gravada. */
+async function cotar(pedidoId: string, clienteId: string) {
   const dados = await rpc<DadosDaCotacao>('dados_da_cotacao', {
     pedido_id: pedidoId,
     cliente_id: clienteId,
@@ -88,7 +89,7 @@ servir(async ({ clienteId, corpo }) => {
   await rpc('gravar_cotacao', {
     pedido_id: pedidoId,
     cliente_id: clienteId,
-    atualizado_em: dados.atualizado_em,
+    trajeto: dados.trajeto,
     km_ate_veiculo: kmAteVeiculo,
     tabela_precos_versao: tabela.versao,
     preco_taxa_base: preco.taxaBase,
@@ -108,4 +109,6 @@ servir(async ({ clienteId, corpo }) => {
     adicionalFeriado: tabela.adicionalFeriado,
     preco,
   };
-}, traduzir);
+}
+
+servir(async ({ clienteId, corpo }) => cotar(pedidoIdDoCorpo(corpo), clienteId), traduzir);

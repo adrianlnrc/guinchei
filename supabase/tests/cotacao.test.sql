@@ -8,7 +8,7 @@
 -- Usuários do seed: Cliente A (Rafael), Guincheiro G1 (Marcos, Cruzeiro, ~4,2 km do Eixo
 -- Monumental). Aqui se cria o Cliente B.
 begin;
-select plan(16);
+select plan(17);
 
 insert into auth.users (id, aud, role, phone)
 values ('44444444-4444-4444-8444-444444444444', 'authenticated', 'authenticated', '5561900000099');
@@ -37,7 +37,7 @@ select throws_ok(
 );
 select throws_ok(
   $$ select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
-       '11111111-1111-4111-8111-111111111111', now(), 1, 1, 18000, 0, 0, 0, 0, 0, 18000) $$,
+       '11111111-1111-4111-8111-111111111111', 'x', 1, 1, 18000, 0, 0, 0, 0, 0, 18000) $$,
   '42501',
   null,
   'o Cliente não grava o próprio Preço fechado'
@@ -110,7 +110,7 @@ select throws_ok(
 select lives_ok(
   $$ select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
        '11111111-1111-4111-8111-111111111111',
-       (select (d ->> 'atualizado_em')::timestamptz from dados),
+       (select d ->> 'trajeto' from dados),
        4.23, 1, 11000, 2115, 12810, 0, 0, 0, 25925) $$,
   'grava a cotação no Pedido do Cliente'
 );
@@ -126,21 +126,41 @@ select results_eq(
 select throws_ok(
   $$ select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
        '11111111-1111-4111-8111-111111111111',
-       (select atualizado_em from public.pedidos where id = current_setting('teste.pedido')::uuid),
+       (select d ->> 'trajeto' from dados),
        4.23, 1, 11000, 2115, 12810, 0, 0, 0, 30000) $$,
   '23514',
   null,
   'decomposição que não soma o total é recusada'
 );
 
--- O trajeto mudou depois da leitura (atualizado_em antigo): não grava preço de outro trajeto.
+-- Cotar de novo o mesmo trajeto (ex.: duas cotações ao mesmo tempo) regrava.
+select lives_ok(
+  $$ select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
+       '11111111-1111-4111-8111-111111111111',
+       (select d ->> 'trajeto' from dados),
+       4.23, 1, 11000, 2115, 12810, 0, 0, 0, 25925) $$,
+  'cotar de novo o mesmo trajeto regrava'
+);
+
+-- O trajeto mudou depois da leitura: não grava o preço do trajeto antigo.
+reset role;
+set local role authenticated;
+set local request.jwt.claims to '{"sub": "11111111-1111-4111-8111-111111111111", "role": "authenticated"}';
+select public.definir_trajeto_pedido(
+  current_setting('teste.pedido')::uuid,
+  -15.7903, -47.8921, 'Eixo Monumental, Brasília - DF',
+  -16.0153, -48.0614, 'Setor Central, Gama, Brasília - DF',
+  30);
+reset role;
+set local role service_role;
 select throws_ok(
   $$ select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
-       '11111111-1111-4111-8111-111111111111', '2026-01-01 00:00:00-03',
+       '11111111-1111-4111-8111-111111111111',
+       (select d ->> 'trajeto' from dados),
        4.23, 1, 11000, 2115, 12810, 0, 0, 0, 25925) $$,
   'GCT03',
   null,
-  'o Pedido mudou desde a leitura: a cotação não é gravada'
+  'o trajeto mudou desde a leitura: a cotação antiga não é gravada'
 );
 
 -- ---------------------------------------------------------------------------
@@ -160,6 +180,12 @@ select throws_ok(
 
 reset role;
 update public.guincheiros set disponivel = true;
+-- Cota o trajeto novo (Gama, 30 km) e confirma o Pedido por fora.
+select public.gravar_cotacao(current_setting('teste.pedido')::uuid,
+  '11111111-1111-4111-8111-111111111111',
+  public.dados_da_cotacao(current_setting('teste.pedido')::uuid,
+    '11111111-1111-4111-8111-111111111111') ->> 'trajeto',
+  4.23, 1, 11000, 2115, 18000, 0, 0, 0, 31115);
 update public.pedidos set estado = 'confirmado' where id = current_setting('teste.pedido')::uuid;
 set local role service_role;
 

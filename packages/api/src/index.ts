@@ -30,7 +30,8 @@ export interface TrajetoPedido {
   destino: Endereco;
   /**
    * Distância da rota de carro entre origem e destino. Provisório: vem da rota calculada no
-   * app; a cotação (#10) recalcula no servidor.
+   * app e a cotação usa esse valor; recalcular no servidor depende do token de servidor do
+   * Mapbox.
    */
   kmRebocado: number;
 }

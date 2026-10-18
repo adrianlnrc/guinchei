@@ -204,6 +204,16 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       });
     });
 
+    it('cotações simultâneas do mesmo Pedido não falham (a segunda relê e regrava)', async () => {
+      const { api, id } = await pedidoComTrajeto();
+      const cotacoes = await Promise.all([
+        api.cotarPedido(id),
+        api.cotarPedido(id),
+        api.cotarPedido(id),
+      ]);
+      expect(new Set(cotacoes.map((c) => c.preco.total)).size).toBe(1);
+    });
+
     it('sem Guincheiro elegível, a cotação responde "Nenhum guincho disponível agora"', async () => {
       const { api, id } = await pedidoComTrajeto();
       const servico = admin();

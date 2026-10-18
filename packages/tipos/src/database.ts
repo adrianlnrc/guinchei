@@ -527,6 +527,10 @@ export type Database = {
         };
         Returns: string;
       };
+      assinatura_do_trajeto: {
+        Args: { destino: unknown; km_rebocado: number; origem: unknown };
+        Returns: string;
+      };
       atualizar_pedido_cotado: {
         Args: {
           pedido_id: string;
@@ -556,7 +560,6 @@ export type Database = {
       eh_operacao: { Args: Record<PropertyKey, never>; Returns: boolean };
       gravar_cotacao: {
         Args: {
-          atualizado_em: string;
           cliente_id: string;
           km_ate_veiculo: number;
           pedido_id: string;
@@ -568,6 +571,7 @@ export type Database = {
           preco_taxa_base: number;
           preco_total: number;
           tabela_precos_versao: number;
+          trajeto: string;
         };
         Returns: undefined;
       };
