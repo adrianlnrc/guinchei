@@ -677,6 +677,34 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         return { eventos, parar: () => supabase.removeChannel(canal) };
       }
 
+      // Logo depois de `supabase db reset`, o Realtime ainda religa a replicação do banco:
+      // uma assinatura já "SUBSCRIBED" pode perder eventos por alguns segundos. Espera um
+      // evento de verdade chegar antes de testar (fora desse caso, passa na hora).
+      beforeAll(async () => {
+        const { api, supabase } = novaApi();
+        await api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+        const id = await api.abrirPedido({
+          tipoVeiculo: 'carro',
+          situacao: 'nao_liga',
+          rodasGiram: 'sim',
+        });
+        const escuta = await escutarTabelas(supabase);
+        let vez = 0;
+        try {
+          await esperar(async () => {
+            await api.atualizarPedido(id, {
+              tipoVeiculo: 'carro',
+              situacao: 'nao_liga',
+              rodasGiram: ++vez % 2 ? 'nao' : 'sim',
+            });
+            await new Promise<void>((r) => setTimeout(r, 500));
+            return escuta.eventos.length > 0;
+          }, 'o Realtime entregar um evento');
+        } finally {
+          await escuta.parar();
+        }
+      }, 60_000);
+
       it('o Cliente recebe cada etapa da Corrida sem recarregar, com só o nome do Guincheiro', async () => {
         const { api, id } = await pedidoConfirmado();
         const acompanhamento = observar(api, id);
