@@ -1,8 +1,12 @@
 import { vi } from 'vitest';
 import {
   ErroApi,
+  LIMITE_FOTOS_POR_ETAPA,
   type Acompanhamento,
   type ApiGuinchei,
+  type ArquivoDeMidia,
+  type FotoEstado,
+  type OpcoesFotoEstado,
   type CadastroUrgente,
   type EtapaDoAcompanhamento,
   type CotacaoPedido,
@@ -83,11 +87,13 @@ export function acompanhamentoEm(
 export function apiFalsa({
   sessao = false,
   perfil = null,
-}: { sessao?: boolean; perfil?: Perfil | null } = {}) {
+  fotos = [],
+}: { sessao?: boolean; perfil?: Perfil | null; fotos?: FotoEstado[] } = {}) {
   let logado = sessao;
   let meuPerfil = perfil;
   let telefoneLogado = perfil?.telefone ?? '5561900000006';
   const ouvintes = new Set<(acompanhamento: Acompanhamento) => void>();
+  const registradas = [...fotos];
 
   const api = {
     enviarCodigo: vi.fn<(telefone: string) => Promise<void>>(async () => {}),
@@ -141,6 +147,31 @@ export function apiFalsa({
     buscarOfertasAbertas: vi.fn<() => Promise<OfertaAberta[]>>(async () => []),
     aceitarOferta: vi.fn<(tentativaId: number) => Promise<string>>(async () => 'corrida-1'),
     recusarOferta: vi.fn<(tentativaId: number) => Promise<void>>(async () => {}),
+    // Como o banco: até 6 itens por autor e etapa; o autor e a hora são do servidor.
+    registrarFotoEstado: vi.fn(
+      async (corridaId: string, arquivo: ArquivoDeMidia, opcoes: OpcoesFotoEstado) => {
+        const meus = registradas.filter(
+          (f) => f.papelAutor === 'cliente' && f.etapa === opcoes.etapa,
+        );
+        if (meus.length >= LIMITE_FOTOS_POR_ETAPA) {
+          throw new ErroApi('limite_de_fotos', 'Limite de 6 itens por etapa atingido.');
+        }
+        const foto: FotoEstado = {
+          id: `foto-${registradas.length + 1}`,
+          corridaId,
+          papelAutor: 'cliente',
+          tipo: arquivo.type.startsWith('video/') ? 'video' : 'foto',
+          etapa: opcoes.etapa,
+          criadoEm: '2026-10-18T17:40:00Z',
+          latitude: opcoes.latitude ?? null,
+          longitude: opcoes.longitude ?? null,
+          url: `https://armazenamento.teste/foto-${registradas.length + 1}`,
+        };
+        registradas.push(foto);
+        return foto;
+      },
+    ),
+    listarFotosEstado: vi.fn(async () => [...registradas]),
   } satisfies ApiGuinchei;
 
   return {
@@ -148,6 +179,10 @@ export function apiFalsa({
     /** Faz o "Realtime" entregar este estado a quem assinou o acompanhamento. */
     emitir(acompanhamento: Acompanhamento) {
       for (const aoMudar of [...ouvintes]) aoMudar(acompanhamento);
+    },
+    /** O Guincheiro registrou uma foto (aparece na próxima leitura da galeria). */
+    registrarDoGuincheiro(foto: FotoEstado) {
+      registradas.push(foto);
     },
     /** Quantas assinaturas do Realtime estão abertas. */
     assinaturasAbertas: () => ouvintes.size,

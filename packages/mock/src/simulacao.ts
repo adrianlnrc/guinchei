@@ -15,30 +15,12 @@ export const TRANSICOES_CORRIDA: Record<EstadoCorrida, readonly EstadoCorrida[]>
   entregue: [],
 };
 
-export const FOTOS_MIN_POR_ETAPA = 1;
-export const FOTOS_MAX_POR_ETAPA = 6;
-
-export interface FotosDaCorrida {
-  antes: number;
-  depois: number;
-}
-
 export class TransicaoInvalida extends Error {}
 
-/** `carregado` exige Fotos de estado "antes"; `entregue` exige Fotos "depois" (RN04). */
-export function transitarCorrida(
-  de: EstadoCorrida,
-  para: EstadoCorrida,
-  fotos: FotosDaCorrida,
-): EstadoCorrida {
+/** Sem guarda de Fotos de estado: elas são opcionais e a Corrida encerra sem elas (ADR-0011). */
+export function transitarCorrida(de: EstadoCorrida, para: EstadoCorrida): EstadoCorrida {
   if (!TRANSICOES_CORRIDA[de].includes(para)) {
     throw new TransicaoInvalida(`Corrida não vai de ${de} para ${para}`);
-  }
-  if (para === 'carregado' && fotos.antes < FOTOS_MIN_POR_ETAPA) {
-    throw new TransicaoInvalida('Faltam as Fotos de estado antes de carregar');
-  }
-  if (para === 'entregue' && fotos.depois < FOTOS_MIN_POR_ETAPA) {
-    throw new TransicaoInvalida('Faltam as Fotos de estado depois de entregar');
   }
   return para;
 }

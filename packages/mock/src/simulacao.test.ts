@@ -1,34 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import { TransicaoInvalida, taxaDeCancelamento, transitarCorrida } from './simulacao';
 
-const semFotos = { antes: 0, depois: 0 };
-const comFotos = { antes: 4, depois: 4 };
-
 describe('transitarCorrida', () => {
   it('segue a ordem aceita → a_caminho → no_local → carregado → entregue', () => {
-    let estado = transitarCorrida('aceita', 'a_caminho', comFotos);
-    estado = transitarCorrida(estado, 'no_local', comFotos);
-    estado = transitarCorrida(estado, 'carregado', comFotos);
-    estado = transitarCorrida(estado, 'entregue', comFotos);
+    let estado = transitarCorrida('aceita', 'a_caminho');
+    estado = transitarCorrida(estado, 'no_local');
+    estado = transitarCorrida(estado, 'carregado');
+    estado = transitarCorrida(estado, 'entregue');
     expect(estado).toBe('entregue');
   });
 
   it('não pula etapas', () => {
-    expect(() => transitarCorrida('a_caminho', 'carregado', comFotos)).toThrow(TransicaoInvalida);
+    expect(() => transitarCorrida('a_caminho', 'carregado')).toThrow(TransicaoInvalida);
   });
 
-  it('exige Fotos antes para carregar', () => {
-    expect(() => transitarCorrida('no_local', 'carregado', semFotos)).toThrow(/antes de carregar/);
-  });
-
-  it('exige Fotos depois para entregar', () => {
-    expect(() => transitarCorrida('carregado', 'entregue', { antes: 4, depois: 0 })).toThrow(
-      /depois de entregar/,
-    );
+  it('carrega e entrega sem exigir Fotos de estado (ADR-0011)', () => {
+    expect(transitarCorrida('no_local', 'carregado')).toBe('carregado');
+    expect(transitarCorrida('carregado', 'entregue')).toBe('entregue');
   });
 
   it('entregue é terminal', () => {
-    expect(() => transitarCorrida('entregue', 'aceita', comFotos)).toThrow(TransicaoInvalida);
+    expect(() => transitarCorrida('entregue', 'aceita')).toThrow(TransicaoInvalida);
   });
 });
 

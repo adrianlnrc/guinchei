@@ -10,22 +10,8 @@ import {
   type SetStateAction,
 } from 'react';
 import type { MeuGuincheiro, OfertaAberta } from '@guinchei/api';
-import { HISTORICO_GUINCHEIRO, LADOS, type CorridaHistorico } from '@guinchei/mock';
+import { HISTORICO_GUINCHEIRO, type CorridaHistorico } from '@guinchei/mock';
 import { useApi } from './api';
-
-export type Etapa = 'antes' | 'depois';
-
-/** Prévia das Fotos de estado: no skeleton elas ainda não são gravadas (issue #13). */
-export interface FotoEstado {
-  hora: string;
-  gps: string;
-}
-
-type Fotos = Record<Etapa, (FotoEstado | null)[]>;
-
-const fotosVazias = (): Fotos => ({ antes: LADOS.map(() => null), depois: LADOS.map(() => null) });
-
-export const contarFotos = (lista: (FotoEstado | null)[]) => lista.filter(Boolean).length;
 
 interface Plantao {
   celular: string;
@@ -43,8 +29,6 @@ interface Plantao {
   atualizarOferta: () => Promise<OfertaAberta | null>;
   /** A oferta foi respondida ou venceu: não volta a ser mostrada. */
   descartarOferta: (tentativaId: number) => void;
-  fotos: Fotos;
-  registrarFoto: (etapa: Etapa, lado: number, foto: FotoEstado) => void;
   /** Guarda a Corrida entregue no histórico da sessão (o histórico ainda é do protótipo). */
   encerrar: (c: CorridaHistorico) => void;
   historico: CorridaHistorico[];
@@ -59,7 +43,6 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
   const [celular, setCelular] = useState('');
   const [guincheiro, setGuincheiro] = useState<MeuGuincheiro | null>(null);
   const [oferta, setOferta] = useState<OfertaAberta | null>(null);
-  const [fotos, setFotos] = useState<Fotos>(fotosVazias);
   const [historico, setHistorico] = useState(HISTORICO_GUINCHEIRO);
   const [aviso, setAviso] = useState<string | null>(null);
   // Diferença entre o relógio do servidor e o do aparelho, medida a cada leitura de ofertas.
@@ -105,13 +88,8 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
     setOferta((atual) => (atual?.tentativaId === tentativaId ? null : atual));
   }, []);
 
-  const registrarFoto = useCallback((etapa: Etapa, lado: number, foto: FotoEstado) => {
-    setFotos((f) => ({ ...f, [etapa]: f[etapa].map((atual, i) => (i === lado ? foto : atual)) }));
-  }, []);
-
   const encerrar = useCallback((c: CorridaHistorico) => {
     setHistorico((h) => [c, ...h]);
-    setFotos(fotosVazias());
   }, []);
 
   const valor = useMemo(
@@ -125,8 +103,6 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
       oferta,
       atualizarOferta,
       descartarOferta,
-      fotos,
-      registrarFoto,
       encerrar,
       historico,
       aviso,
@@ -140,8 +116,6 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
       oferta,
       atualizarOferta,
       descartarOferta,
-      fotos,
-      registrarFoto,
       encerrar,
       historico,
       aviso,

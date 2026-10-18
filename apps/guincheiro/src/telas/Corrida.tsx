@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ErroApi, type CorridaDoGuincheiro, type EstadoCorrida } from '@guinchei/api';
-import { Botao, Corpo, IndicadorHome, Mapa, Ponto, Tela, formatarKm } from '@guinchei/ui';
+import { etapaDaFoto } from '@guinchei/estados';
+import {
+  Botao,
+  Corpo,
+  IndicadorHome,
+  Mapa,
+  Ponto,
+  Tela,
+  contarFotosDoAutor,
+  formatarKm,
+} from '@guinchei/ui';
 import { useApi } from '../api';
 import { usePlantao } from '../plantao';
 import { Chips, Navegacao, chipsDoPedido } from './comum';
@@ -24,6 +34,9 @@ export function Corrida() {
   // undefined: ainda lendo; null: não há Corrida em andamento.
   const [corrida, setCorrida] = useState<CorridaDoGuincheiro | null | undefined>(undefined);
   const [enviando, setEnviando] = useState(false);
+  // O aviso das Fotos de estado, enquanto espera a confirmação para seguir sem fotos.
+  // Guarda o estado em que o aviso foi aberto: se a Corrida mudar por fora, o aviso some.
+  const [semFotosEm, setSemFotosEm] = useState<EstadoCorrida | null>(null);
   const id = corrida?.id;
 
   const recarregar = useCallback(async () => {
@@ -63,7 +76,27 @@ export function Corrida() {
     );
   }, [api, id, ir, recarregar]);
 
+  /**
+   * "Carreguei" e "Entreguei": se o Guincheiro não tem fotos da etapa, mostra o aviso e espera
+   * a confirmação (ADR-0011). As fotos são opcionais: confirmar segue sem elas.
+   */
+  async function pedirAvanco(atual: CorridaDoGuincheiro, para: EstadoCorrida) {
+    if (atual.estado !== 'no_local' && atual.estado !== 'carregado') return avancar(atual, para);
+    setEnviando(true);
+    let temFotos = false;
+    try {
+      const fotos = await api.listarFotosEstado(atual.id);
+      temFotos = contarFotosDoAutor(fotos, 'guincheiro', etapaDaFoto(atual.estado)) > 0;
+    } catch {
+      // Sem conseguir ler as fotos, pergunta: melhor avisar do que deixar passar.
+    }
+    setEnviando(false);
+    if (temFotos) return avancar(atual, para);
+    setSemFotosEm(atual.estado);
+  }
+
   async function avancar(atual: CorridaDoGuincheiro, para: EstadoCorrida) {
+    setSemFotosEm(null);
     setEnviando(true);
     try {
       const novo = await api.avancarCorrida(atual.id, para);
@@ -100,13 +133,42 @@ export function Corrida() {
 
   const etapa = PROXIMA_ETAPA[corrida.estado];
   const { pedido } = corrida;
-  const passo = (
-    <Botao variante="claro" grande disabled={enviando} onClick={() => avancar(corrida, etapa.para)}>
-      {etapa.botao}
-    </Botao>
-  );
-  const fotos = (e: 'antes' | 'depois') => (
-    <Botao variante="contorno-escuro" onClick={() => ir(`/fotos/${e}`)}>
+  const passo =
+    semFotosEm === corrida.estado ? (
+      <div
+        role="alertdialog"
+        aria-labelledby="aviso-fotos"
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <p id="aviso-fotos" style={{ font: '600 16px/1.4 var(--fonte-texto)', margin: 0 }}>
+          Registrar fotos protege você se houver reclamação de avaria.
+        </p>
+        <span className="apoio" style={{ fontSize: 14 }}>
+          Você ainda não registrou fotos desta etapa. Elas são opcionais: dá para seguir sem.
+        </span>
+        <Botao variante="claro" grande onClick={() => ir('/fotos')}>
+          Registrar fotos
+        </Botao>
+        <Botao
+          variante="contorno-escuro"
+          disabled={enviando}
+          onClick={() => avancar(corrida, etapa.para)}
+        >
+          Seguir sem fotos
+        </Botao>
+      </div>
+    ) : (
+      <Botao
+        variante="claro"
+        grande
+        disabled={enviando}
+        onClick={() => pedirAvanco(corrida, etapa.para)}
+      >
+        {etapa.botao}
+      </Botao>
+    );
+  const fotos = () => (
+    <Botao variante="contorno-escuro" onClick={() => ir('/fotos')}>
       Fotos de estado (opcional)
     </Botao>
   );
@@ -162,7 +224,7 @@ export function Corrida() {
           </p>
           <Chips itens={chipsDoPedido(pedido)} />
           <div className="espaco" />
-          {fotos('antes')}
+          {fotos()}
           {passo}
         </Corpo>
       </Tela>
@@ -193,7 +255,7 @@ export function Corrida() {
             {formatarKm(pedido.kmRebocado)} de reboque
           </span>
         )}
-        {fotos('depois')}
+        {fotos()}
         {passo}
         <IndicadorHome />
       </div>
