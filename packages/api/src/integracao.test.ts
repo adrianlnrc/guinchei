@@ -394,9 +394,30 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         .eq('id', true);
     });
 
-    // Quem aceita fica indisponível; cada teste começa com os três disponíveis.
+    // Quem aceita fica indisponível; cada teste começa com os três disponíveis e sem Corrida.
+    // A guarda do banco (GDP01, #35) recusa ligar o plantão com Corrida não terminal, então
+    // as Corridas que o teste deixou em andamento saem antes de religar.
     afterEach(async () => {
-      await admin().from('guincheiros').update({ disponivel: true }).in('id', GUINCHEIROS);
+      const servico = admin();
+      const { data: abertas, error } = await servico
+        .from('corridas')
+        .select('id, estado')
+        .in('guincheiro_id', GUINCHEIROS)
+        .in('estado', ['aceita', 'a_caminho', 'no_local', 'carregado']);
+      if (error) throw error;
+      const etapas = ['aceita', 'a_caminho', 'no_local', 'carregado', 'entregue'] as const;
+      for (const corrida of abertas ?? []) {
+        // Entrega pelas transições normais: as Corridas e as Fotos de estado continuam no banco.
+        for (const estado of etapas.slice(etapas.indexOf(corrida.estado as never) + 1)) {
+          const avancou = await servico.from('corridas').update({ estado }).eq('id', corrida.id);
+          if (avancou.error) throw avancou.error;
+        }
+      }
+      const religou = await servico
+        .from('guincheiros')
+        .update({ disponivel: true })
+        .in('id', GUINCHEIROS);
+      if (religou.error) throw religou.error;
     });
 
     async function entrar(telefone: string) {
@@ -625,7 +646,11 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           .eq('id', true);
         // Corridas deixadas em andamento pelos outros testes: aqui cada um começa sem Corrida.
         await servico.from('corridas').delete().in('guincheiro_id', GUINCHEIROS);
-        await servico.from('guincheiros').update({ disponivel: true }).in('id', GUINCHEIROS);
+        const religou = await servico
+          .from('guincheiros')
+          .update({ disponivel: true })
+          .in('id', GUINCHEIROS);
+        if (religou.error) throw religou.error;
       });
       afterAll(async () => {
         const servico = admin();
@@ -752,6 +777,11 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
             expect((pulo as ErroApi).motivo).toBe('transicao_invalida');
             const alheia = await wagner.avancarCorrida(corridaId, 'a_caminho').catch((e) => e);
             expect((alheia as ErroApi).motivo).toBe('corrida_indisponivel');
+
+            // Guarda do banco (GDP01): em Corrida, o plantão não liga (por exemplo, em outra aba).
+            const plantao = await marcos.definirDisponibilidade(true).catch((e) => e);
+            expect((plantao as ErroApi).motivo).toBe('em_corrida');
+            await marcos.definirDisponibilidade(false);
 
             for (const para of ['a_caminho', 'no_local', 'carregado', 'entregue'] as const) {
               expect(await marcos.avancarCorrida(corridaId, para)).toBe(para);
