@@ -12,7 +12,15 @@
 // usuário do 5561900000006 antes, para o teste poder rodar de novo sem `db reset`.
 import { createClient } from '@supabase/supabase-js';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { criarApi, criarClienteApi, ErroApi, type ApiGuinchei } from './index';
+import {
+  criarApi,
+  criarClienteApi,
+  ErroApi,
+  type Acompanhamento,
+  type ApiGuinchei,
+  type ClienteSupabase,
+  type EtapaDoAcompanhamento,
+} from './index';
 
 declare const process: { env: Record<string, string | undefined> };
 declare const console: { info(mensagem: string): void };
@@ -614,6 +622,216 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       const tentar = await api.tentarDeNovo(id).catch((e: unknown) => e);
       expect((tentar as ErroApi).motivo).toBe('pedido_indisponivel');
     }, 90_000);
+
+    describe('acompanhamento do Cliente (Supabase Realtime)', () => {
+      /** Segue o Pedido como o app do Cliente: guarda cada estado que chega pelo Realtime. */
+      function observar(api: ApiGuinchei, pedidoId: string) {
+        const vistos: Acompanhamento[] = [];
+        const cancelar = api.acompanharPedido(pedidoId, (a) => vistos.push(a));
+        return {
+          vistos,
+          cancelar,
+          /** Espera a etapa mais recente ser esta. */
+          aguardar: (etapa: EtapaDoAcompanhamento) =>
+            esperar(
+              async () => (vistos.at(-1)?.etapa === etapa ? vistos.at(-1) : null),
+              `etapa ${etapa}`,
+            ),
+          /** As etapas na ordem em que chegaram, sem repetir a mesma em seguida. */
+          etapas: () =>
+            vistos.map((a) => a.etapa).filter((etapa, i, todas) => etapa !== todas[i - 1]),
+        };
+      }
+
+      async function entrarComoGuincheiro(telefone: string) {
+        const { api, supabase } = novaApi();
+        await api.confirmarCodigo(telefone, CODIGO_DE_TESTE);
+        return { api, supabase };
+      }
+
+      /** O Guincheiro avança a própria Corrida (a RLS libera só o `estado`). */
+      async function avancar(
+        guincheiro: ClienteSupabase,
+        corridaId: string,
+        estado: 'a_caminho' | 'no_local' | 'carregado' | 'entregue',
+      ) {
+        const { error } = await guincheiro.from('corridas').update({ estado }).eq('id', corridaId);
+        expect(error).toBeNull();
+      }
+
+      /** Escuta direto as tabelas, sem filtro: só chega o que a RLS deixa o usuário ver. */
+      async function escutarTabelas(supabase: ClienteSupabase) {
+        const eventos: string[] = [];
+        const canal = supabase.channel(`escuta-${Math.random().toString(36).slice(2)}`);
+        for (const tabela of ['pedidos', 'corridas'] as const) {
+          canal.on('postgres_changes', { event: '*', schema: 'public', table: tabela }, (p) =>
+            eventos.push(`${tabela}:${p.eventType}`),
+          );
+        }
+        await new Promise<void>((resolve, reject) =>
+          canal.subscribe((status) => {
+            if (status === 'SUBSCRIBED') resolve();
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error(status));
+          }),
+        );
+        return { eventos, parar: () => supabase.removeChannel(canal) };
+      }
+
+      // Logo depois de `supabase db reset`, o Realtime ainda religa a replicação do banco:
+      // uma assinatura já "SUBSCRIBED" pode perder eventos por alguns segundos. Espera um
+      // evento de verdade chegar antes de testar (fora desse caso, passa na hora).
+      beforeAll(async () => {
+        const { api, supabase } = novaApi();
+        await api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+        const id = await api.abrirPedido({
+          tipoVeiculo: 'carro',
+          situacao: 'nao_liga',
+          rodasGiram: 'sim',
+        });
+        const escuta = await escutarTabelas(supabase);
+        let vez = 0;
+        try {
+          await esperar(async () => {
+            await api.atualizarPedido(id, {
+              tipoVeiculo: 'carro',
+              situacao: 'nao_liga',
+              rodasGiram: ++vez % 2 ? 'nao' : 'sim',
+            });
+            await new Promise<void>((r) => setTimeout(r, 500));
+            return escuta.eventos.length > 0;
+          }, 'o Realtime entregar um evento');
+        } finally {
+          await escuta.parar();
+        }
+      }, 60_000);
+
+      it('o Cliente recebe cada etapa da Corrida sem recarregar, com só o nome do Guincheiro', async () => {
+        const { api, id } = await pedidoConfirmado();
+        const acompanhamento = observar(api, id);
+        try {
+          expect((await acompanhamento.aguardar('em_match')).corrida).toBeNull();
+
+          const { api: marcos, supabase: doMarcos } = await entrarComoGuincheiro(MARCOS.telefone);
+          const oferta = await ofertaDoPedido(marcos, id);
+          const corridaId = await marcos.aceitarOferta(oferta.tentativaId);
+
+          const aceita = await acompanhamento.aguardar('aceita');
+          expect(aceita.corrida).toEqual({
+            id: corridaId,
+            estado: 'aceita',
+            guincheiro: { nome: 'Marcos Alves', frota: 'Reboque Planalto' },
+          });
+          for (const estado of ['a_caminho', 'no_local', 'carregado', 'entregue'] as const) {
+            await avancar(doMarcos, corridaId, estado);
+            await acompanhamento.aguardar(estado);
+          }
+          expect(acompanhamento.etapas()).toEqual([
+            'em_match',
+            'aceita',
+            'a_caminho',
+            'no_local',
+            'carregado',
+            'entregue',
+          ]);
+        } finally {
+          acompanhamento.cancelar();
+        }
+      }, 60_000);
+
+      it('o Cliente B não recebe nada do Pedido e da Corrida do Cliente A', async () => {
+        const { api, supabase, id } = await pedidoConfirmado();
+        const { api: apiB, supabase: supabaseB } = novaApi();
+        await apiB.enviarCodigo(SEM_PERFIL);
+        await apiB.confirmarCodigo(SEM_PERFIL, CODIGO_DE_TESTE);
+        if (!(await apiB.buscarMeuPerfil())) {
+          await apiB.criarPerfilUrgente({
+            nome: 'Bia Costa',
+            cpf: '11144477735',
+            termosVersao: 'v-teste',
+          });
+        }
+        const escutaA = await escutarTabelas(supabase);
+        const escutaB = await escutarTabelas(supabaseB);
+        const deA = observar(api, id);
+        const deB = observar(apiB, id);
+        try {
+          await deA.aguardar('em_match');
+          const { api: marcos, supabase: doMarcos } = await entrarComoGuincheiro(MARCOS.telefone);
+          const corridaId = await marcos.aceitarOferta(
+            (await ofertaDoPedido(marcos, id)).tentativaId,
+          );
+          await deA.aguardar('aceita');
+          await avancar(doMarcos, corridaId, 'a_caminho');
+          await deA.aguardar('a_caminho');
+          // Dá tempo de um evento indevido chegar ao B antes de conferir que não veio nenhum.
+          await new Promise<void>((r) => setTimeout(r, 1500));
+
+          expect(escutaA.eventos).toEqual(
+            expect.arrayContaining(['pedidos:UPDATE', 'corridas:INSERT', 'corridas:UPDATE']),
+          );
+          expect(escutaB.eventos).toEqual([]);
+          expect(deB.vistos).toEqual([]);
+          expect(await apiB.buscarAcompanhamento(id)).toBeNull();
+        } finally {
+          deA.cancelar();
+          deB.cancelar();
+          await escutaA.parar();
+          await escutaB.parar();
+        }
+      }, 60_000);
+
+      it('sem aceite, mostra sem_guincheiro; tentar de novo volta ao Match e o aceite atribui', async () => {
+        const { api, id } = await pedidoConfirmado();
+        const acompanhamento = observar(api, id);
+        try {
+          const { marcos } = await esgotarRodada(id);
+          await acompanhamento.aguardar('sem_guincheiro');
+          expect((await api.buscarAcompanhamentoEmAndamento())?.pedidoId).toBe(id);
+
+          await api.tentarDeNovo(id);
+          await acompanhamento.aguardar('em_match');
+          await marcos.aceitarOferta((await ofertaDoPedido(marcos, id)).tentativaId);
+          const aceita = await acompanhamento.aguardar('aceita');
+          expect(aceita.corrida?.guincheiro?.nome).toBe('Marcos Alves');
+          expect(acompanhamento.etapas()).toEqual([
+            'em_match',
+            'sem_guincheiro',
+            'em_match',
+            'aceita',
+          ]);
+        } finally {
+          acompanhamento.cancelar();
+        }
+      }, 90_000);
+
+      it('sem aceite, o Cliente estorna e vê "estornado"; o Pedido deixa de estar em andamento', async () => {
+        const { api, id, cotacao } = await pedidoConfirmado();
+        const acompanhamento = observar(api, id);
+        try {
+          await esgotarRodada(id);
+          await acompanhamento.aguardar('sem_guincheiro');
+          await api.estornarPedido(id);
+          const estornado = await acompanhamento.aguardar('estornado');
+          expect(estornado.precoTotal).toBe(cotacao.preco.total);
+          expect(estornado.corrida).toBeNull();
+          expect((await api.buscarAcompanhamentoEmAndamento())?.pedidoId).not.toBe(id);
+          expect((await api.buscarAcompanhamento(id))?.etapa).toBe('estornado');
+        } finally {
+          acompanhamento.cancelar();
+        }
+      }, 90_000);
+
+      it('o Pedido mais recente em andamento é o que o Cliente recupera ao reabrir o app', async () => {
+        const { api, id } = await pedidoConfirmado();
+        const { api: reaberto } = novaApi();
+        await reaberto.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+        await expect(reaberto.buscarAcompanhamentoEmAndamento()).resolves.toMatchObject({
+          pedidoId: id,
+          etapa: 'em_match',
+        });
+        expect(await api.buscarAcompanhamento('00000000-0000-4000-8000-000000000000')).toBeNull();
+      }, 30_000);
+    });
   });
 
   it('código errado não entra', async () => {
