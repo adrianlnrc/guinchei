@@ -205,6 +205,51 @@ export type Database = {
           },
         ];
       };
+      pagamentos: {
+        Row: {
+          atualizado_em: string;
+          criado_em: string;
+          estado: Database['public']['Enums']['estado_pagamento'];
+          id: string;
+          metodo: Database['public']['Enums']['metodo_pagamento'];
+          pedido_id: string;
+          provedor: string;
+          referencia_externa: string;
+          valor: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          atualizado_em?: string;
+          criado_em?: string;
+          estado: Database['public']['Enums']['estado_pagamento'];
+          id?: string;
+          metodo: Database['public']['Enums']['metodo_pagamento'];
+          pedido_id: string;
+          provedor: string;
+          referencia_externa: string;
+          valor: number;
+        };
+        Update: {
+          atualizado_em?: string;
+          criado_em?: string;
+          estado?: Database['public']['Enums']['estado_pagamento'];
+          id?: string;
+          metodo?: Database['public']['Enums']['metodo_pagamento'];
+          pedido_id?: string;
+          provedor?: string;
+          referencia_externa?: string;
+          valor?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'pagamentos_pedido_id_fkey';
+            columns: ['pedido_id'];
+            isOneToOne: false;
+            referencedRelation: 'pedidos';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       pedidos: {
         Row: {
           atualizado_em: string;
@@ -494,6 +539,7 @@ export type Database = {
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
+      dados_da_cotacao: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       definir_trajeto_pedido: {
         Args: {
           destino_endereco: string;
@@ -508,6 +554,23 @@ export type Database = {
         Returns: undefined;
       };
       eh_operacao: { Args: Record<PropertyKey, never>; Returns: boolean };
+      gravar_cotacao: {
+        Args: {
+          atualizado_em: string;
+          cliente_id: string;
+          km_ate_veiculo: number;
+          pedido_id: string;
+          preco_adicional_feriado: number;
+          preco_adicional_noturno: number;
+          preco_ajuste_minimo: number;
+          preco_ate_veiculo: number;
+          preco_rebocado: number;
+          preco_taxa_base: number;
+          preco_total: number;
+          tabela_precos_versao: number;
+        };
+        Returns: undefined;
+      };
       guincheiros_elegiveis_proximos: {
         Args: { latitude: number; limite?: number; longitude: number };
         Returns: {
@@ -524,6 +587,19 @@ export type Database = {
         Returns: boolean;
       };
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
+      preco_para_confirmar: { Args: { cliente_id: string; pedido_id: string }; Returns: number };
+      registrar_pagamento: {
+        Args: {
+          cliente_id: string;
+          estado: Database['public']['Enums']['estado_pagamento'];
+          metodo: Database['public']['Enums']['metodo_pagamento'];
+          pedido_id: string;
+          provedor: string;
+          referencia_externa: string;
+          valor: number;
+        };
+        Returns: string;
+      };
       sou_cliente_do_pedido: { Args: { pedido_id: string }; Returns: boolean };
       tabela_precos_vigente: {
         Args: { em?: string };
@@ -552,8 +628,10 @@ export type Database = {
     Enums: {
       abrangencia_feriado: 'nacional' | 'df';
       estado_corrida: 'aceita' | 'a_caminho' | 'no_local' | 'carregado' | 'entregue';
+      estado_pagamento: 'autorizado' | 'capturado' | 'estornado' | 'recusado';
       estado_pedido:
         'cotado' | 'confirmado' | 'em_match' | 'atribuido' | 'sem_guincheiro' | 'estornado';
+      metodo_pagamento: 'pix' | 'cartao';
       papel: 'cliente' | 'guincheiro' | 'operacao';
       resultado_tentativa: 'oferecida' | 'aceita' | 'recusada' | 'expirada' | 'pulada_teto';
       rodas_giram: 'sim' | 'nao' | 'nao_sei';
@@ -677,6 +755,7 @@ export const Constants = {
     Enums: {
       abrangencia_feriado: ['nacional', 'df'],
       estado_corrida: ['aceita', 'a_caminho', 'no_local', 'carregado', 'entregue'],
+      estado_pagamento: ['autorizado', 'capturado', 'estornado', 'recusado'],
       estado_pedido: [
         'cotado',
         'confirmado',
@@ -685,6 +764,7 @@ export const Constants = {
         'sem_guincheiro',
         'estornado',
       ],
+      metodo_pagamento: ['pix', 'cartao'],
       papel: ['cliente', 'guincheiro', 'operacao'],
       resultado_tentativa: ['oferecida', 'aceita', 'recusada', 'expirada', 'pulada_teto'],
       rodas_giram: ['sim', 'nao', 'nao_sei'],
