@@ -8,7 +8,7 @@
 --
 -- Usuários do seed: Cliente A (Rafael), G1 Marcos, G2 Wagner. Cenário:
 --   Pedido A: aceito por G2 (Corrida A, aceita); G2 indisponível, como o aceite deixa.
---   Pedido B: aceito por G1 (Corrida B, aceita).
+--   Pedido B: aceito por G1 (Corrida B, aceita); G1 indisponível, como o aceite deixa.
 begin;
 select plan(22);
 
@@ -35,7 +35,7 @@ insert into public.corridas (id, pedido_id, guincheiro_id, repasse) values
    '22222222-2222-4222-8222-222222222201', 12880);
 
 update public.guincheiros set disponivel = false
-where id = '22222222-2222-4222-8222-222222222202';
+where id in ('22222222-2222-4222-8222-222222222201', '22222222-2222-4222-8222-222222222202');
 
 create function pg_temp.como(usuario text) returns void
 language plpgsql as $$
@@ -136,9 +136,16 @@ select is(
 );
 select is(
   (select disponivel from public.guincheiros where id = '22222222-2222-4222-8222-222222222201'),
-  true,
-  'entregar a Corrida de G2 não mexe na disponibilidade de G1'
+  false,
+  'entregar a Corrida de G2 não mexe na disponibilidade de G1, que segue em Corrida'
 );
+
+-- G1 entrega a Corrida B (o trigger o devolve ao plantão); a guarda de disponibilidade
+-- (#35) impede ligar o plantão enquanto a Corrida está em andamento.
+update public.corridas set estado = 'a_caminho' where id = 'cccccccc-0000-4000-8000-000000000012';
+update public.corridas set estado = 'no_local' where id = 'cccccccc-0000-4000-8000-000000000012';
+update public.corridas set estado = 'carregado' where id = 'cccccccc-0000-4000-8000-000000000012';
+update public.corridas set estado = 'entregue' where id = 'cccccccc-0000-4000-8000-000000000012';
 
 -- ---------------------------------------------------------------------------
 -- Disponibilidade (o interruptor do plantão)
