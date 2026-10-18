@@ -71,7 +71,11 @@ export async function rpc<T>(nome: string, args: Record<string, unknown>): Promi
   const chave = variavel('SUPABASE_SERVICE_ROLE_KEY');
   const resposta = await fetch(`${variavel('SUPABASE_URL')}/rest/v1/rpc/${nome}`, {
     method: 'POST',
-    headers: { apikey: chave, Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json' },
+    headers: {
+      apikey: chave,
+      Authorization: `Bearer ${chave}`,
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(args),
   });
   const corpo = await resposta.json().catch(() => null);

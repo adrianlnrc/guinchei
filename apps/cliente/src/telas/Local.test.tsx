@@ -160,11 +160,15 @@ describe('Origem e destino com o mapa', () => {
 });
 
 describe('Origem e destino sem VITE_MAPBOX_TOKEN', () => {
-  it('mostra o mapa do protótipo, a busca desligada e segue com os dados do protótipo', async () => {
+  it('mostra o mapa do protótipo, a busca desligada e segue para o preço sem gravar trajeto', async () => {
     const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
-    renderEm('/local', api);
+    renderEm('/pedido/1', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Carro de passeio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Parou e não liga' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sim' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar local no mapa' }));
 
-    expect(screen.getByText('Mapa indisponível: configure VITE_MAPBOX_TOKEN')).toBeTruthy();
+    expect(await screen.findByText('Mapa indisponível: configure VITE_MAPBOX_TOKEN')).toBeTruthy();
     expect((screen.getByLabelText('Para onde levamos o carro') as HTMLInputElement).disabled).toBe(
       true,
     );

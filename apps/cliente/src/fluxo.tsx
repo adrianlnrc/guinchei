@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import type { Perfil } from '@guinchei/api';
+import type { CotacaoPedido, Perfil } from '@guinchei/api';
 import type { Endereco, Rota } from '@guinchei/geo';
 import type { EstadoCorrida } from '@guinchei/estados';
 import {
@@ -25,12 +25,15 @@ interface Fluxo {
   /** Perfil do Cliente logado, depois do cadastro urgente. */
   perfil: Perfil | null;
   setPerfil: (p: Perfil) => void;
-  /** Id do Pedido aberto no banco. Do preço em diante o fluxo ainda usa o mock (#10 em diante). */
+  /** Id do Pedido aberto no banco. Da Corrida em diante o fluxo ainda usa o mock (#11, #14). */
   pedidoId: string | null;
   setPedidoId: (id: string) => void;
   /** Trajeto já gravado no Pedido; volta preenchido se o Cliente voltar ao mapa. */
   trajeto: Trajeto | null;
   setTrajeto: (t: Trajeto) => void;
+  /** Preço fechado que o servidor calculou e gravou no Pedido; o pagamento autoriza esse valor. */
+  cotacao: CotacaoPedido | null;
+  setCotacao: (c: CotacaoPedido | null) => void;
   veiculo: Veiculo | null;
   setVeiculo: (v: Veiculo) => void;
   situacao: Situacao | null;
@@ -52,6 +55,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
   const [perfil, setPerfil] = useState<Perfil | null>(null);
   const [pedidoId, setPedidoId] = useState<string | null>(null);
   const [trajeto, setTrajeto] = useState<Trajeto | null>(null);
+  const [cotacao, setCotacao] = useState<CotacaoPedido | null>(null);
   const [veiculo, setVeiculo] = useState<Veiculo | null>(null);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
   const [rodas, setRodas] = useState<Rodas | null>(null);
@@ -64,6 +68,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
     setRodas(null);
     setPedidoId(null);
     setTrajeto(null);
+    setCotacao(null);
   }, []);
   const registrar = useCallback((c: CorridaHistorico) => setHistorico((h) => [c, ...h]), []);
   const avisar = useCallback((texto: string) => {
@@ -81,6 +86,8 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       setPedidoId,
       trajeto,
       setTrajeto,
+      cotacao,
+      setCotacao,
       veiculo,
       setVeiculo,
       situacao,
@@ -98,6 +105,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       perfil,
       pedidoId,
       trajeto,
+      cotacao,
       veiculo,
       situacao,
       rodas,

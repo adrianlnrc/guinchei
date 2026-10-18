@@ -6,10 +6,7 @@
 // fica registrado, o Pedido continua `cotado` e a resposta é 402 `pagamento_recusado`.
 //
 // Resposta: { id, estado: 'autorizado', valor } (valor em centavos).
-import {
-  criarGatewayMock,
-  type MetodoPagamento,
-} from '../../../packages/pagamento/src/index.ts';
+import { criarGatewayMock, type MetodoPagamento } from '../../../packages/pagamento/src/index.ts';
 import {
   ErroServidor,
   PEDIDO_INDISPONIVEL,

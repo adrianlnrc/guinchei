@@ -63,11 +63,11 @@ describe('GatewayPagamento mock', () => {
 
   it('não captura nem estorna referência que não é do mock', async () => {
     const gateway = criarGatewayMock();
-    await expect(gateway.capturar({ referenciaExterna: 'pagarme_123', valor: 100 })).rejects.toThrow(
-      /referência/,
-    );
-    await expect(gateway.estornar({ referenciaExterna: 'pagarme_123', valor: 100 })).rejects.toThrow(
-      /referência/,
-    );
+    await expect(
+      gateway.capturar({ referenciaExterna: 'pagarme_123', valor: 100 }),
+    ).rejects.toThrow(/referência/);
+    await expect(
+      gateway.estornar({ referenciaExterna: 'pagarme_123', valor: 100 }),
+    ).rejects.toThrow(/referência/);
   });
 });

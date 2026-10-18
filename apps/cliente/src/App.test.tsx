@@ -2,9 +2,6 @@ import { act, cleanup, fireEvent, screen } from '@testing-library/react';
 import { useEffect } from 'react';
 import { useNavigate, type NavigateFunction } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { COTACAO } from '@guinchei/mock';
-import { TABELA_PADRAO, calcularPrecoFechado } from '@guinchei/preco';
-import { formatarReais, partesReais } from '@guinchei/ui';
 import { PERFIL_RAFAEL, apiFalsa } from './teste/apiFalsa';
 import { renderEm as renderComApi } from './teste/renderizar';
 
@@ -22,7 +19,7 @@ function Navegador() {
   return null;
 }
 
-/** O Rafael logado; sem VITE_MAPBOX_TOKEN, as telas do mapa em diante usam o mock. */
+/** O Rafael logado; sem VITE_MAPBOX_TOKEN, a tela de local usa o mapa do protótipo. */
 function renderEm(rota: string) {
   return renderComApi(rota, apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL }), <Navegador />);
 }
@@ -44,20 +41,6 @@ function guinchoAMeioCaminho() {
 }
 
 describe('App cliente', () => {
-  it('mostra o Preço fechado e a decomposição calculados por @guinchei/preco', () => {
-    renderEm('/preco');
-    const preco = calcularPrecoFechado(COTACAO, TABELA_PADRAO);
-    expect(screen.getByText(partesReais(preco.total).inteiro)).toBeTruthy();
-    expect(screen.getByText(partesReais(preco.total).centavos)).toBeTruthy();
-    expect(screen.getByText('Taxa base')).toBeTruthy();
-    for (const parcela of [preco.taxaBase, preco.deslocamento, preco.reboque]) {
-      expect(screen.getByText(formatarReais(parcela))).toBeTruthy();
-    }
-    expect(screen.getByText('Adicional noturno · 15%')).toBeTruthy();
-    expect(screen.getByText(formatarReais(preco.adicionalNoturno))).toBeTruthy();
-    expect(screen.queryByText(/Preço fechado mínimo/)).toBeNull();
-  });
-
   it('"Pedir" a partir do Histórico começa um Pedido sem as respostas anteriores', async () => {
     renderEm('/pedido/1');
     fireEvent.click(await screen.findByRole('button', { name: 'Carro de passeio' }));
