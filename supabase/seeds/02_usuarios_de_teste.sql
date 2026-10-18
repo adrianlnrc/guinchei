@@ -13,7 +13,8 @@ with usuarios (id, telefone) as (
     ('22222222-2222-4222-8222-222222222201'::uuid, '5561900000002'),
     ('22222222-2222-4222-8222-222222222202'::uuid, '5561900000003'),
     ('22222222-2222-4222-8222-222222222203'::uuid, '5561900000004'),
-    ('33333333-3333-4333-8333-333333333333'::uuid, '5561900000005')
+    ('33333333-3333-4333-8333-333333333333'::uuid, '5561900000005'),
+    ('22222222-2222-4222-8222-222222222204'::uuid, '5561900000007')
 ),
 novos as (
   insert into auth.users (
@@ -45,7 +46,8 @@ values
   ('22222222-2222-4222-8222-222222222201', 'guincheiro', 'Marcos Alves', '5561900000002', '23456789173', now(), 'provisoria-2026-10'),
   ('22222222-2222-4222-8222-222222222202', 'guincheiro', 'Wagner Lopes', '5561900000003', '34567891228', now(), 'provisoria-2026-10'),
   ('22222222-2222-4222-8222-222222222203', 'guincheiro', 'Rita Campos', '5561900000004', '45678912364', now(), 'provisoria-2026-10'),
-  ('33333333-3333-4333-8333-333333333333', 'operacao', 'Operação Guinchei', '5561900000005', '56789123482', now(), 'provisoria-2026-10');
+  ('33333333-3333-4333-8333-333333333333', 'operacao', 'Operação Guinchei', '5561900000005', '56789123482', now(), 'provisoria-2026-10'),
+  ('22222222-2222-4222-8222-222222222204', 'guincheiro', 'Paulo Mendes', '5561900000007', '52998224725', now(), 'provisoria-2026-10');
 
 -- Uma empresa e uma autônoma (Frota de uma pessoa só, ADR-0012), ambas ativas.
 insert into public.frotas (id, tipo, documento, nome, ativa) values
@@ -62,3 +64,38 @@ insert into public.guincheiros (id, frota_id, posicao, disponivel) values
   -- Guará
   ('22222222-2222-4222-8222-222222222203', 'f0000000-0000-4000-8000-000000000002',
     extensions.st_setsrid(extensions.st_makepoint(-47.9750, -15.8230), 4326), true);
+
+-- Frota pendente de exemplo para a demo da Homologação (#42): "Guincho Capital", ainda
+-- inativa, com um Guincheiro indisponível (não entra no Match). Os arquivos não existem no
+-- bucket `documentos-prestadores`: o Painel mostra "Documento indisponível" ao abri-los.
+insert into public.frotas (id, tipo, documento, nome, ativa) values
+  ('f0000000-0000-4000-8000-000000000003', 'empresa', '11444777000161', 'Guincho Capital', false);
+
+insert into public.guincheiros (id, frota_id, posicao, disponivel) values
+  -- Taguatinga
+  ('22222222-2222-4222-8222-222222222204', 'f0000000-0000-4000-8000-000000000003',
+    extensions.st_setsrid(extensions.st_makepoint(-48.0560, -15.8330), 4326), false);
+
+insert into public.itens_homologacao
+  (id, frota_id, alvo, alvo_id, tipo, dono_id, arquivo, validade, enviado_em)
+values
+  ('a1000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000003', 'frota',
+    'f0000000-0000-4000-8000-000000000003', 'alvara', '22222222-2222-4222-8222-222222222204',
+    '22222222-2222-4222-8222-222222222204/alvara.pdf', null, now() - interval '3 days'),
+  ('a1000000-0000-4000-8000-000000000002', 'f0000000-0000-4000-8000-000000000003', 'frota',
+    'f0000000-0000-4000-8000-000000000003', 'apolice_rc', '22222222-2222-4222-8222-222222222204',
+    '22222222-2222-4222-8222-222222222204/apolice-rc.pdf', current_date + 365,
+    now() - interval '3 days'),
+  ('a1000000-0000-4000-8000-000000000003', 'f0000000-0000-4000-8000-000000000003', 'guincheiro',
+    '22222222-2222-4222-8222-222222222204', 'cnh', '22222222-2222-4222-8222-222222222204',
+    '22222222-2222-4222-8222-222222222204/cnh.jpg', current_date + 730,
+    now() - interval '2 days'),
+  ('a1000000-0000-4000-8000-000000000004', 'f0000000-0000-4000-8000-000000000003', 'veiculo',
+    'b1000000-0000-4000-8000-000000000001', 'crlv', '22222222-2222-4222-8222-222222222204',
+    '22222222-2222-4222-8222-222222222204/crlv.pdf', null, now() - interval '2 days');
+
+-- O alvará já foi aprovado pela operação; os outros três aguardam.
+update public.itens_homologacao
+set estado = 'aprovado', decidido_em = now() - interval '1 day',
+    decidido_por = '33333333-3333-4333-8333-333333333333'
+where id = 'a1000000-0000-4000-8000-000000000001';

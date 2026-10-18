@@ -1,5 +1,6 @@
-import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { ErroApi } from '@guinchei/api';
 import {
   apiFalsa,
   CODIGO_CERTO,
@@ -113,5 +114,39 @@ describe('Entrada da operação no Painel', () => {
     const lateral = await screen.findByRole('navigation', { name: 'Painel de operação' });
     expect(lateral.textContent).toContain('Operação Guinchei');
     expect(api.enviarCodigo).not.toHaveBeenCalled();
+  });
+});
+
+describe('Sair do Painel', () => {
+  it('o botão Sair da lateral encerra a sessão e volta para a entrada', async () => {
+    const api = apiFalsa({ sessao: true });
+    renderEm('/monitor', api);
+    const lateral = await screen.findByRole('navigation', { name: 'Painel de operação' });
+    fireEvent.click(within(lateral).getByRole('button', { name: 'Sair' }));
+
+    expect(await screen.findByLabelText('Celular com DDD')).toBeTruthy();
+    expect(api.sair).toHaveBeenCalledTimes(1);
+    expect(await api.temSessao()).toBe(false);
+    expect(screen.queryByRole('navigation', { name: 'Painel de operação' })).toBeNull();
+  });
+
+  it('depois de sair, as rotas do Painel pedem o celular de novo', async () => {
+    const api = apiFalsa({ sessao: true });
+    renderEm('/homologacao', api);
+    const lateral = await screen.findByRole('navigation', { name: 'Painel de operação' });
+    fireEvent.click(within(lateral).getByRole('button', { name: 'Sair' }));
+    await screen.findByLabelText('Celular com DDD');
+    expect(screen.queryByRole('heading', { name: 'Guincho Capital' })).toBeNull();
+  });
+
+  it('se não conseguir sair, avisa e continua no Painel', async () => {
+    const api = apiFalsa({ sessao: true });
+    api.sair.mockRejectedValueOnce(new ErroApi('falha', 'Não foi possível sair'));
+    renderEm('/monitor', api);
+    const lateral = await screen.findByRole('navigation', { name: 'Painel de operação' });
+    fireEvent.click(within(lateral).getByRole('button', { name: 'Sair' }));
+
+    expect((await screen.findByRole('status')).textContent).toContain('Não foi possível sair');
+    expect(screen.getByRole('navigation', { name: 'Painel de operação' })).toBeTruthy();
   });
 });

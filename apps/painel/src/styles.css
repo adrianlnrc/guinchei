@@ -34,6 +34,7 @@ body {
   color: var(--cinza-medio);
 }
 .lateral a,
+.lateral__sair,
 .lateral__inativo {
   padding: 11px 12px;
   border-radius: 10px;
@@ -43,8 +44,13 @@ body {
   display: flex;
   justify-content: space-between;
 }
-.lateral a:hover {
+.lateral a:hover,
+.lateral__sair:hover {
   background: rgba(255, 255, 255, 0.04);
+}
+.lateral__sair {
+  width: 100%;
+  text-align: left;
 }
 .lateral a[aria-current='page'] {
   background: var(--superficie-escura);
@@ -237,4 +243,56 @@ button.linha-tabela:hover {
   margin: 0;
   font: 500 15px var(--fonte-texto);
   color: var(--alerta-texto);
+}
+
+.homologacao__fila-item {
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--linha-fina);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  text-align: left;
+}
+.homologacao__fila-item[aria-current='true'] {
+  padding-left: 21px;
+  background: var(--off-white);
+  border-left: 3px solid var(--tinta);
+}
+.homologacao__item {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--linha-fina);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.homologacao__item:last-child {
+  border-bottom: 0;
+}
+.homologacao__item--vencido {
+  background: var(--alerta-fundo);
+}
+.homologacao__item-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.homologacao__acoes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.homologacao__acoes .acao {
+  padding: 8px 14px;
+  font-size: 14px;
+}
+.homologacao__motivo {
+  width: 100%;
+  min-height: 72px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--linha);
+  font: 400 14px var(--fonte-texto);
+  resize: vertical;
 }

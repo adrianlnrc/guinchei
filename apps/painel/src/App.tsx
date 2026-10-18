@@ -1,7 +1,7 @@
-import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
-import type { ApiPainel } from '@guinchei/api';
+import { Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom';
+import { ErroApi, type ApiPainel } from '@guinchei/api';
 import { LimiteDeErro } from '@guinchei/ui';
-import { ApiContexto } from './api';
+import { ApiContexto, useApi } from './api';
 import { OperacaoProvider, useOperacao } from './operacao';
 import { ExigeOperacao, SessaoProvider, useSessao } from './sessao';
 import { Celular, Codigo } from './telas/Entrada';
@@ -11,8 +11,21 @@ import { Disputa } from './telas/Disputa';
 import { TabelaDePrecos } from './telas/TabelaDePrecos';
 
 function Lateral() {
-  const { homologacoesPendentes, disputasAbertas } = useOperacao();
-  const { operador } = useSessao();
+  const { homologacoesPendentes, disputasAbertas, avisar } = useOperacao();
+  const { operador, setOperador } = useSessao();
+  const api = useApi();
+  const navigate = useNavigate();
+
+  async function sair() {
+    try {
+      await api.sair();
+    } catch (e) {
+      avisar(e instanceof ErroApi ? e.message : 'Não foi possível sair');
+      return;
+    }
+    setOperador(null);
+    navigate('/entrar', { replace: true });
+  }
   return (
     <nav className="lateral" aria-label="Painel de operação">
       <div className="lateral__marca">
@@ -41,6 +54,9 @@ function Lateral() {
       >
         {operador?.nome}
       </div>
+      <button type="button" className="lateral__sair" onClick={() => void sair()}>
+        Sair
+      </button>
     </nav>
   );
 }

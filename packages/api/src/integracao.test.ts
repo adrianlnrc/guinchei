@@ -18,6 +18,7 @@ import {
   criarApiPainel,
   criarClienteApi,
   ErroApi,
+  VALIDADE_URL_DOCUMENTO_SEGUNDOS,
   type Acompanhamento,
   type ApiGuinchei,
   type ApiGuincheiro,
@@ -26,6 +27,7 @@ import {
   type MotivoErroApi,
 } from './index';
 
+declare const crypto: { randomUUID(): string };
 declare const process: { env: Record<string, string | undefined> };
 declare const console: { info(mensagem: string): void };
 declare function setTimeout(fazer: () => void, ms: number): unknown;
@@ -49,6 +51,7 @@ const RAFAEL = { telefone: '+5561900000001', id: '11111111-1111-4111-8111-111111
 const OPERACAO = { telefone: '+5561900000005', id: '33333333-3333-4333-8333-333333333333' };
 const MARCOS_TELEFONE = '+5561900000002';
 const SEM_PERFIL = '+5561900000006';
+const PAULO = { telefone: '+5561900000007', id: '22222222-2222-4222-8222-222222222204' };
 
 function novaApi() {
   const supabase = criarClienteApi({
@@ -1306,6 +1309,224 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         .select('nome')
         .eq('id', RAFAEL.id);
       expect(doGuincheiro.data).toEqual([]);
+    });
+  });
+
+  describe('Homologação por item (#42): fila, decisão, auditoria e documento', () => {
+    /** CNPJ válido novo a cada chamada: o teste cria Frotas próprias e roda de novo sem reset. */
+    function cnpjNovo() {
+      const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
+      const digito = (digitos: number[], pesos: number[]) => {
+        const resto = digitos.reduce((soma, d, i) => soma + d * pesos[i]!, 0) % 11;
+        return resto < 2 ? 0 : 11 - resto;
+      };
+      const d1 = digito(base, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+      const d2 = digito([...base, d1], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+      return [...base, d1, d2].join('');
+    }
+
+    /** Frota nova com itens pendentes, criada pelo servidor (o Paulo é o dono dos itens). */
+    async function frotaComItens(
+      tipos: ('alvara' | 'apolice_rc' | 'crlv')[],
+      enviadoEm = new Date().toISOString(),
+    ) {
+      const servidor = admin();
+      const { data: frota, error } = await servidor
+        .from('frotas')
+        .insert({ tipo: 'empresa', documento: cnpjNovo(), nome: `Frota de teste ${Date.now()}` })
+        .select('id, nome')
+        .single();
+      if (error) throw error;
+      const itens: string[] = [];
+      for (const tipo of tipos) {
+        const { data, error: erroItem } = await servidor
+          .from('itens_homologacao')
+          .insert({
+            frota_id: frota.id,
+            alvo: 'frota',
+            alvo_id: frota.id,
+            tipo,
+            dono_id: PAULO.id,
+            arquivo: `${PAULO.id}/${crypto.randomUUID()}.pdf`,
+            enviado_em: enviadoEm,
+          })
+          .select('id')
+          .single();
+        if (erroItem) throw erroItem;
+        itens.push(data.id);
+      }
+      return { frotaId: frota.id, nome: frota.nome, itens };
+    }
+
+    function novoPainel() {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      return { supabase, api: criarApiPainel(supabase) };
+    }
+
+    async function operacao() {
+      const { supabase, api } = novoPainel();
+      await api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      return { supabase, api };
+    }
+
+    const motivoDe = async (promessa: Promise<unknown>) =>
+      ((await promessa.catch((e: unknown) => e)) as ErroApi).motivo;
+
+    it('a fila lista só Frotas com item pendente, a de envio mais antigo primeiro', async () => {
+      const antiga = await frotaComItens(['alvara', 'apolice_rc'], '2020-01-01T10:00:00Z');
+      const nova = await frotaComItens(['alvara'], '2020-01-02T10:00:00Z');
+      const { api } = await operacao();
+
+      const fila = await api.listarFilaHomologacao();
+      const ids = fila.map((f) => f.id);
+      expect(ids.indexOf(antiga.frotaId)).toBeGreaterThanOrEqual(0);
+      expect(ids.indexOf(antiga.frotaId)).toBeLessThan(ids.indexOf(nova.frotaId));
+      expect(fila.find((f) => f.id === antiga.frotaId)).toMatchObject({
+        nome: antiga.nome,
+        tipo: 'empresa',
+        pendentes: 2,
+      });
+      expect(Date.parse(fila.find((f) => f.id === antiga.frotaId)!.enviadoEm)).toBe(
+        Date.parse('2020-01-01T10:00:00Z'),
+      );
+      // Frota do seed sem item pendente (Reboque Planalto) não aparece.
+      expect(ids).not.toContain('f0000000-0000-4000-8000-000000000001');
+    });
+
+    it('aprovar e recusar com motivo; a Frota sai da fila com todos os itens decididos', async () => {
+      const { frotaId, itens } = await frotaComItens(['alvara', 'apolice_rc']);
+      const { api, supabase } = await operacao();
+
+      await api.aprovarItem(itens[0]!);
+      expect((await api.listarFilaHomologacao()).find((f) => f.id === frotaId)?.pendentes).toBe(1);
+
+      expect(await motivoDe(api.recusarItem(itens[1]!, '   '))).toBe('motivo_obrigatorio');
+      await api.recusarItem(itens[1]!, 'Apólice sem a plataforma como cossegurada');
+      expect((await api.listarFilaHomologacao()).map((f) => f.id)).not.toContain(frotaId);
+
+      const frota = await api.buscarFrotaHomologacao(frotaId);
+      expect(frota?.itens.map((i) => [i.tipo, i.estado, i.motivo])).toEqual([
+        ['alvara', 'aprovado', null],
+        ['apolice_rc', 'recusado', 'Apólice sem a plataforma como cossegurada'],
+      ]);
+
+      // A trilha: entrada e decisão de cada item, com quem decidiu.
+      const trilha = await supabase
+        .from('auditoria_homologacao')
+        .select('de, para, motivo, por')
+        .in('item_id', itens)
+        .order('id');
+      expect(trilha.data?.map((l) => [l.de, l.para, l.motivo, l.por])).toEqual([
+        [null, 'pendente', null, null],
+        [null, 'pendente', null, null],
+        ['pendente', 'aprovado', null, OPERACAO.id],
+        ['pendente', 'recusado', 'Apólice sem a plataforma como cossegurada', OPERACAO.id],
+      ]);
+    });
+
+    it('item já decidido ou vencido não volta a ser decidido sem reenvio', async () => {
+      const { itens } = await frotaComItens(['alvara', 'apolice_rc']);
+      const { api } = await operacao();
+      await api.aprovarItem(itens[0]!);
+      await api.recusarItem(itens[1]!, 'Ilegível');
+
+      expect(await motivoDe(api.aprovarItem(itens[0]!))).toBe('transicao_invalida');
+      expect(await motivoDe(api.aprovarItem(itens[1]!))).toBe('transicao_invalida');
+      expect(await motivoDe(api.recusarItem(itens[1]!, 'De novo'))).toBe('transicao_invalida');
+
+      const servidor = admin();
+      await servidor
+        .from('itens_homologacao')
+        .update({ validade: '2020-01-01' })
+        .eq('id', itens[0]!);
+      await servidor.rpc('marcar_itens_vencidos');
+      expect(await motivoDe(api.aprovarItem(itens[0]!))).toBe('transicao_invalida');
+      const lido = await servidor
+        .from('itens_homologacao')
+        .select('estado')
+        .eq('id', itens[0]!)
+        .single();
+      expect(lido.data?.estado).toBe('vencido');
+    });
+
+    it('item inexistente é item_indisponivel', async () => {
+      const { api } = await operacao();
+      expect(await motivoDe(api.aprovarItem(crypto.randomUUID()))).toBe('item_indisponivel');
+    });
+
+    it('o dono do item e o Guincheiro de outra Frota não decidem nem leem a trilha', async () => {
+      const { itens } = await frotaComItens(['alvara']);
+      for (const telefone of [PAULO.telefone, MARCOS_TELEFONE]) {
+        const { api, supabase } = novoPainel();
+        await api.confirmarCodigo(telefone, CODIGO_DE_TESTE);
+        expect(await motivoDe(api.aprovarItem(itens[0]!))).toBe('sem_permissao');
+        expect(await motivoDe(api.recusarItem(itens[0]!, 'x'))).toBe('sem_permissao');
+        const direto = await supabase
+          .from('itens_homologacao')
+          .update({ estado: 'aprovado' })
+          .eq('id', itens[0]!);
+        expect(direto.error?.code).toBe('42501');
+        const apagar = await supabase
+          .from('auditoria_homologacao')
+          .delete()
+          .eq('item_id', itens[0]!);
+        expect(apagar.error?.code).toBe('42501');
+        const trilha = await supabase.from('auditoria_homologacao').select('id');
+        expect(trilha.data).toEqual([]);
+      }
+      const estado = await admin().from('itens_homologacao').select('estado').eq('id', itens[0]!);
+      expect(estado.data).toEqual([{ estado: 'pendente' }]);
+    });
+
+    it('o documento abre por URL assinada de curta duração, só para o dono e a operação', async () => {
+      const dono = novoPainel();
+      await dono.api.confirmarCodigo(PAULO.telefone, CODIGO_DE_TESTE);
+      const caminho = `${PAULO.id}/${crypto.randomUUID()}.pdf`;
+      const pdf = new Blob([new Uint8Array([37, 80, 68, 70, 45])], { type: 'application/pdf' });
+      const envio = await dono.supabase.storage
+        .from('documentos-prestadores')
+        .upload(caminho, pdf, { contentType: 'application/pdf' });
+      expect(envio.error).toBeNull();
+
+      const { itens } = await frotaComItens(['alvara']);
+      await admin().from('itens_homologacao').update({ arquivo: caminho }).eq('id', itens[0]!);
+
+      const { api } = await operacao();
+      const url = await api.urlDoDocumento(itens[0]!);
+      const resposta = await fetch(url);
+      expect(resposta.ok).toBe(true);
+      expect((await resposta.arrayBuffer()).byteLength).toBe(5);
+
+      // A URL expira em 5 minutos (campo exp do token).
+      const token = /[?&]token=([^&]+)/.exec(url)![1]!;
+      const carga = token.split('.')[1]!.replace(/-/g, '+').replace(/_/g, '/');
+      const { exp } = JSON.parse(atob(carga)) as { exp: number };
+      const restante = exp - Date.now() / 1000;
+      expect(restante).toBeGreaterThan(0);
+      expect(restante).toBeLessThanOrEqual(VALIDADE_URL_DOCUMENTO_SEGUNDOS + 5);
+
+      // O dono assina o próprio arquivo; outro Guincheiro, não.
+      const doDono = await dono.supabase.storage
+        .from('documentos-prestadores')
+        .createSignedUrl(caminho, 60);
+      expect(doDono.error).toBeNull();
+      const outro = novoPainel();
+      await outro.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+      const negado = await outro.supabase.storage
+        .from('documentos-prestadores')
+        .createSignedUrl(caminho, 60);
+      expect(negado.data).toBeNull();
+      expect(negado.error).not.toBeNull();
+      expect(await motivoDe(outro.api.urlDoDocumento(itens[0]!))).toBe('item_indisponivel');
+    });
+
+    it('documento que não está no bucket é "indisponível", sem derrubar a tela', async () => {
+      const { itens } = await frotaComItens(['crlv']);
+      const { api } = await operacao();
+      expect(await motivoDe(api.urlDoDocumento(itens[0]!))).toBe('falha');
     });
   });
 

@@ -191,8 +191,19 @@ export type MotivoErroApi =
   | 'em_corrida'
   /** A Corrida não é do Guincheiro logado. */
   | 'corrida_indisponivel'
-  /** A Corrida não pode ir do estado atual para o pedido (fora de ordem ou já entregue). */
+  /**
+   * A Corrida não pode ir do estado atual para o pedido (fora de ordem ou já entregue); o
+   * item de homologação não está no estado que a decisão pede (ex.: vencido sem reenvio).
+   */
   | 'transicao_invalida'
+  /** Só a operação decide itens de homologação. */
+  | 'sem_permissao'
+  /** O item de homologação não existe (ou não é do usuário). */
+  | 'item_indisponivel'
+  /** Recusar um item exige o motivo. */
+  | 'motivo_obrigatorio'
+  /** A validade do documento já passou: aprovar exige um reenvio. */
+  | 'documento_vencido'
   /** O arquivo não é uma imagem ou um vídeo dos formatos aceitos. */
   | 'arquivo_invalido'
   /** O arquivo passa de 50 MiB. */
@@ -1050,6 +1061,74 @@ export interface MeuOperador {
   nome: string;
 }
 
+/** Quanto tempo vale a URL assinada de um documento de prestador. */
+export const VALIDADE_URL_DOCUMENTO_SEGUNDOS = 300;
+const BUCKET_DOCUMENTOS = 'documentos-prestadores';
+
+export type EstadoHomologacao = Enums<'estado_homologacao'>;
+export type TipoItemHomologacao = Enums<'tipo_item_homologacao'>;
+export type AlvoHomologacao = Enums<'alvo_homologacao'>;
+
+/** Documento ou dado de uma Frota, de um Guincheiro ou de um veículo a homologar. */
+export interface ItemHomologacao {
+  id: string;
+  alvo: AlvoHomologacao;
+  tipo: TipoItemHomologacao;
+  estado: EstadoHomologacao;
+  /** Motivo da recusa vigente; `null` fora de `recusado`. */
+  motivo: string | null;
+  /** Último dia de validade (AAAA-MM-DD), quando o documento tem. */
+  validade: string | null;
+  /** ISO 8601: quando entrou (ou voltou) para a fila. */
+  enviadoEm: string;
+}
+
+/** Uma Frota com item `pendente`, na ordem de envio. */
+export interface FrotaNaFila {
+  id: string;
+  nome: string;
+  tipo: Enums<'tipo_frota'>;
+  documento: string;
+  pendentes: number;
+  /** ISO 8601: o envio do item pendente mais antigo. */
+  enviadoEm: string;
+}
+
+export interface FrotaEmHomologacao {
+  id: string;
+  nome: string;
+  tipo: Enums<'tipo_frota'>;
+  documento: string;
+  /** Todos os itens, em qualquer estado, do mais antigo ao mais novo. */
+  itens: ItemHomologacao[];
+}
+
+/** Erros das funções de homologação (migração `homologacao`). */
+function erroDaHomologacao(error: { code?: string }, mensagemDeFalha: string): ErroApi {
+  switch (error.code) {
+    case '42501':
+      return new ErroApi('sem_permissao', 'Só a operação decide itens de homologação', {
+        cause: error,
+      });
+    case 'P0002':
+      return new ErroApi('item_indisponivel', 'Este item não existe mais', { cause: error });
+    case 'GHM03':
+      return new ErroApi('transicao_invalida', 'Este item já foi decidido ou aguarda reenvio', {
+        cause: error,
+      });
+    case 'GHM04':
+      return new ErroApi('motivo_obrigatorio', 'Diga o motivo da recusa', { cause: error });
+    case 'GHM05':
+      return new ErroApi(
+        'documento_vencido',
+        'A validade do documento já passou: peça um novo envio',
+        { cause: error },
+      );
+    default:
+      return new ErroApi('falha', mensagemDeFalha, { cause: error });
+  }
+}
+
 /**
  * O que o Painel de operação usa: a entrada por telefone do `ApiGuinchei`, mais sair e a
  * leitura do operador. O Painel só admite perfis com papel `operacao`.
@@ -1062,6 +1141,16 @@ export interface ApiPainel extends Pick<
   sair(): Promise<void>;
   /** `null` sem sessão ou se o perfil logado não é da operação. */
   buscarMeuOperador(): Promise<MeuOperador | null>;
+  /** Frotas com item `pendente`, a de envio mais antigo primeiro. */
+  listarFilaHomologacao(): Promise<FrotaNaFila[]>;
+  /** A Frota com todos os itens; `null` se não existe. */
+  buscarFrotaHomologacao(frotaId: string): Promise<FrotaEmHomologacao | null>;
+  /** Aprova um item `pendente`. */
+  aprovarItem(itemId: string): Promise<void>;
+  /** Recusa um item `pendente`; o motivo é obrigatório. */
+  recusarItem(itemId: string, motivo: string): Promise<void>;
+  /** URL assinada de curta duração (`VALIDADE_URL_DOCUMENTO_SEGUNDOS`) do documento do item. */
+  urlDoDocumento(itemId: string): Promise<string>;
 }
 
 export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
@@ -1080,6 +1169,97 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
     async buscarMeuOperador() {
       const perfil = await base.buscarMeuPerfil();
       return perfil?.papel === 'operacao' ? { nome: perfil.nome } : null;
+    },
+
+    async listarFilaHomologacao() {
+      const { data, error } = await supabase
+        .from('itens_homologacao')
+        .select('frota_id, enviado_em, frotas (nome, tipo, documento)')
+        .eq('estado', 'pendente')
+        .order('enviado_em', { ascending: true })
+        .order('id', { ascending: true });
+      if (error) throw new ErroApi('falha', 'Não foi possível ler a fila', { cause: error });
+      // Ordenados do mais antigo: o primeiro item de cada Frota marca a vez dela na fila.
+      const fila = new Map<string, FrotaNaFila>();
+      for (const item of data) {
+        const frota = fila.get(item.frota_id);
+        if (frota) {
+          frota.pendentes += 1;
+        } else if (item.frotas) {
+          fila.set(item.frota_id, {
+            id: item.frota_id,
+            nome: item.frotas.nome,
+            tipo: item.frotas.tipo,
+            documento: item.frotas.documento,
+            pendentes: 1,
+            enviadoEm: item.enviado_em,
+          });
+        }
+      }
+      return [...fila.values()];
+    },
+
+    async buscarFrotaHomologacao(frotaId) {
+      const { data, error } = await supabase
+        .from('frotas')
+        .select(
+          'id, nome, tipo, documento, itens_homologacao (id, alvo, tipo, estado, motivo, validade, enviado_em)',
+        )
+        .eq('id', frotaId)
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler a Frota', { cause: error });
+      if (!data) return null;
+      return {
+        id: data.id,
+        nome: data.nome,
+        tipo: data.tipo,
+        documento: data.documento,
+        itens: data.itens_homologacao
+          .map((i) => ({
+            id: i.id,
+            alvo: i.alvo,
+            tipo: i.tipo,
+            estado: i.estado,
+            motivo: i.motivo,
+            validade: i.validade,
+            enviadoEm: i.enviado_em,
+          }))
+          .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.id.localeCompare(b.id)),
+      };
+    },
+
+    async aprovarItem(itemId) {
+      const { error } = await supabase.rpc('decidir_item_homologacao', {
+        item_id: itemId,
+        decisao: 'aprovado',
+      });
+      if (error) throw erroDaHomologacao(error, 'Não foi possível aprovar o item');
+    },
+
+    async recusarItem(itemId, motivo) {
+      const { error } = await supabase.rpc('decidir_item_homologacao', {
+        item_id: itemId,
+        decisao: 'recusado',
+        motivo,
+      });
+      if (error) throw erroDaHomologacao(error, 'Não foi possível recusar o item');
+    },
+
+    async urlDoDocumento(itemId) {
+      const { data: item, error } = await supabase
+        .from('itens_homologacao')
+        .select('arquivo')
+        .eq('id', itemId)
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o item', { cause: error });
+      if (!item) throw new ErroApi('item_indisponivel', 'Este item não existe mais');
+      const { data, error: erroUrl } = await supabase.storage
+        .from(BUCKET_DOCUMENTOS)
+        .createSignedUrl(item.arquivo, VALIDADE_URL_DOCUMENTO_SEGUNDOS);
+      if (erroUrl || !data) {
+        throw new ErroApi('falha', 'Documento indisponível', { cause: erroUrl });
+      }
+      return data.signedUrl;
     },
   };
 }
