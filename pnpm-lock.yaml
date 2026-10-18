@@ -44,6 +44,9 @@ importers:
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados
+      '@guinchei/geo':
+        specifier: workspace:*
+        version: link:../../packages/geo
       '@guinchei/mock':
         specifier: workspace:*
         version: link:../../packages/mock
@@ -56,6 +59,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.104.3
         version: 5.104.3(react@19.3.1)
+      mapbox-gl:
+        specifier: 3.32.0
+        version: 3.32.0
       react:
         specifier: ^19.3.1
         version: 19.3.1
@@ -197,6 +203,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@guinchei/geo':
+        specifier: workspace:*
+        version: link:../geo
       '@guinchei/tipos':
         specifier: workspace:*
         version: link:../tipos
@@ -209,6 +218,8 @@ importers:
       '@guinchei/tipos':
         specifier: workspace:*
         version: link:../tipos
+
+  packages/geo: {}
 
   packages/match: {}
 
@@ -2200,6 +2211,9 @@ packages:
 
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
+
+  mapbox-gl@3.32.0:
+    resolution: {integrity: sha512-+P4qrlyejQYLyz1Bfzoe+d5Ff5vAghH54RNHm1q2VeAZqkSjQ5e1XlovQoSHlf4xqpRJtJG58kn8nkLwPMQung==}
 
   math-intrinsics@1.1.0:
     resolution: {integrity: sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==}
@@ -4960,6 +4974,8 @@ snapshots:
   magic-string@1.4.3:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  mapbox-gl@3.32.0: {}
 
   math-intrinsics@1.1.0: {}
 

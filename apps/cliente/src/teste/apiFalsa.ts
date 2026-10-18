@@ -5,6 +5,7 @@ import {
   type CadastroUrgente,
   type Perfil,
   type RespostasPedido,
+  type TrajetoPedido,
 } from '@guinchei/api';
 
 export const CODIGO_CERTO = '123456';
@@ -60,5 +61,6 @@ export function apiFalsa({
     atualizarPedido: vi.fn<(id: string, respostas: RespostasPedido) => Promise<void>>(
       async () => {},
     ),
+    definirTrajeto: vi.fn<(id: string, trajeto: TrajetoPedido) => Promise<void>>(async () => {}),
   } satisfies ApiGuinchei;
 }

@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // fetch, URL e Response do adaptador Mapbox (roda no navegador).
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["src"]
+}

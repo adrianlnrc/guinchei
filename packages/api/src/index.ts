@@ -1,4 +1,5 @@
 import { createClient, isAuthApiError, type SupabaseClient } from '@supabase/supabase-js';
+import type { Endereco } from '@guinchei/geo';
 import type { Database, Enums, Tables } from '@guinchei/tipos';
 
 export interface ConfigApi {
@@ -16,6 +17,17 @@ export interface RespostasPedido {
   rodasGiram: Enums<'rodas_giram'>;
 }
 
+/** Origem e destino escolhidos no mapa, com a distância da rota (RF04). */
+export interface TrajetoPedido {
+  origem: Endereco;
+  destino: Endereco;
+  /**
+   * Distância da rota de carro entre origem e destino. Provisório: vem da rota calculada no
+   * app; a cotação (#10) recalcula no servidor.
+   */
+  kmRebocado: number;
+}
+
 /** Cadastro urgente do Cliente (ADR-0010). O telefone vem do login. */
 export interface CadastroUrgente {
   nome: string;
@@ -25,7 +37,8 @@ export interface CadastroUrgente {
   termosVersao: string;
 }
 
-export type MotivoErroApi = 'codigo_invalido' | 'cpf_ja_cadastrado' | 'sem_sessao' | 'falha';
+export type MotivoErroApi =
+  'codigo_invalido' | 'cpf_ja_cadastrado' | 'sem_sessao' | 'fora_do_df' | 'falha';
 
 export class ErroApi extends Error {
   constructor(
@@ -50,6 +63,8 @@ export interface ApiGuinchei {
   abrirPedido(respostas: RespostasPedido): Promise<string>;
   /** Troca as respostas do próprio Pedido enquanto está em `cotado` (não abre outro). */
   atualizarPedido(id: string, respostas: RespostasPedido): Promise<void>;
+  /** Grava origem e destino do próprio Pedido em `cotado`; recusa ponto fora do DF. */
+  definirTrajeto(id: string, trajeto: TrajetoPedido): Promise<void>;
 }
 
 export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): ClienteSupabase {
@@ -61,6 +76,8 @@ export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): Cl
 }
 
 const CPF_UNICO = 'perfis_cpf_key';
+/** Código do erro de `definir_trajeto_pedido` para ponto fora do DF. */
+const FORA_DO_DF = 'GDF01';
 
 export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
   async function usuarioLogado() {
@@ -149,6 +166,23 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       if (error) {
         throw new ErroApi('falha', 'Não foi possível atualizar o Pedido', { cause: error });
       }
+    },
+
+    async definirTrajeto(id, { origem, destino, kmRebocado }) {
+      const { error } = await supabase.rpc('definir_trajeto_pedido', {
+        pedido_id: id,
+        origem_lat: origem.ponto.lat,
+        origem_lng: origem.ponto.lng,
+        origem_endereco: origem.rotulo,
+        destino_lat: destino.ponto.lat,
+        destino_lng: destino.ponto.lng,
+        destino_endereco: destino.rotulo,
+        km_rebocado: kmRebocado,
+      });
+      if (error?.code === FORA_DO_DF) {
+        throw new ErroApi('fora_do_df', 'Origem ou destino fora do DF', { cause: error });
+      }
+      if (error) throw new ErroApi('falha', 'Não foi possível gravar o trajeto', { cause: error });
     },
   };
 }

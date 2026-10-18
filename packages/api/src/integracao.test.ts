@@ -71,6 +71,32 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       situacao: 'outro',
       rodas_giram: 'nao',
     });
+
+    // Origem e destino pelo mapa (#9).
+    await api.definirTrajeto(id, {
+      origem: { ponto: { lat: -15.7903, lng: -47.8921 }, rotulo: 'Eixo Monumental, Brasília' },
+      destino: { ponto: { lat: -15.8336, lng: -48.0566 }, rotulo: 'QNA 12, Taguatinga Norte' },
+      kmRebocado: 21.347,
+    });
+    const { data: comTrajeto } = await supabase
+      .from('pedidos')
+      .select('origem_endereco, destino_endereco, km_rebocado')
+      .eq('id', id)
+      .single();
+    expect(comTrajeto).toEqual({
+      origem_endereco: 'Eixo Monumental, Brasília',
+      destino_endereco: 'QNA 12, Taguatinga Norte',
+      km_rebocado: 21.35,
+    });
+
+    const foraDoDF = await api
+      .definirTrajeto(id, {
+        origem: { ponto: { lat: -15.7903, lng: -47.8921 }, rotulo: 'Eixo Monumental, Brasília' },
+        destino: { ponto: { lat: -16.0683, lng: -47.9758 }, rotulo: 'Valparaíso de Goiás' },
+        kmRebocado: 35,
+      })
+      .catch((e: unknown) => e);
+    expect((foraDoDF as ErroApi).motivo).toBe('fora_do_df');
   });
 
   it('código errado não entra', async () => {

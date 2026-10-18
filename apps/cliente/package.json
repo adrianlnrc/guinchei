@@ -13,10 +13,12 @@
   "dependencies": {
     "@guinchei/api": "workspace:*",
     "@guinchei/estados": "workspace:*",
+    "@guinchei/geo": "workspace:*",
     "@guinchei/mock": "workspace:*",
     "@guinchei/preco": "workspace:*",
     "@guinchei/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.3",
+    "mapbox-gl": "3.32.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.4"
