@@ -26,7 +26,8 @@ async function entrar(celular: string, codigo = CODIGO_CERTO) {
   tocar('Confirmar');
 }
 
-const plantao = () => screen.findByRole('main', { name: 'Em plantão' });
+const plantao = (timeout?: number) =>
+  screen.findByRole('main', { name: 'Em plantão' }, timeout ? { timeout } : undefined);
 const ACOES = ['Saí para o local', 'Cheguei', 'Carreguei', 'Entreguei'];
 
 /** Botões de etapa da Corrida que estão na tela. */
@@ -180,7 +181,9 @@ describe('Chamado', () => {
   it('vencido o prazo, avisa que expirou e volta ao plantão', async () => {
     renderEm('/', apiFalsa({ sessao: true, ofertas: [ofertaDeTeste(1)] }));
     await screen.findByRole('main', { name: 'Novo chamado' });
-    expect(await plantao()).toBeTruthy();
+    // O chamado expira em 1 s e o plantão ainda recarrega: o prazo padrão de 1 s
+    // do findBy não basta em runner lento.
+    expect(await plantao(4000)).toBeTruthy();
     expect(screen.getByRole('status').textContent).toBe(
       'O chamado expirou e passou ao próximo Guincheiro.',
     );
