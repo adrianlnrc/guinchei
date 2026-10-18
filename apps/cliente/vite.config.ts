@@ -8,6 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
+      // O mapbox-gl (~1,8 MB) só serve com rede e com token: fica fora do precache, para a
+      // instalação do PWA não baixar o mapa de quem nem chegou à tela de local.
+      workbox: { globIgnores: ['**/node_modules/**/*', '**/MapaMapbox-*'] },
       manifest: {
         id: '/cliente',
         name: 'Guinchei',

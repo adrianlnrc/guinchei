@@ -12,6 +12,10 @@
 // (VITE_MAPBOX_TOKEN, restrito por domínio em produção); nada aqui é segredo.
 //
 // O Geocoding v6 não traz POIs (oficinas pelo nome); para isso seria a Search Box API.
+//
+// A conferir com o Mapbox: o endereço vai gravado no Pedido, e os termos do Geocoding separam
+// resultado temporário (padrão) de permanente (`permanent=true`, cobrado à parte). Não ligamos
+// `permanent` sem decidir o custo; ver docs/desenvolvimento.md (Mapbox).
 import {
   BBOX_DF,
   CENTRO_DF,

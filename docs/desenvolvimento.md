@@ -140,6 +140,8 @@ Os tokens web são públicos (`pk.*`, só escopos públicos) e vão para o naveg
 
 A busca só devolve endereços dentro do polígono do DF (o `bbox` do DF inclui Águas Lindas e Valparaíso, em Goiás). O Geocoding v6 não tem POIs: oficina pelo nome não aparece; busque pelo endereço ou marque no mapa.
 
+Pendências que dependem do token (ainda não verificadas contra o Mapbox real): a qualidade dos endereços do DF (quadras, SQS/QNA, cidades-satélite; anotar na issue #9 e, se ruim, reabrir a escolha de provedor do ADR-0008), o formato real das respostas contra as fixtures de `packages/geo/src/mapbox.test.ts`, e os termos de armazenamento: o endereço vai gravado no Pedido, e o Geocoding separa resultado temporário (padrão) de permanente (`permanent=true`, cobrado à parte).
+
 ## Convenções
 
 - Termos de domínio em português, exatamente como no [CONTEXT.md](../CONTEXT.md): `Pedido`, `Corrida`, `Guincheiro`, `precoFechado`. Termos técnicos em inglês. UI em PT-BR.
