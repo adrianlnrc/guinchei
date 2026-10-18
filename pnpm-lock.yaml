@@ -38,6 +38,9 @@ importers:
 
   apps/cliente:
     dependencies:
+      '@guinchei/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados

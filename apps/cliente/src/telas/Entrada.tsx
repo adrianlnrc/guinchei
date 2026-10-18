@@ -1,10 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { ErroApi } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
-import { mascararCelular, useFluxo } from '../fluxo';
+import { useApi } from '../api';
+import { mascararCelular, telefoneE164, useFluxo } from '../fluxo';
+import { useSessao } from '../sessao';
+
+function Erro({ children }: { children: string | null }) {
+  if (!children) return null;
+  return (
+    <p
+      role="alert"
+      style={{ margin: 0, font: '500 15px var(--fonte-texto)', color: 'var(--alerta-texto)' }}
+    >
+      {children}
+    </p>
+  );
+}
 
 export function BoasVindas() {
   const ir = useNavigate();
+  // Sessão guardada no aparelho: quem já tem perfil vai direto ao Pedido.
+  const sessao = useSessao();
+  if (sessao === 'pronto') return <Navigate to="/pedido/1" replace />;
+  if (sessao === 'sem_perfil') return <Navigate to="/cadastro" replace />;
   return (
     <Tela escura rotulo="Boas-vindas">
       <Corpo style={{ padding: '28px 28px 40px', gap: 20 }}>
@@ -35,8 +54,24 @@ export function BoasVindas() {
 
 export function Celular() {
   const ir = useNavigate();
+  const api = useApi();
   const { celular, setCelular } = useFluxo();
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const completo = celular.replace(/\D/g, '').length === 11;
+
+  async function receberCodigo() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await api.enviarCodigo(telefoneE164(celular));
+      ir('/codigo');
+    } catch {
+      setErro('Não foi possível enviar o código. Confira o número e tente de novo.');
+      setEnviando(false);
+    }
+  }
+
   return (
     <Tela rotulo="Celular">
       <Corpo style={{ padding: '16px 24px 32px', gap: 18 }}>
@@ -83,11 +118,12 @@ export function Celular() {
             }}
           />
         </div>
+        <Erro>{erro}</Erro>
         <div className="espaco" />
         <p className="apoio" style={{ fontSize: 13, textAlign: 'center' }}>
           Seus dados são tratados conforme a LGPD.
         </p>
-        <Botao disabled={!completo} onClick={() => ir('/codigo')}>
+        <Botao disabled={!completo || enviando} onClick={receberCodigo}>
           Receber código
         </Botao>
       </Corpo>
@@ -99,9 +135,12 @@ const TAMANHO_CODIGO = 6;
 
 export function Codigo() {
   const ir = useNavigate();
-  const { celular } = useFluxo();
+  const api = useApi();
+  const { celular, setPerfil } = useFluxo();
   const [codigo, setCodigo] = useState('');
   const [espera, setEspera] = useState(30);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const campo = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -109,6 +148,38 @@ export function Codigo() {
     const id = setTimeout(() => setEspera((s) => s - 1), 1000);
     return () => clearTimeout(id);
   }, [espera]);
+
+  async function confirmar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await api.confirmarCodigo(telefoneE164(celular), codigo);
+      const perfil = await api.buscarMeuPerfil();
+      if (perfil) {
+        setPerfil(perfil);
+        ir('/pedido/1');
+      } else {
+        ir('/cadastro');
+      }
+    } catch (e) {
+      setErro(
+        e instanceof ErroApi && e.motivo === 'codigo_invalido'
+          ? 'Código incorreto ou expirado. Confira e tente de novo.'
+          : 'Não foi possível entrar. Tente de novo.',
+      );
+      setEnviando(false);
+    }
+  }
+
+  async function reenviar() {
+    setEspera(30);
+    setErro(null);
+    try {
+      await api.enviarCodigo(telefoneE164(celular));
+    } catch {
+      setErro('Não foi possível reenviar o código. Tente de novo em instantes.');
+    }
+  }
 
   return (
     <Tela rotulo="Código SMS">
@@ -164,13 +235,13 @@ export function Codigo() {
             Reenviar em 0:{String(espera).padStart(2, '0')}
           </div>
         ) : (
-          <Link style={{ fontSize: 15 }} onClick={() => setEspera(30)}>
+          <Link style={{ fontSize: 15 }} onClick={reenviar}>
             Reenviar código
           </Link>
         )}
+        <Erro>{erro}</Erro>
         <div className="espaco" />
-        {/* Modo mock: qualquer código de 6 dígitos entra. */}
-        <Botao disabled={codigo.length < TAMANHO_CODIGO} onClick={() => ir('/pedido/1')}>
+        <Botao disabled={codigo.length < TAMANHO_CODIGO || enviando} onClick={confirmar}>
           Confirmar
         </Botao>
       </Corpo>
