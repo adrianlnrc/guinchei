@@ -1,7 +1,10 @@
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { OPERADOR } from '@guinchei/mock';
+import { Navigate, NavLink, Outlet, Route, Routes } from 'react-router-dom';
+import type { ApiPainel } from '@guinchei/api';
 import { LimiteDeErro } from '@guinchei/ui';
+import { ApiContexto } from './api';
 import { OperacaoProvider, useOperacao } from './operacao';
+import { ExigeOperacao, SessaoProvider, useSessao } from './sessao';
+import { Celular, Codigo } from './telas/Entrada';
 import { Monitor } from './telas/Monitor';
 import { Homologacao } from './telas/Homologacao';
 import { Disputa } from './telas/Disputa';
@@ -9,6 +12,7 @@ import { TabelaDePrecos } from './telas/TabelaDePrecos';
 
 function Lateral() {
   const { homologacoesPendentes, disputasAbertas } = useOperacao();
+  const { operador } = useSessao();
   return (
     <nav className="lateral" aria-label="Painel de operação">
       <div className="lateral__marca">
@@ -35,7 +39,7 @@ function Lateral() {
       <div
         style={{ padding: 12, font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}
       >
-        {OPERADOR}
+        {operador?.nome}
       </div>
     </nav>
   );
@@ -50,22 +54,38 @@ function AvisoPainel() {
   ) : null;
 }
 
-export function App() {
+function PainelLogado() {
   return (
     <OperacaoProvider>
       <LimiteDeErro>
         <div className="painel">
           <Lateral />
-          <Routes>
-            <Route path="/monitor" element={<Monitor />} />
-            <Route path="/homologacao" element={<Homologacao />} />
-            <Route path="/disputas" element={<Disputa />} />
-            <Route path="/precos" element={<TabelaDePrecos />} />
-            <Route path="*" element={<Navigate to="/monitor" replace />} />
-          </Routes>
+          <Outlet />
           <AvisoPainel />
         </div>
       </LimiteDeErro>
     </OperacaoProvider>
+  );
+}
+
+export function App({ api }: { api: ApiPainel }) {
+  return (
+    <ApiContexto.Provider value={api}>
+      <SessaoProvider>
+        <Routes>
+          <Route path="/entrar" element={<Celular />} />
+          <Route path="/codigo" element={<Codigo />} />
+          <Route element={<ExigeOperacao />}>
+            <Route element={<PainelLogado />}>
+              <Route path="/monitor" element={<Monitor />} />
+              <Route path="/homologacao" element={<Homologacao />} />
+              <Route path="/disputas" element={<Disputa />} />
+              <Route path="/precos" element={<TabelaDePrecos />} />
+              <Route path="*" element={<Navigate to="/monitor" replace />} />
+            </Route>
+          </Route>
+        </Routes>
+      </SessaoProvider>
+    </ApiContexto.Provider>
   );
 }

@@ -15,6 +15,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   criarApi,
   criarApiGuincheiro,
+  criarApiPainel,
   criarClienteApi,
   ErroApi,
   type Acompanhamento,
@@ -45,6 +46,8 @@ const RECUSA_LIGADA = process.env.PAGAMENTO_MOCK_RECUSA_TESTE === '1';
 
 const CODIGO_DE_TESTE = '123456';
 const RAFAEL = { telefone: '+5561900000001', id: '11111111-1111-4111-8111-111111111111' };
+const OPERACAO = { telefone: '+5561900000005', id: '33333333-3333-4333-8333-333333333333' };
+const MARCOS_TELEFONE = '+5561900000002';
 const SEM_PERFIL = '+5561900000006';
 
 function novaApi() {
@@ -1247,6 +1250,63 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     const erro = await api.confirmarCodigo(RAFAEL.telefone, '000000').catch((e: unknown) => e);
     expect(erro).toBeInstanceOf(ErroApi);
     expect((erro as ErroApi).motivo).toBe('codigo_invalido');
+  });
+
+  describe('Painel de operação (#41): entrada e leitura pela RLS de eh_operacao()', () => {
+    function novoPainel() {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      return { supabase, api: criarApiPainel(supabase) };
+    }
+
+    it('sem sessão, não há operador', async () => {
+      const { api } = novoPainel();
+      expect(await api.temSessao()).toBe(false);
+      expect(await api.buscarMeuOperador()).toBeNull();
+    });
+
+    it('a operação do seed entra com o código de teste e lê o próprio nome', async () => {
+      const { api } = novoPainel();
+      await api.enviarCodigo(OPERACAO.telefone);
+      await api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      expect(await api.temSessao()).toBe(true);
+      expect(await api.buscarMeuOperador()).toEqual({ nome: 'Operação Guinchei' });
+    });
+
+    it('código errado é recusado com codigo_invalido', async () => {
+      const { api } = novoPainel();
+      const erro = await api.confirmarCodigo(OPERACAO.telefone, '000000').catch((e: unknown) => e);
+      expect((erro as ErroApi).motivo).toBe('codigo_invalido');
+      expect(await api.temSessao()).toBe(false);
+    });
+
+    it('Cliente e Guincheiro entram no Auth, mas não são operador; sair encerra a sessão', async () => {
+      for (const telefone of [RAFAEL.telefone, MARCOS_TELEFONE]) {
+        const { api } = novoPainel();
+        await api.confirmarCodigo(telefone, CODIGO_DE_TESTE);
+        expect(await api.temSessao()).toBe(true);
+        expect(await api.buscarMeuOperador()).toBeNull();
+        await api.sair();
+        expect(await api.temSessao()).toBe(false);
+      }
+    });
+
+    it('a RLS deixa a operação ler o perfil de outra pessoa, e o Guincheiro não', async () => {
+      const operacao = novoPainel();
+      await operacao.api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      const daOperacao = await operacao.supabase.from('perfis').select('nome').eq('id', RAFAEL.id);
+      expect(daOperacao.data).toEqual([{ nome: 'Rafael Souza' }]);
+
+      const guincheiro = novoPainel();
+      await guincheiro.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+      const doGuincheiro = await guincheiro.supabase
+        .from('perfis')
+        .select('nome')
+        .eq('id', RAFAEL.id);
+      expect(doGuincheiro.data).toEqual([]);
+    });
   });
 
   describe('Cliente novo (sem perfil)', () => {

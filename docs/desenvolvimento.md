@@ -138,7 +138,7 @@ Login por telefone + código (ADR-0010). Os números são fictícios e estão em
 | Guincheiro | Marcos Alves | +55 61 90000-0002 | Reboque Planalto · Cruzeiro, ~4,2 km do Eixo Monumental |
 | Guincheiro | Wagner Lopes | +55 61 90000-0003 | Reboque Planalto · Asa Norte, ~4,9 km |
 | Guincheiro | Rita Campos | +55 61 90000-0004 | autônoma · Guará, ~9,6 km |
-| Operação | Operação Guinchei | +55 61 90000-0005 | |
+| Operação | Operação Guinchei | +55 61 90000-0005 | entra no Painel (porta 5175) |
 | Cliente sem perfil | (nenhum) | +55 61 90000-0006 | só em `[auth.sms.test_otp]`, sem usuário nem perfil no seed: no primeiro login cai no cadastro urgente |
 
 No app do Cliente, digite o celular com DDD, sem o +55 (ex.: `(61) 90000-0001`); o app envia em E.164 (`+5561900000001`). Os ids fixos dos usuários estão no seed, e os testes de banco contam com eles: rode `pnpm supabase db reset` antes de `pnpm test:db` se tiver mexido nos dados locais.
@@ -245,6 +245,15 @@ select vault.create_secret('<service_role key do projeto>', 'match_chave_servico
 - **Fotos de estado (#13):** a tela `/fotos` (botão "Fotos de estado (opcional)" nas etapas no local e carregado) grava de verdade, pela câmera do celular (veja [Fotos de estado](#fotos-de-estado)). Em "Carreguei" e "Entreguei", se o Guincheiro não tem foto **dele** na etapa (`listarFotosEstado`; se a leitura falhar, pergunta também), o app mostra o aviso "Registrar fotos protege você se houver reclamação de avaria." e só avança com "Seguir sem fotos"; com foto na etapa, avança direto. Avaliação do Cliente e histórico/ganhos do plantão seguem do protótipo (dados de exemplo, só na sessão).
 - **Push com a tela bloqueada:** fora, depende do spike #3. O app não promete tocar com a tela bloqueada; precisa ficar aberto.
 - **Testes:** Vitest de componente com a API dublada (`apps/guincheiro/src/teste/apiFalsa.ts`: login, chamado, contagem, aceitar, recusar, expirar, ordem dos botões, repasse); pgTAP `corrida_do_guincheiro.test.sql` (avanço, disponibilidade, `hora_do_servidor`, publicação Realtime); integração do `@guinchei/api` (Cliente confirma, a oferta chega pelo Realtime só a quem a recebeu, aceita e avança até `entregue`).
+
+## Painel de operação
+
+`apps/painel` (porta 5175), PWA de desktop. Para rodar contra o Supabase local: `cp apps/painel/.env.example apps/painel/.env.local`, preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` (as mesmas dos outros apps; `VITE_MAPBOX_TOKEN` o Painel ainda não usa) e rode `pnpm dev:painel`. Sem as duas variáveis, o Painel mostra "App sem configuração do servidor" (o build do CI roda sem elas).
+
+- **Entrada:** telefone + código (ADR-0010), com o número da operação do seed (**61 90000-0005**, "Operação Guinchei"; código 123456). Só entra quem tem perfil com papel `operacao`: telefone verificado de Cliente, Guincheiro ou sem perfil encerra a sessão e mostra "Este número não está cadastrado como operação". Todas as rotas do Painel exigem a operação (`ExigeOperacao`); uma sessão guardada de outro papel é encerrada ao abrir.
+- **API:** `ApiPainel` em `@guinchei/api` (`criarApiPainel`): `enviarCodigo`, `confirmarCodigo`, `temSessao`, `buscarMeuPerfil`, `sair` e `buscarMeuOperador` (`null` se o perfil não é `operacao`). Os testes de integração estão em `packages/api/src/integracao.test.ts` (bloco "Painel de operação") e incluem a prova de que a RLS de `eh_operacao()` deixa a operação, e só ela, ler o perfil de outra pessoa. Os testes do app usam o dublê em memória `src/teste/apiFalsa.ts`.
+- **Dados:** o nome na lateral vem do perfil da sessão. Monitor, Homologação, Disputas e Tabela de preços continuam com dados de exemplo (`@guinchei/mock`).
+- **Fora de escopo:** não há botão de sair nem expiração visível da sessão; o e2e (`pnpm e2e`) ainda não cobre o Painel.
 
 ## Acompanhamento do Cliente
 
