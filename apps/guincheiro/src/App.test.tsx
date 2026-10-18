@@ -97,6 +97,21 @@ describe('Plantão', () => {
     expect(api.definirDisponibilidade).toHaveBeenCalledWith(false);
   });
 
+  it('se o banco recusar por Corrida em andamento, volta o interruptor e explica', async () => {
+    const api = apiFalsa({ sessao: true, disponivel: false });
+    api.definirDisponibilidade.mockRejectedValueOnce(
+      new ErroApi('em_corrida', 'Termine a Corrida em andamento antes de ficar disponível'),
+    );
+    renderEm('/', api);
+    const interruptor = await screen.findByRole('switch', { name: 'Disponível para chamados' });
+    await waitFor(() => expect(interruptor.getAttribute('aria-checked')).toBe('false'));
+    fireEvent.click(interruptor);
+    expect(
+      await screen.findByText('Termine a Corrida em andamento antes de ficar disponível'),
+    ).toBeTruthy();
+    expect(interruptor.getAttribute('aria-checked')).toBe('false');
+  });
+
   it('abre com a disponibilidade gravada no servidor', async () => {
     renderEm('/', apiFalsa({ sessao: true, disponivel: false }));
     expect(await screen.findByText('Fora do plantão')).toBeTruthy();

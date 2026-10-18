@@ -753,6 +753,11 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
             const alheia = await wagner.avancarCorrida(corridaId, 'a_caminho').catch((e) => e);
             expect((alheia as ErroApi).motivo).toBe('corrida_indisponivel');
 
+            // Guarda do banco (GDP01): em Corrida, o plantão não liga (por exemplo, em outra aba).
+            const plantao = await marcos.definirDisponibilidade(true).catch((e) => e);
+            expect((plantao as ErroApi).motivo).toBe('em_corrida');
+            await marcos.definirDisponibilidade(false);
+
             for (const para of ['a_caminho', 'no_local', 'carregado', 'entregue'] as const) {
               expect(await marcos.avancarCorrida(corridaId, para)).toBe(para);
             }

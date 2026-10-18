@@ -103,6 +103,7 @@ O schema está em `supabase/migrations/`, uma migração por assunto:
 | `*_corrida_do_guincheiro.sql` | trigger que devolve o Guincheiro ao plantão (`disponivel = true`) quando a Corrida chega a `entregue`; `hora_do_servidor()` (o app conta o prazo da oferta pela hora do banco); `tentativas_match` e `corridas` na publicação `supabase_realtime`, de forma idempotente (bloco `DO` que confere `pg_publication_tables`) |
 | `*_fotos_de_estado_etapa_e_limite.sql` | enum `etapa_foto` e `fotos_estado.etapa`; `fotos_estado_preencher` passa a derivar a etapa do estado da Corrida (`GFT01` se o app mandar outra) e a limitar 6 itens por autor e etapa (`GFT02`); política de Storage que deixa quem enviou apagar o arquivo ainda sem registro |
 | `*_acompanhamento.sql` | `pedidos` e `corridas` na publicação `supabase_realtime` (idempotente, para não colidir com outras migrações que adicionem tabelas); `contraparte_da_corrida` (só nome e Frota, só para quem participa da Corrida) |
+| `*_guarda_disponivel.sql` | trigger `guincheiros_disponivel_sem_corrida`: recusa `disponivel = true` enquanto o Guincheiro tem Corrida não terminal (`GDP01`); `disponivel = false` é sempre permitido, e a volta ao plantão em `entregue` passa porque a Corrida já saiu dos estados não terminais |
 
 Mudança de schema: `pnpm supabase migration new <nome>`, escreva o SQL, `pnpm supabase db reset`, `pnpm test:db` e `pnpm gen:tipos` (commite o `database.ts` gerado; ele já sai formatado pelo Prettier).
 
@@ -227,6 +228,7 @@ select vault.create_secret('<service_role key do projeto>', 'match_chave_servico
 
 ### Provisório
 
+- **Guarda de disponibilidade:** o banco recusa `guincheiros.disponivel = true` (`GDP01`, `em_corrida` na API) enquanto o Guincheiro tem Corrida em `aceita`, `a_caminho`, `no_local` ou `carregado`, por qualquer caminho (outra aba, SQL). O App do Guincheiro volta o interruptor e mostra "Termine a Corrida em andamento antes de ficar disponível".
 - Um Guincheiro pode receber ofertas de Pedidos diferentes ao mesmo tempo; ao aceitar uma, fica indisponível e as outras falham com `guincheiro_indisponivel` (`GMT02`) até expirarem.
 - Estorno: se o Cliente pedir "tentar de novo" entre o estorno no provedor e o registro, o registro falha com o valor já estornado. Com o PSP real (RF12), conciliar.
 - O Painel do protótipo ainda mostra "atribuição manual" para Pedido sem aceite; a decisão do ADR-0008 é não ter atribuição manual.

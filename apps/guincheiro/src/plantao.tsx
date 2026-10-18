@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from 'react';
-import type { MeuGuincheiro, OfertaAberta } from '@guinchei/api';
+import { ErroApi, type MeuGuincheiro, type OfertaAberta } from '@guinchei/api';
 import { HISTORICO_GUINCHEIRO, type CorridaHistorico } from '@guinchei/mock';
 import { useApi } from './api';
 
@@ -61,9 +61,13 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
       setGuincheiro((g) => (g ? { ...g, disponivel } : g));
       try {
         await api.definirDisponibilidade(disponivel);
-      } catch {
+      } catch (erro) {
         setGuincheiro((g) => (g ? { ...g, disponivel: !disponivel } : g));
-        avisar('Não foi possível mudar a disponibilidade. Tente de novo.');
+        avisar(
+          erro instanceof ErroApi && erro.motivo === 'em_corrida'
+            ? erro.message
+            : 'Não foi possível mudar a disponibilidade. Tente de novo.',
+        );
       }
     },
     [api, avisar],
