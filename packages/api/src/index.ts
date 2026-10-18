@@ -144,6 +144,10 @@ export type MotivoErroApi =
   | 'oferta_indisponivel'
   /** O Guincheiro está indisponível (plantão desligado ou outra Corrida). */
   | 'guincheiro_indisponivel'
+  /** A Corrida não é do Guincheiro logado. */
+  | 'corrida_indisponivel'
+  /** A Corrida não pode ir do estado atual para o pedido (fora de ordem ou já entregue). */
+  | 'transicao_invalida'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -209,6 +213,73 @@ export interface ApiGuinchei {
   recusarOferta(tentativaId: number): Promise<void>;
 }
 
+/** Guincheiro logado, para o plantão. */
+export interface MeuGuincheiro {
+  nome: string;
+  /** Nome da Frota a que pertence. */
+  frota: string;
+  disponivel: boolean;
+}
+
+export type EstadoCorrida = Enums<'estado_corrida'>;
+
+/** Corrida do Guincheiro logado, com o que ele precisa do Pedido. */
+export interface CorridaDoGuincheiro {
+  id: string;
+  pedidoId: string;
+  estado: EstadoCorrida;
+  /** Centavos: o repasse gravado na Corrida (o oferecido a ele no Match). */
+  repasse: number;
+  /** Centavos: Preço fechado recalculado com a distância dele, da oferta aceita. */
+  precoRecalculado: number | null;
+  /** Distância dele até o veículo, da oferta aceita. */
+  kmAteVeiculo: number | null;
+  /** Última mudança (ISO 8601, hora do servidor); em `entregue`, a hora da entrega. */
+  atualizadoEm: string;
+  pedido: OfertaAberta['pedido'];
+}
+
+/**
+ * O que o app do Guincheiro usa: a entrada por telefone e as ofertas do `ApiGuinchei`, mais
+ * o plantão, a Corrida e as assinaturas do Realtime. As assinaturas devolvem a função que
+ * cancela a assinatura.
+ */
+export interface ApiGuincheiro extends Pick<
+  ApiGuinchei,
+  | 'enviarCodigo'
+  | 'confirmarCodigo'
+  | 'temSessao'
+  | 'buscarMeuPerfil'
+  | 'buscarOfertasAbertas'
+  | 'aceitarOferta'
+  | 'recusarOferta'
+> {
+  /** Encerra a sessão no aparelho. */
+  sair(): Promise<void>;
+  /** `null` sem sessão ou se o perfil logado não é de Guincheiro. */
+  buscarMeuGuincheiro(): Promise<MeuGuincheiro | null>;
+  /** O interruptor do plantão: grava `guincheiros.disponivel`. */
+  definirDisponibilidade(disponivel: boolean): Promise<void>;
+  /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
+  horaDoServidor(): Promise<string>;
+  /** A Corrida do Guincheiro ainda não entregue, se houver. */
+  minhaCorridaAtual(): Promise<CorridaDoGuincheiro | null>;
+  buscarCorrida(id: string): Promise<CorridaDoGuincheiro | null>;
+  /** Leva a própria Corrida a `para` (a transição é conferida no banco); devolve o estado. */
+  avancarCorrida(id: string, para: EstadoCorrida): Promise<EstadoCorrida>;
+  /**
+   * Avisa a cada mudança nas ofertas do Guincheiro logado (a RLS filtra no Realtime) e uma
+   * vez quando a assinatura fica pronta, para o app reler sem perder o que mudou antes.
+   */
+  assinarOfertas(aoMudar: () => void): () => void;
+  /** Avisa o novo estado a cada mudança da Corrida; `aoConectar` quando a assinatura fica pronta. */
+  assinarCorrida(
+    id: string,
+    aoMudar: (estado: EstadoCorrida) => void,
+    aoConectar?: () => void,
+  ): () => void;
+}
+
 export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): ClienteSupabase {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('supabaseUrl e supabaseAnonKey são obrigatórios');
@@ -218,6 +289,10 @@ export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): Cl
 }
 
 const CPF_UNICO = 'perfis_cpf_key';
+/** Violação de check: o trigger de transição recusou o novo estado. */
+const TRANSICAO_RECUSADA = '23514';
+/** PostgREST: `.single()` sem nenhuma linha. */
+const NENHUMA_LINHA = 'PGRST116';
 /** Código do erro de `definir_trajeto_pedido` para ponto fora do DF. */
 const FORA_DO_DF = 'GDF01';
 
@@ -580,6 +655,187 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
     async recusarOferta(tentativaId) {
       const { error } = await supabase.rpc('recusar_oferta', { tentativa_id: tentativaId });
       if (error) throw erroDaOferta(error, 'Não foi possível recusar a oferta');
+    },
+  };
+}
+
+const COLUNAS_DA_CORRIDA =
+  'id, pedido_id, estado, repasse, atualizado_em, pedidos (origem_endereco, destino_endereco, km_rebocado, tipo_veiculo, situacao, rodas_giram)';
+
+/** Canal do Realtime com nome único (o mesmo cliente pode assinar mais de uma vez). */
+let canais = 0;
+const nomeDoCanal = (prefixo: string) => `${prefixo}-${++canais}-${Date.now()}`;
+
+export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
+  const base = criarApi(supabase);
+
+  async function meuId() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user.id ?? null;
+  }
+
+  async function completarCorrida(
+    linha: {
+      id: string;
+      pedido_id: string;
+      estado: EstadoCorrida;
+      repasse: number;
+      atualizado_em: string;
+      pedidos: {
+        origem_endereco: string | null;
+        destino_endereco: string | null;
+        km_rebocado: number | null;
+        tipo_veiculo: Enums<'tipo_veiculo'>;
+        situacao: Enums<'situacao_veiculo'>;
+        rodas_giram: Enums<'rodas_giram'>;
+      };
+    } | null,
+  ): Promise<CorridaDoGuincheiro | null> {
+    if (!linha) return null;
+    // A oferta aceita (a RLS só mostra as feitas a ele) traz o preço pela distância dele.
+    const { data: oferta, error } = await supabase
+      .from('tentativas_match')
+      .select('preco_recalculado, km_ate_veiculo')
+      .eq('pedido_id', linha.pedido_id)
+      .eq('resultado', 'aceita')
+      .maybeSingle();
+    if (error) throw new ErroApi('falha', 'Não foi possível ler a Corrida', { cause: error });
+    return {
+      id: linha.id,
+      pedidoId: linha.pedido_id,
+      estado: linha.estado,
+      repasse: linha.repasse,
+      precoRecalculado: oferta?.preco_recalculado ?? null,
+      kmAteVeiculo: oferta?.km_ate_veiculo ?? null,
+      atualizadoEm: linha.atualizado_em,
+      pedido: {
+        origemEndereco: linha.pedidos.origem_endereco,
+        destinoEndereco: linha.pedidos.destino_endereco,
+        kmRebocado: linha.pedidos.km_rebocado,
+        tipoVeiculo: linha.pedidos.tipo_veiculo,
+        situacao: linha.pedidos.situacao,
+        rodasGiram: linha.pedidos.rodas_giram,
+      },
+    };
+  }
+
+  return {
+    enviarCodigo: base.enviarCodigo,
+    confirmarCodigo: base.confirmarCodigo,
+    temSessao: base.temSessao,
+    buscarMeuPerfil: base.buscarMeuPerfil,
+    buscarOfertasAbertas: base.buscarOfertasAbertas,
+    aceitarOferta: base.aceitarOferta,
+    recusarOferta: base.recusarOferta,
+
+    async sair() {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw new ErroApi('falha', 'Não foi possível sair', { cause: error });
+    },
+
+    async buscarMeuGuincheiro() {
+      const id = await meuId();
+      if (!id) return null;
+      const { data, error } = await supabase
+        .from('guincheiros')
+        .select('disponivel, frotas (nome), perfis (nome)')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o plantão', { cause: error });
+      if (!data) return null;
+      return { nome: data.perfis.nome, frota: data.frotas.nome, disponivel: data.disponivel };
+    },
+
+    async definirDisponibilidade(disponivel) {
+      const id = await meuId();
+      if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+      const { error } = await supabase
+        .from('guincheiros')
+        .update({ disponivel })
+        .eq('id', id)
+        .select('id')
+        .single();
+      if (error) {
+        throw new ErroApi('falha', 'Não foi possível mudar a disponibilidade', { cause: error });
+      }
+    },
+
+    async horaDoServidor() {
+      const { data, error } = await supabase.rpc('hora_do_servidor');
+      if (error) throw new ErroApi('falha', 'Não foi possível ler a hora', { cause: error });
+      return data;
+    },
+
+    async minhaCorridaAtual() {
+      const id = await meuId();
+      if (!id) return null;
+      const { data, error } = await supabase
+        .from('corridas')
+        .select(COLUNAS_DA_CORRIDA)
+        .eq('guincheiro_id', id)
+        .neq('estado', 'entregue')
+        .order('criado_em', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler a Corrida', { cause: error });
+      return completarCorrida(data);
+    },
+
+    async buscarCorrida(corridaId) {
+      const { data, error } = await supabase
+        .from('corridas')
+        .select(COLUNAS_DA_CORRIDA)
+        .eq('id', corridaId)
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler a Corrida', { cause: error });
+      return completarCorrida(data);
+    },
+
+    async avancarCorrida(corridaId, para) {
+      // A RLS só deixa o Guincheiro da Corrida mudar o estado; o trigger confere a transição.
+      const { data, error } = await supabase
+        .from('corridas')
+        .update({ estado: para })
+        .eq('id', corridaId)
+        .select('estado')
+        .single();
+      if (error?.code === TRANSICAO_RECUSADA) {
+        throw new ErroApi('transicao_invalida', 'A Corrida está em outra etapa', {
+          cause: error,
+        });
+      }
+      if (error?.code === NENHUMA_LINHA) {
+        throw new ErroApi('corrida_indisponivel', 'Corrida não encontrada', { cause: error });
+      }
+      if (error) throw new ErroApi('falha', 'Não foi possível avançar a Corrida', { cause: error });
+      return data.estado;
+    },
+
+    assinarOfertas(aoMudar) {
+      // Sem filtro: a RLS de `tentativas_match` já entrega só as ofertas feitas a ele.
+      const canal = supabase
+        .channel(nomeDoCanal('ofertas'))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tentativas_match' }, () =>
+          aoMudar(),
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') aoMudar();
+        });
+      return () => void supabase.removeChannel(canal);
+    },
+
+    assinarCorrida(corridaId, aoMudar, aoConectar) {
+      const canal = supabase
+        .channel(nomeDoCanal('corrida'))
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'corridas', filter: `id=eq.${corridaId}` },
+          (mudanca) => aoMudar((mudanca.new as { estado: EstadoCorrida }).estado),
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') aoConectar?.();
+        });
+      return () => void supabase.removeChannel(canal);
     },
   };
 }

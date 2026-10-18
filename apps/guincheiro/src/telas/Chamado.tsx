@@ -1,169 +1,114 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { formatarHora, formatarKm, formatarReais } from '@guinchei/ui';
-import { CLIENTE, GUINCHEIRO, PRECO, REPASSE, RODAS, TRECHO } from '@guinchei/mock';
-import {
-  Avatar,
-  Botao,
-  Corpo,
-  Heroi,
-  IndicadorHome,
-  Link,
-  Mapa,
-  Ponto,
-  Rotulo,
-  Tela,
-} from '@guinchei/ui';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { ErroApi, type OfertaAberta } from '@guinchei/api';
+import { Botao, Corpo, Heroi, Link, Rotulo, Tela, formatarKm, formatarReais } from '@guinchei/ui';
+import { useApi } from '../api';
 import { usePlantao } from '../plantao';
-import { AbasGuincheiro, somaRepasses } from './comum';
+import { Chips, chipsDoPedido } from './comum';
 
-const ESPERA_CHAMADO = 5000;
+/** Prazo padrão da oferta (`parametros_match.timeout_oferta_segundos`), para a barra de tempo. */
 const PRAZO_ACEITE = 30;
-const TELEFONE_CLIENTE = '+5561998124470';
 
-function Interruptor({ ligado, onChange }: { ligado: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={ligado}
-      aria-label="Disponível para chamados"
-      onClick={() => onChange(!ligado)}
-      style={{
-        width: 58,
-        height: 34,
-        borderRadius: 17,
-        background: ligado ? 'var(--sucesso)' : 'var(--borda-escura)',
-        position: 'relative',
-        transition: 'background .15s',
-        flex: 'none',
-      }}
-    >
-      <span
-        style={{
-          position: 'absolute',
-          top: 3,
-          left: ligado ? 27 : 3,
-          width: 28,
-          height: 28,
-          borderRadius: '50%',
-          background: '#fff',
-          transition: 'left .15s',
-        }}
-      />
-    </button>
-  );
+const doisDigitos = (n: number) => String(n).padStart(2, '0');
+
+/** Segundos que faltam para `expiraEm`, pelo relógio do servidor. */
+function useSegundosRestantes(expiraEm: string) {
+  const { agoraNoServidor } = usePlantao();
+  const [agora, setAgora] = useState(agoraNoServidor);
+  useEffect(() => {
+    const id = setInterval(() => setAgora(agoraNoServidor()), 250);
+    return () => clearInterval(id);
+  }, [agoraNoServidor]);
+  return Math.max(0, Math.ceil((Date.parse(expiraEm) - agora) / 1000));
 }
 
-export function Plantao() {
-  const ir = useNavigate();
-  const { disponivel, setDisponivel, chamadoPendente, consumirChamado, estado, historico } =
-    usePlantao();
-  const ganho = somaRepasses(historico);
+export function Chamado() {
+  const { oferta, atualizarOferta } = usePlantao();
+  const [lido, setLido] = useState(false);
 
-  // Mock do Match: com o Guincheiro disponível, o Pedido do Rafael chega em instantes.
+  // Aberto direto (ou recarregado) sem a oferta na memória: relê as ofertas abertas.
   useEffect(() => {
-    if (!disponivel || !chamadoPendente || estado) return;
-    const id = setTimeout(() => {
-      consumirChamado();
-      ir('/chamado');
-    }, ESPERA_CHAMADO);
-    return () => clearTimeout(id);
-  }, [disponivel, chamadoPendente, consumirChamado, estado, ir]);
+    if (oferta) return;
+    let vigente = true;
+    atualizarOferta()
+      .catch(() => {})
+      .finally(() => vigente && setLido(true));
+    return () => {
+      vigente = false;
+    };
+  }, [oferta, atualizarOferta]);
 
+  if (oferta) return <ChamadoAberto oferta={oferta} />;
+  if (lido) return <Navigate to="/" replace />;
   return (
-    <Tela escura rotulo="Em plantão" semRodape>
-      <Corpo style={{ padding: '12px 24px 0', gap: 18 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span className="marca" style={{ fontSize: 22, letterSpacing: 0 }}>
-            guinchei
-          </span>
-          <Avatar
-            iniciais={GUINCHEIRO.iniciais}
-            tamanho={40}
-            style={{ font: '600 14px var(--fonte-titulo)' }}
-          />
-        </div>
-        <div
-          className="cartao cartao--escuro"
-          style={{
-            padding: 22,
-            borderRadius: 20,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {disponivel ? (
-                <Ponto style={{ fontSize: 15 }}>Disponível</Ponto>
-              ) : (
-                <span style={{ font: '600 15px var(--fonte-texto)' }}>Fora do plantão</span>
-              )}
-              <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-                {GUINCHEIRO.plantao}
-              </span>
-            </div>
-            <Interruptor ligado={disponivel} onChange={setDisponivel} />
-          </div>
-          <div style={{ height: 1, background: 'var(--linha-escura)' }} />
-          <div style={{ font: '400 14px/1.5 var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
-            {disponivel
-              ? 'Mantenha o app aberto. O chamado toca mesmo com a tela bloqueada.'
-              : 'Você não recebe chamados enquanto estiver indisponível.'}
-          </div>
-        </div>
-        <Rotulo style={{ marginTop: 8 }}>Hoje</Rotulo>
-        <Heroi centavos={ganho} tamanho={56} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <div
-            className="cartao cartao--escuro"
-            style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 4 }}
-          >
-            <span style={{ font: '700 26px var(--fonte-titulo)' }}>{historico.length}</span>
-            <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-              Corridas
-            </span>
-          </div>
-          <div
-            className="cartao cartao--escuro"
-            style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 4 }}
-          >
-            <span style={{ font: '700 26px var(--fonte-titulo)' }}>{GUINCHEIRO.nota}</span>
-            <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-              Sua nota
-            </span>
-          </div>
-        </div>
-        <div style={{ font: '400 13px/1.5 var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-          Ganho mínimo garantido do plantão: {formatarReais(GUINCHEIRO.ganhoMinimo)}.{' '}
-          {ganho >= GUINCHEIRO.ganhoMinimo
-            ? 'Já superado.'
-            : `Faltam ${formatarReais(GUINCHEIRO.ganhoMinimo - ganho)}.`}
-        </div>
-      </Corpo>
-      <AbasGuincheiro atual="plantao" escura />
+    <Tela escura rotulo="Carregando">
+      {null}
     </Tela>
   );
 }
 
-export function Chamado() {
+function ChamadoAberto({ oferta }: { oferta: OfertaAberta }) {
   const ir = useNavigate();
-  const { aceitar, avisar } = usePlantao();
-  const [restante, setRestante] = useState(PRAZO_ACEITE);
+  const api = useApi();
+  const { agoraNoServidor, descartarOferta, avisar, setGuincheiro } = usePlantao();
+  const [enviando, setEnviando] = useState(false);
+  const restante = useSegundosRestantes(oferta.expiraEm);
+  const { pedido } = oferta;
 
+  // Vencido o prazo (pelo relógio do servidor), a oferta passa ao próximo Guincheiro.
   useEffect(() => {
-    if (restante <= 0) {
+    const expirar = () => {
+      descartarOferta(oferta.tentativaId);
       avisar('O chamado expirou e passou ao próximo Guincheiro.');
       ir('/', { replace: true });
+    };
+    const falta = Date.parse(oferta.expiraEm) - agoraNoServidor();
+    if (falta <= 0) {
+      expirar();
       return;
     }
-    const id = setTimeout(() => setRestante((s) => s - 1), 1000);
+    const id = setTimeout(expirar, falta);
     return () => clearTimeout(id);
-  }, [restante, avisar, ir]);
+  }, [oferta.expiraEm, oferta.tentativaId, agoraNoServidor, descartarOferta, avisar, ir]);
 
-  const chips = ['Carro de passeio', 'Não liga', RODAS[0].chip];
+  function aoFalharResposta(e: unknown, acao: 'aceitar' | 'recusar') {
+    if (e instanceof ErroApi && e.motivo === 'oferta_indisponivel') {
+      descartarOferta(oferta.tentativaId);
+      avisar('Esta oferta não está mais disponível.');
+      ir('/', { replace: true });
+    } else if (e instanceof ErroApi && e.motivo === 'guincheiro_indisponivel') {
+      avisar('Você está fora do plantão. Ligue a disponibilidade para aceitar.');
+      ir('/', { replace: true });
+    } else {
+      avisar(`Não foi possível ${acao} o chamado. Tente de novo.`);
+      setEnviando(false);
+    }
+  }
+
+  async function aceitar() {
+    setEnviando(true);
+    try {
+      await api.aceitarOferta(oferta.tentativaId);
+      // Quem aceita fica indisponível no banco até entregar.
+      setGuincheiro((g) => (g ? { ...g, disponivel: false } : g));
+      descartarOferta(oferta.tentativaId);
+      ir('/corrida', { replace: true });
+    } catch (e) {
+      aoFalharResposta(e, 'aceitar');
+    }
+  }
+
+  async function recusar() {
+    setEnviando(true);
+    try {
+      await api.recusarOferta(oferta.tentativaId);
+      descartarOferta(oferta.tentativaId);
+      avisar('Chamado recusado. Ele passa ao próximo Guincheiro.');
+      ir('/', { replace: true });
+    } catch (e) {
+      aoFalharResposta(e, 'recusar');
+    }
+  }
 
   return (
     <Tela escura rotulo="Novo chamado">
@@ -171,7 +116,7 @@ export function Chamado() {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Rotulo>Novo chamado</Rotulo>
           <span style={{ font: '600 15px var(--fonte-titulo)' }} aria-live="off">
-            0:{String(restante).padStart(2, '0')}
+            {Math.floor(restante / 60)}:{doisDigitos(restante % 60)}
           </span>
         </div>
         <div
@@ -184,7 +129,7 @@ export function Chamado() {
         >
           <div
             style={{
-              width: `${(restante / PRAZO_ACEITE) * 100}%`,
+              width: `${Math.min(1, restante / PRAZO_ACEITE) * 100}%`,
               height: '100%',
               background: 'var(--off-white)',
               transition: 'width 1s linear',
@@ -195,9 +140,11 @@ export function Chamado() {
           <span style={{ font: '400 15px var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
             Você recebe
           </span>
-          <Heroi centavos={REPASSE.repasse} tamanho={64} />
+          <Heroi centavos={oferta.repasse} tamanho={64} />
           <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-            Preço fechado {formatarReais(PRECO.total)} · já descontada a Comissão
+            {oferta.precoRecalculado !== null
+              ? `Preço pela sua distância ${formatarReais(oferta.precoRecalculado)} · já descontada a Comissão`
+              : 'Já descontada a Comissão'}
           </span>
         </div>
         <div className="cartao cartao--escuro" style={{ padding: '4px 18px' }}>
@@ -220,10 +167,14 @@ export function Chamado() {
               }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={{ font: '500 16px var(--fonte-texto)' }}>{TRECHO.origem}</span>
-              <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-                {formatarKm(TRECHO.kmDeslocamento)} de você · ~{TRECHO.minutosAteCliente} min
+              <span style={{ font: '500 16px var(--fonte-texto)' }}>
+                {pedido.origemEndereco ?? 'Origem não informada'}
               </span>
+              {oferta.kmAteVeiculo !== null && (
+                <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
+                  {formatarKm(oferta.kmAteVeiculo)} de você
+                </span>
+              )}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 14, padding: '14px 0' }}>
@@ -237,153 +188,31 @@ export function Chamado() {
               }}
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span style={{ font: '500 16px var(--fonte-texto)' }}>{TRECHO.destinoCurto}</span>
-              <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-                {formatarKm(TRECHO.kmReboque)} de reboque
+              <span style={{ font: '500 16px var(--fonte-texto)' }}>
+                {pedido.destinoEndereco ?? 'Destino não informado'}
               </span>
+              {pedido.kmRebocado !== null && (
+                <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
+                  {formatarKm(pedido.kmRebocado)} de reboque
+                </span>
+              )}
             </div>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {chips.map((c) => (
-            <span
-              key={c}
-              style={{
-                padding: '8px 12px',
-                borderRadius: 999,
-                background: 'var(--superficie-escura)',
-                font: '500 14px var(--fonte-texto)',
-              }}
-            >
-              {c}
-            </span>
-          ))}
-        </div>
+        <Chips itens={chipsDoPedido(pedido)} />
         <div className="espaco" />
         <Botao
           variante="claro"
+          disabled={enviando}
           style={{ height: 64, borderRadius: 16, font: '700 20px var(--fonte-titulo)' }}
-          onClick={() => {
-            aceitar();
-            ir('/a-caminho', { replace: true });
-          }}
+          onClick={aceitar}
         >
           Aceitar Corrida
         </Botao>
-        <Link
-          centro
-          style={{ fontSize: 15 }}
-          onClick={() => {
-            avisar('Chamado recusado. Ele passa ao próximo Guincheiro.');
-            ir('/', { replace: true });
-          }}
-        >
+        <Link centro style={{ fontSize: 15 }} disabled={enviando} onClick={recusar}>
           Recusar
         </Link>
       </Corpo>
     </Tela>
-  );
-}
-
-/** Hora prevista de chegada, fixada quando a tela abre. */
-export function useChegada(minutos: number) {
-  const [chegada] = useState(() => formatarHora(new Date(Date.now() + minutos * 60_000)));
-  return chegada;
-}
-
-export function ACaminho() {
-  const { avancar } = usePlantao();
-  const chegada = useChegada(TRECHO.minutosAteCliente);
-  return (
-    <Tela mapa escura rotulo="A caminho do Cliente">
-      <Mapa
-        escuro
-        ruas={[
-          { top: 240, esp: 18, giro: -12 },
-          { left: 210, esp: 12, giro: 10 },
-          { left: 70, esp: 10 },
-        ]}
-        rota="76,470 76,260 222,232 240,120"
-        rotaEspessura={6}
-        marcadores={[
-          { left: 60, top: 454, tamanho: 32, tipo: 'guincho' },
-          { left: 228, top: 108, tamanho: 24, tipo: 'origem' },
-        ]}
-      />
-      <Navegacao instrucao="Em 600 m, vire à direita" via="Eixo Monumental, sentido Torre de TV" />
-      <div className="folha folha--escura">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ font: '700 28px var(--fonte-titulo)' }}>
-            {TRECHO.minutosAteCliente} min
-          </span>
-          <span style={{ font: '500 15px var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
-            {formatarKm(TRECHO.kmDeslocamento)} · chega {chegada}
-          </span>
-        </div>
-        <div
-          className="cartao cartao--escuro"
-          style={{ display: 'flex', gap: 14, alignItems: 'center', padding: 14 }}
-        >
-          <Avatar
-            iniciais={CLIENTE.iniciais}
-            tamanho={48}
-            fundo="var(--linha-escura)"
-            style={{ fontSize: 16 }}
-          />
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={{ font: '600 17px var(--fonte-titulo)' }}>{CLIENTE.nomeCurto}</span>
-            <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-              {CLIENTE.veiculoDescricao}
-            </span>
-          </div>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Botao
-            variante="contorno-escuro"
-            style={{ height: 52, fontSize: 16 }}
-            onClick={() => (window.location.href = `tel:${TELEFONE_CLIENTE}`)}
-          >
-            Ligar
-          </Botao>
-          <Botao
-            variante="contorno-escuro"
-            style={{ height: 52, fontSize: 16 }}
-            onClick={() => (window.location.href = `sms:${TELEFONE_CLIENTE}`)}
-          >
-            Mensagem
-          </Botao>
-        </div>
-        <Botao variante="claro" grande onClick={() => avancar('no_local', '/fotos/antes')}>
-          Cheguei no local
-        </Botao>
-        <IndicadorHome />
-      </div>
-    </Tela>
-  );
-}
-
-export function Navegacao({ instrucao, via }: { instrucao: string; via: string }) {
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        left: 16,
-        right: 16,
-        top: 'calc(max(var(--topo), 0px) + 10px)',
-        padding: '16px 18px',
-        borderRadius: 16,
-        background: 'var(--grafite)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 4,
-        zIndex: 1,
-      }}
-      className="navegacao"
-    >
-      <span style={{ font: '700 22px var(--fonte-titulo)' }}>{instrucao}</span>
-      <span style={{ font: '400 14px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-        {via}
-      </span>
-    </div>
   );
 }

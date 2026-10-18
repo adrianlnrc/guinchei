@@ -640,6 +640,7 @@ export type Database = {
           guincheiro_id: string;
         }[];
       };
+      hora_do_servidor: { Args: Record<PropertyKey, never>; Returns: string };
       limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
       pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };

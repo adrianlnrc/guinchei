@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@guinchei/api": "workspace:*",
     "@guinchei/estados": "workspace:*",
     "@guinchei/mock": "workspace:*",
     "@guinchei/preco": "workspace:*",

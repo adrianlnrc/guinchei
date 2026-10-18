@@ -1,105 +1,48 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import type { CorridaDoGuincheiro } from '@guinchei/api';
 import { formatarHora, formatarKm, formatarReais, formatarPercentual } from '@guinchei/ui';
 import { TABELA_PADRAO } from '@guinchei/preco';
-import { CLIENTE, LADOS, PRECO, REPASSE, TRECHO } from '@guinchei/mock';
-import { Botao, Corpo, Foto, Heroi, Nota, Ponto, Segmentado, Tela, Valores } from '@guinchei/ui';
-import { contarFotos, usePlantao } from '../plantao';
+import { Botao, Corpo, Heroi, Nota, Ponto, Segmentado, Tela, Valores } from '@guinchei/ui';
+import { useApi } from '../api';
+import { usePlantao } from '../plantao';
 import { AbasGuincheiro, somaRepasses } from './comum';
-
-export function ConfirmarEntrega() {
-  const ir = useNavigate();
-  const { fotos, avancar } = usePlantao();
-  const antes = contarFotos(fotos.antes);
-  const depois = contarFotos(fotos.depois);
-  const completo = antes === LADOS.length && depois === LADOS.length;
-  const cor = (n: number) => (n === LADOS.length ? 'var(--sucesso-texto)' : 'var(--tinta)');
-
-  return (
-    <Tela rotulo="Confirmar entrega">
-      <Corpo style={{ padding: '12px 24px 32px', gap: 16 }}>
-        <span className="rotulo">Depois de entregar</span>
-        <h1
-          className="titulo"
-          style={{ font: '700 28px/1.12 var(--fonte-titulo)', letterSpacing: '-.01em' }}
-        >
-          Carro descarregado. Faltam as fotos finais.
-        </h1>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          {LADOS.map((lado, i) => {
-            const foto = fotos.depois[i];
-            return (
-              <button
-                key={lado}
-                type="button"
-                onClick={() => ir(`/camera/depois/${i}`)}
-                style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
-                aria-label={foto ? `${lado}, foto feita` : `Fotografar ${lado}`}
-              >
-                {foto ? (
-                  <Foto altura={110} style={{ width: '100%' }} />
-                ) : (
-                  <Foto altura={110} vazia legenda="Tirar foto" style={{ width: '100%' }} />
-                )}
-                <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-                  {foto ? `${lado} · ${foto.hora}` : lado}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <div
-          className="cartao"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 10,
-            padding: '14px 16px',
-            borderRadius: 14,
-          }}
-        >
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              font: '500 15px var(--fonte-texto)',
-            }}
-          >
-            <span>Fotos antes</span>
-            <span style={{ color: cor(antes) }}>
-              {antes} de {LADOS.length}
-            </span>
-          </div>
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              font: '500 15px var(--fonte-texto)',
-            }}
-          >
-            <span>Fotos depois</span>
-            <span style={{ color: cor(depois) }}>
-              {depois} de {LADOS.length}
-            </span>
-          </div>
-        </div>
-        <div className="espaco" />
-        <p className="apoio" style={{ fontSize: 13, textAlign: 'center' }}>
-          A Corrida só encerra com todas as Fotos de estado.
-        </p>
-        <Botao grande disabled={!completo} onClick={() => avancar('entregue', '/repasse')}>
-          Encerrar Corrida
-        </Botao>
-      </Corpo>
-    </Tela>
-  );
-}
 
 export function Repasse() {
   const ir = useNavigate();
-  const { encerrar } = usePlantao();
+  const api = useApi();
+  const { id } = useParams();
+  const { encerrar, setGuincheiro } = usePlantao();
+  // undefined: ainda lendo; null: Corrida não encontrada.
+  const [corrida, setCorrida] = useState<CorridaDoGuincheiro | null | undefined>(undefined);
   const [nota, setNota] = useState<number | null>(null);
-  const [fim] = useState(() => new Date());
+
+  useEffect(() => {
+    let vigente = true;
+    api
+      .buscarCorrida(id ?? '')
+      .catch(() => null)
+      .then((c) => vigente && setCorrida(c));
+    // Entregue, o banco devolveu o Guincheiro ao plantão: traz isso para a tela já.
+    api
+      .buscarMeuGuincheiro()
+      .then((meu) => vigente && meu && setGuincheiro(meu))
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, [api, id, setGuincheiro]);
+
+  if (corrida === undefined)
+    return (
+      <Tela escura rotulo="Carregando">
+        {null}
+      </Tela>
+    );
+  if (corrida === null || corrida.estado !== 'entregue') return <Navigate to="/" replace />;
+
+  const fim = new Date(corrida.atualizadoEm);
+  const { pedido } = corrida;
 
   return (
     <Tela escura rotulo="Repasse e avaliação do Cliente">
@@ -108,35 +51,41 @@ export function Repasse() {
         <span style={{ font: '400 15px var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
           Seu repasse
         </span>
-        <Heroi centavos={REPASSE.repasse} tamanho={64} />
+        <Heroi centavos={corrida.repasse} tamanho={64} />
         <Valores
           escuro
           style={{ padding: '4px 18px' }}
           linhas={[
-            ['Preço fechado', formatarReais(PRECO.total)],
-            [
-              `Comissão Guinchei · ${formatarPercentual(TABELA_PADRAO.comissao)}`,
-              `− ${formatarReais(REPASSE.comissao)}`,
-            ],
+            ...(corrida.precoRecalculado !== null
+              ? ([
+                  ['Preço pela sua distância', formatarReais(corrida.precoRecalculado)],
+                  [
+                    `Comissão Guinchei · ${formatarPercentual(TABELA_PADRAO.comissao)}`,
+                    `− ${formatarReais(corrida.precoRecalculado - corrida.repasse)}`,
+                  ],
+                ] as [string, string][])
+              : []),
             ['Cai na conta da Frota', 'em até 1 dia útil'],
           ]}
         />
         <div style={{ height: 1, background: 'var(--linha-escura)', margin: '4px 0' }} />
-        <span style={{ font: '600 20px var(--fonte-titulo)' }}>Como foi com o {CLIENTE.nome}?</span>
+        <span style={{ font: '600 20px var(--fonte-titulo)' }}>Como foi com o Cliente?</span>
         <Nota escura valor={nota} onChange={setNota} />
+        <p className="apoio" style={{ fontSize: 13 }}>
+          Prévia: a avaliação ainda não é enviada.
+        </p>
         <div className="espaco" />
         <Botao
           variante="claro"
           grande
-          disabled={nota === null}
           onClick={() => {
             encerrar({
               quando: formatarHora(fim),
-              km: formatarKm(TRECHO.kmDeslocamento + TRECHO.kmReboque),
-              trecho: 'Eixo Monumental → Taguatinga Norte',
-              pessoa: CLIENTE.nomeCurto,
+              km: formatarKm((corrida.kmAteVeiculo ?? 0) + (pedido.kmRebocado ?? 0)),
+              trecho: `${pedido.origemEndereco ?? 'Origem'} → ${pedido.destinoEndereco ?? 'Destino'}`,
+              pessoa: 'Cliente',
               nota: nota ?? undefined,
-              valor: REPASSE.repasse,
+              valor: corrida.repasse,
               estado: 'Entregue',
             });
             ir('/', { replace: true });
