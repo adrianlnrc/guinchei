@@ -197,6 +197,9 @@ importers:
 
   packages/api:
     dependencies:
+      '@guinchei/geo':
+        specifier: workspace:*
+        version: link:../geo
       '@guinchei/tipos':
         specifier: workspace:*
         version: link:../tipos
@@ -209,6 +212,8 @@ importers:
       '@guinchei/tipos':
         specifier: workspace:*
         version: link:../tipos
+
+  packages/geo: {}
 
   packages/match: {}
 

@@ -1,0 +1,16 @@
+{
+  "name": "@guinchei/geo",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Regra do DF (TS puro) e ServicoMapas: interface, adaptador Mapbox e dublê em memória",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mapbox": "./src/mapbox.ts",
+    "./memoria": "./src/memoria.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -494,6 +494,19 @@ export type Database = {
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
+      definir_trajeto_pedido: {
+        Args: {
+          destino_endereco: string;
+          destino_lat: number;
+          destino_lng: number;
+          km_rebocado: number;
+          origem_endereco: string;
+          origem_lat: number;
+          origem_lng: number;
+          pedido_id: string;
+        };
+        Returns: undefined;
+      };
       eh_operacao: { Args: Record<PropertyKey, never>; Returns: boolean };
       guincheiros_elegiveis_proximos: {
         Args: { latitude: number; limite?: number; longitude: number };
@@ -503,12 +516,14 @@ export type Database = {
           guincheiro_id: string;
         }[];
       };
+      limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };
       pedido_oferecido_a_mim: { Args: { pedido_id: string }; Returns: boolean };
       perfil_tem_papel: {
         Args: { esperado: Database['public']['Enums']['papel']; perfil_id: string };
         Returns: boolean;
       };
+      ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
       sou_cliente_do_pedido: { Args: { pedido_id: string }; Returns: boolean };
       tabela_precos_vigente: {
         Args: { em?: string };

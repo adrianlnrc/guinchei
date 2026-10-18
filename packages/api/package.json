@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@guinchei/geo": "workspace:*",
     "@guinchei/tipos": "workspace:*",
     "@supabase/supabase-js": "^2.118.0"
   }
