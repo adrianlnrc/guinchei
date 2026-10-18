@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it } from 'vitest';
 import { COTACAO } from '@guinchei/mock';
@@ -17,9 +17,24 @@ function renderEm(rota: string) {
 }
 
 describe('App painel', () => {
-  it('abre no monitor de Corridas', () => {
+  it('o monitor mostra os Pedidos em Match e sem Guincheiro, só para leitura', () => {
     renderEm('/');
-    expect(screen.getByText('Pedido 2318 precisa de atribuição manual')).toBeTruthy();
+    const semGuincheiro = screen.getByText('2318').closest('.linha-tabela') as HTMLElement;
+    expect(within(semGuincheiro).getByText('Sem Guincheiro')).toBeTruthy();
+    expect(screen.getByText('Aguardando o Cliente: tentar de novo ou estornar')).toBeTruthy();
+    expect(screen.getByText('Procurando Guincheiro')).toBeTruthy();
+    expect(screen.getByText('Tentativa 2 · há 1 min')).toBeTruthy();
+    expect(
+      screen.getByText('1 Pedido procurando Guincheiro · 1 sem Guincheiro, aguardando o Cliente'),
+    ).toBeTruthy();
+    expect(screen.getByText('O Match atribui o Guincheiro sozinho.')).toBeTruthy();
+  });
+
+  it('o monitor não tem atribuição manual nem broadcast', () => {
+    const { container } = renderEm('/');
+    expect(screen.queryByRole('button', { name: /Atribuir/ })).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(container.textContent).not.toMatch(/atribuição manual|broadcast|Precisa de ação/i);
   });
 
   it('o simulador mostra o Preço fechado e o repasse calculados por @guinchei/preco', () => {

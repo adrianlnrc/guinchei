@@ -56,7 +56,7 @@ Os três apps em `apps/` trazem as telas do protótipo do Claude Design (App do 
 
 - **Cliente:** login por SMS, Pedido em três toques (variação 1a do design), Preço fechado, Pix, acompanhamento da Corrida, cancelamento com taxa, avaliação e histórico.
 - **Guincheiro:** plantão, chamado com aceite em 30 s, Fotos de estado antes e depois (a Corrida só encerra com elas), transporte, repasse e histórico.
-- **Painel:** monitor de Corridas com atribuição manual, homologação de Frota (RN03), Disputa e tabela de preços com simulador.
+- **Painel:** monitor de Corridas e dos Pedidos no Match (somente leitura: quem atribui é o Match), homologação de Frota (RN03), Disputa e tabela de preços com simulador.
 
 `packages/ui` guarda os tokens da identidade visual e os componentes compartilhados. `packages/mock` guarda os dados do cenário e dublês das transições de Corrida; o Preço fechado do cenário já sai de `packages/preco`. O mock sai quando `estados` (#6) estiver pronto.
 
