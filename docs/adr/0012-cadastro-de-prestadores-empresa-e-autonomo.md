@@ -29,3 +29,17 @@ O ADR-0006 lança só com Frotas âncora com CNPJ. A pesquisa de mercado (Cadê 
 - (+) Mais oferta desde o lançamento.
 - (+) Cada Corrida fica vinculada a um Guincheiro identificado.
 - (−) Verificação manual de autônomos é mais trabalhosa e o risco jurídico é maior; a apólice continua obrigatória.
+
+## Detalhamento do modelo (issue #43, cadastro do autônomo)
+
+Nada abaixo muda a decisão; só a precisa no banco e no app.
+
+- **Papel de quem gere a Frota:** o enum de papéis ganha `representante`, distinto de `guincheiro`: o representante de uma empresa pode não dirigir. Uma conta tem um papel só (`perfis.papel`).
+- **Autônomo:** é representante e Guincheiro de uma Frota própria, na mesma conta. O perfil tem papel `representante`; a linha em `guincheiros` (posição, plantão) é criada no ticket de documentos do Guincheiro, que também passa a aceitar esse papel em `guincheiros.id`. Até lá o autônomo cadastra e acompanha a Frota, mas não entra em plantão.
+- **Representante na Frota:** `frotas.representante_id` aponta para o perfil (nome, CPF e telefone do representante ficam em `perfis`, o telefone é o verificado no login). É único por Frota e nulo só nas Frotas do seed, que antecedem o cadastro.
+- **Campos da Frota:** `base_cep`, `base_endereco`, `base_bairro`, `chave_pix`, `apolice_validade`, `termos_prestador_versao` e `termos_prestador_em`. O grupo do cadastro (representante, endereço, Pix e termos) vem inteiro ou não vem (`frotas_cadastro_completo`). A hora do aceite é do servidor, no padrão de `perfis.aceite_termos_em`. `apolice_validade` espelha a validade do item de homologação da apólice (trigger), que é a fonte.
+- **Rascunho no banco:** o cadastro em andamento fica em `rascunhos_frota` (um por conta, `etapa` e `dados` em JSON), para retomar em outro aparelho. Só abre rascunho quem ainda não é prestador (sem perfil, ou representante sem Frota).
+- **Envio:** `enviar_cadastro_frota()` valida tudo no servidor e, numa transação, cria o perfil de representante, a Frota com `ativa = false` e um item `pendente` para o alvará e outro para a apólice (com validade). Ativar a Frota continua sendo só da operação.
+- **Dono dos itens de Frota:** passa a ser o representante (antes, no #42, o Guincheiro que enviava). O representante envia e reenvia os itens da Frota e dos veículos; o Guincheiro, os dele. Reenviar torna quem reenviou o dono do item.
+- **Apólice:** o formulário e o servidor recusam validade vencida ou a vencer em menos de 30 dias (ADR-0007), para não aprovar o que vence antes da ativação.
+- **Termos para prestadores:** texto provisório, versionado como os termos de uso (ADR-0010); o perfil novo do representante grava essa versão como aceite dos termos.

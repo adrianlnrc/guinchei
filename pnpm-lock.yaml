@@ -41,6 +41,9 @@ importers:
       '@guinchei/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@guinchei/documentos':
+        specifier: workspace:*
+        version: link:../../packages/documentos
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados
@@ -102,6 +105,9 @@ importers:
       '@guinchei/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@guinchei/documentos':
+        specifier: workspace:*
+        version: link:../../packages/documentos
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados
@@ -235,6 +241,8 @@ importers:
         version: 2.118.0
 
   packages/cnh: {}
+
+  packages/documentos: {}
 
   packages/estados:
     devDependencies:

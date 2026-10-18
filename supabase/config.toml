@@ -277,6 +277,7 @@ max_frequency = "5s"
 5561900000005 = "123456" # Operação
 5561900000006 = "123456" # Cliente novo, sem perfil no seed (testa o cadastro urgente)
 5561900000007 = "123456" # Guincheiro: Paulo Mendes (Guincho Capital, Frota pendente de homologação)
+5561900000008 = "123456" # Pessoa nova, sem usuário nem perfil no seed (testa o cadastro de Frota autônoma, #43)
 
 # Configure logged in session timeouts.
 # [auth.sessions]

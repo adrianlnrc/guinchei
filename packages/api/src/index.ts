@@ -48,6 +48,62 @@ export interface CadastroUrgente {
   termosVersao: string;
 }
 
+/** Dias que a apólice precisa valer, a contar do envio do cadastro (ADR-0007). */
+export const DIAS_MINIMOS_VALIDADE_APOLICE = 30;
+/** Tamanho máximo de um documento de prestador (o limite do bucket `documentos-prestadores`). */
+export const TAMANHO_MAXIMO_DOCUMENTO_BYTES = 10_485_760;
+
+/**
+ * Dados do cadastro de Frota, todos opcionais enquanto é rascunho: o envio valida tudo no
+ * servidor. CPF, CNPJ e CEP vão só com dígitos (o CNPJ alfanumérico, com letras maiúsculas).
+ */
+export interface DadosCadastroFrota {
+  /** CPF ou CNPJ do MEI do autônomo. */
+  documento?: string;
+  nome?: string;
+  representanteNome?: string;
+  representanteCpf?: string;
+  baseCep?: string;
+  baseEndereco?: string;
+  baseBairro?: string;
+  chavePix?: string;
+  /** Último dia de validade da apólice (AAAA-MM-DD). */
+  apoliceValidade?: string;
+  /** Versão dos termos para prestadores aceita. A hora do aceite é do servidor. */
+  termosVersao?: string;
+  /** Caminho do alvará no bucket, devolvido por `enviarDocumentoDaFrota`. */
+  alvaraArquivo?: string;
+  /** Caminho da apólice no bucket. */
+  apoliceArquivo?: string;
+}
+
+/** Etapas do cadastro: 1 dados, 2 endereço, 3 documentos, 4 Pix, 5 termos. */
+export type EtapaCadastroFrota = 1 | 2 | 3 | 4 | 5;
+
+/** O cadastro em andamento, guardado no banco para retomar em qualquer aparelho. */
+export interface RascunhoFrota {
+  etapa: EtapaCadastroFrota;
+  dados: DadosCadastroFrota;
+}
+
+/** A Frota de quem a cadastrou (representante), com o estado de cada item de homologação. */
+export interface MinhaFrota {
+  id: string;
+  tipo: Enums<'tipo_frota'>;
+  documento: string;
+  nome: string;
+  /** `false` até a operação ativar, depois da homologação. */
+  ativa: boolean;
+  baseCep: string | null;
+  baseEndereco: string | null;
+  baseBairro: string | null;
+  chavePix: string | null;
+  /** Último dia de validade da apólice (AAAA-MM-DD). */
+  apoliceValidade: string | null;
+  termosPrestadorVersao: string | null;
+  itens: ItemHomologacao[];
+}
+
 /** Preço fechado calculado e gravado pelo servidor (Edge Function `cotar-pedido`). */
 export interface CotacaoPedido {
   /** Distância em linha reta do Guincheiro elegível mais próximo até a origem (provisório). */
@@ -206,12 +262,30 @@ export type MotivoErroApi =
   | 'documento_vencido'
   /** O arquivo não é uma imagem ou um vídeo dos formatos aceitos. */
   | 'arquivo_invalido'
-  /** O arquivo passa de 50 MiB. */
+  /** O arquivo passa do limite (50 MiB para foto e vídeo, 10 MiB para documento). */
   | 'arquivo_grande'
   /** Já são 6 itens do autor na etapa. */
   | 'limite_de_fotos'
   /** A Corrida mudou de etapa entre abrir a tela e registrar. */
   | 'etapa_mudou'
+  /** Cadastro de Frota: não há rascunho para enviar. */
+  | 'sem_cadastro_em_andamento'
+  /** Cadastro de Frota: CPF ou CNPJ da Frota inválido. */
+  | 'documento_invalido'
+  /** Cadastro de Frota: CPF do representante inválido ou diferente do documento do autônomo. */
+  | 'cpf_representante_invalido'
+  /** Cadastro de Frota: falta algum dado obrigatório. */
+  | 'dados_incompletos'
+  /** Cadastro de Frota: apólice sem validade, vencida ou a vencer em menos de 30 dias. */
+  | 'apolice_curta'
+  /** Cadastro de Frota: os termos para prestadores não foram aceitos. */
+  | 'termos_nao_aceitos'
+  /** Cadastro de Frota: o documento (CNPJ do MEI) já está em outra Frota. */
+  | 'documento_ja_cadastrado'
+  /** Cadastro de Frota: o alvará ou a apólice não chegou ao bucket. */
+  | 'documento_ausente'
+  /** Cadastro de Frota: este número não pode cadastrar uma Frota (já é prestador ou Cliente). */
+  | 'cadastro_indisponivel'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -337,6 +411,30 @@ export interface ApiGuincheiro extends Pick<
   sair(): Promise<void>;
   /** `null` sem sessão ou se o perfil logado não é de Guincheiro. */
   buscarMeuGuincheiro(): Promise<MeuGuincheiro | null>;
+  /** Telefone do login (só dígitos, com o 55), para preencher o representante do cadastro. */
+  telefoneDaSessao(): Promise<string | null>;
+  /** Cadastro de Frota em andamento de quem está logado; `null` se não há. */
+  buscarRascunhoFrota(): Promise<RascunhoFrota | null>;
+  /**
+   * Grava o rascunho do cadastro (cria ou atualiza o mesmo). Erro `cadastro_indisponivel` se
+   * o número já é de Cliente, Guincheiro ou de quem já enviou a Frota.
+   */
+  salvarRascunhoFrota(rascunho: RascunhoFrota): Promise<void>;
+  /**
+   * Envia o alvará ou a apólice ao bucket `documentos-prestadores` (`<usuario>/<uuid>.<ext>`)
+   * e devolve o caminho, para o rascunho. PDF ou imagem de até 10 MiB; erros
+   * `arquivo_invalido` e `arquivo_grande`. Exige o rascunho aberto.
+   */
+  enviarDocumentoDaFrota(arquivo: ArquivoDeMidia): Promise<string>;
+  /**
+   * Envia o rascunho: o servidor valida tudo e cria o perfil de representante, a Frota
+   * inativa e um item `pendente` por documento. Devolve o id da Frota. Erros: `sem_cadastro_em_andamento`,
+   * `documento_invalido`, `cpf_representante_invalido`, `dados_incompletos`, `apolice_curta`,
+   * `termos_nao_aceitos`, `cpf_ja_cadastrado`, `documento_ja_cadastrado`, `documento_ausente`.
+   */
+  enviarCadastroFrota(): Promise<string>;
+  /** A Frota cadastrada por quem está logado; `null` se ainda não enviou o cadastro. */
+  buscarMinhaFrota(): Promise<MinhaFrota | null>;
   /** O interruptor do plantão: grava `guincheiros.disponivel`. */
   definirDisponibilidade(disponivel: boolean): Promise<void>;
   /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
@@ -871,6 +969,107 @@ const COLUNAS_DA_CORRIDA =
 let canais = 0;
 const nomeDoCanal = (prefixo: string) => `${prefixo}-${++canais}-${Date.now()}`;
 
+const BUCKET_DOCUMENTOS = 'documentos-prestadores';
+const FROTA_DOCUMENTO_UNICO = 'frotas_documento_key';
+
+/** Tipos aceitos no bucket de documentos e a extensão de cada um no nome do objeto. */
+const EXTENSAO_DO_DOCUMENTO: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+};
+
+/** O rascunho no banco guarda os campos em snake_case, como o `enviar_cadastro_frota` os lê. */
+const CAMPOS_DO_RASCUNHO = {
+  documento: 'documento',
+  nome: 'nome',
+  representanteNome: 'representante_nome',
+  representanteCpf: 'representante_cpf',
+  baseCep: 'base_cep',
+  baseEndereco: 'base_endereco',
+  baseBairro: 'base_bairro',
+  chavePix: 'chave_pix',
+  apoliceValidade: 'apolice_validade',
+  termosVersao: 'termos_versao',
+  alvaraArquivo: 'alvara_arquivo',
+  apoliceArquivo: 'apolice_arquivo',
+} as const satisfies Record<keyof DadosCadastroFrota, string>;
+
+function dadosParaJson(dados: DadosCadastroFrota): Record<string, string> {
+  const json: Record<string, string> = {};
+  for (const [campo, coluna] of Object.entries(CAMPOS_DO_RASCUNHO)) {
+    const valor = dados[campo as keyof DadosCadastroFrota];
+    if (valor !== undefined) json[coluna] = valor;
+  }
+  return json;
+}
+
+function dadosDoJson(json: unknown): DadosCadastroFrota {
+  const guardado = (json ?? {}) as Record<string, unknown>;
+  const dados: DadosCadastroFrota = {};
+  for (const [campo, coluna] of Object.entries(CAMPOS_DO_RASCUNHO)) {
+    const valor = guardado[coluna];
+    if (typeof valor === 'string') dados[campo as keyof DadosCadastroFrota] = valor;
+  }
+  return dados;
+}
+
+/** Erros de `enviar_cadastro_frota` e do rascunho (migração `cadastro_de_frota`). */
+function erroDoCadastroDeFrota(
+  error: { code?: string; message?: string },
+  mensagemDeFalha: string,
+): ErroApi {
+  const causa = { cause: error };
+  switch (error.code) {
+    case 'GCF01':
+      return new ErroApi('sem_cadastro_em_andamento', 'Não há cadastro em andamento', causa);
+    case 'GCF02':
+      return new ErroApi('documento_invalido', 'CPF ou CNPJ inválido. Confira os números.', causa);
+    case 'GCF03':
+      return new ErroApi(
+        'cpf_representante_invalido',
+        'CPF do representante inválido. Confira os números.',
+        causa,
+      );
+    case 'GCF04':
+      return new ErroApi('dados_incompletos', 'Falta algum dado do cadastro', causa);
+    case 'GCF05':
+      return new ErroApi(
+        'apolice_curta',
+        `A apólice precisa valer por pelo menos ${DIAS_MINIMOS_VALIDADE_APOLICE} dias. Envie uma apólice com validade mais longa.`,
+        causa,
+      );
+    case 'GCF06':
+    case '42501':
+      return new ErroApi(
+        'cadastro_indisponivel',
+        'Este número não pode cadastrar uma Frota',
+        causa,
+      );
+    case 'GCF07':
+      return new ErroApi('termos_nao_aceitos', 'Aceite os termos para prestadores', causa);
+    case 'GHM06':
+      return new ErroApi(
+        'documento_ausente',
+        'Um documento não chegou ao servidor. Envie de novo.',
+        causa,
+      );
+    case '23505':
+      if (error.message?.includes(CPF_UNICO)) {
+        return new ErroApi('cpf_ja_cadastrado', 'CPF já cadastrado em outra conta', causa);
+      }
+      if (error.message?.includes(FROTA_DOCUMENTO_UNICO)) {
+        return new ErroApi('documento_ja_cadastrado', 'Este documento já tem uma Frota', causa);
+      }
+      return new ErroApi('falha', mensagemDeFalha, causa);
+    default:
+      return new ErroApi('falha', mensagemDeFalha, causa);
+  }
+}
+
 export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
   const base = criarApi(supabase);
 
@@ -951,6 +1150,92 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
       if (error) throw new ErroApi('falha', 'Não foi possível ler o plantão', { cause: error });
       if (!data) return null;
       return { nome: data.perfis.nome, frota: data.frotas.nome, disponivel: data.disponivel };
+    },
+
+    async telefoneDaSessao() {
+      const { data } = await supabase.auth.getSession();
+      return data.session?.user.phone ?? null;
+    },
+
+    async buscarRascunhoFrota() {
+      const { data, error } = await supabase
+        .from('rascunhos_frota')
+        .select('etapa, dados')
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o cadastro', { cause: error });
+      if (!data) return null;
+      return { etapa: data.etapa as EtapaCadastroFrota, dados: dadosDoJson(data.dados) };
+    },
+
+    async salvarRascunhoFrota({ etapa, dados }) {
+      const { error } = await supabase
+        .from('rascunhos_frota')
+        .upsert({ etapa, dados: dadosParaJson(dados) }, { onConflict: 'usuario_id' });
+      if (error) throw erroDoCadastroDeFrota(error, 'Não foi possível salvar o cadastro');
+    },
+
+    async enviarDocumentoDaFrota(arquivo) {
+      const id = await meuId();
+      if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+      const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
+      if (!extensao) {
+        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+      }
+      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+      }
+      const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
+      const envio = await supabase.storage
+        .from(BUCKET_DOCUMENTOS)
+        .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+      if (envio.error) {
+        throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
+      }
+      return caminho;
+    },
+
+    async enviarCadastroFrota() {
+      const { data, error } = await supabase.rpc('enviar_cadastro_frota');
+      if (error) throw erroDoCadastroDeFrota(error, 'Não foi possível enviar o cadastro');
+      return data;
+    },
+
+    async buscarMinhaFrota() {
+      const id = await meuId();
+      if (!id) return null;
+      const { data, error } = await supabase
+        .from('frotas')
+        .select(
+          'id, tipo, documento, nome, ativa, base_cep, base_endereco, base_bairro, chave_pix, apolice_validade, termos_prestador_versao, itens_homologacao (id, alvo, tipo, estado, motivo, validade, enviado_em)',
+        )
+        .eq('representante_id', id)
+        .maybeSingle();
+      if (error) throw new ErroApi('falha', 'Não foi possível ler a Frota', { cause: error });
+      if (!data) return null;
+      return {
+        id: data.id,
+        tipo: data.tipo,
+        documento: data.documento,
+        nome: data.nome,
+        ativa: data.ativa,
+        baseCep: data.base_cep,
+        baseEndereco: data.base_endereco,
+        baseBairro: data.base_bairro,
+        chavePix: data.chave_pix,
+        apoliceValidade: data.apolice_validade,
+        termosPrestadorVersao: data.termos_prestador_versao,
+        itens: data.itens_homologacao
+          .map((i) => ({
+            id: i.id,
+            alvo: i.alvo,
+            tipo: i.tipo,
+            estado: i.estado,
+            motivo: i.motivo,
+            validade: i.validade,
+            enviadoEm: i.enviado_em,
+          }))
+          .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.tipo.localeCompare(b.tipo)),
+      };
     },
 
     async definirDisponibilidade(disponivel) {
@@ -1063,8 +1348,6 @@ export interface MeuOperador {
 
 /** Quanto tempo vale a URL assinada de um documento de prestador. */
 export const VALIDADE_URL_DOCUMENTO_SEGUNDOS = 300;
-const BUCKET_DOCUMENTOS = 'documentos-prestadores';
-
 export type EstadoHomologacao = Enums<'estado_homologacao'>;
 export type TipoItemHomologacao = Enums<'tipo_item_homologacao'>;
 export type AlvoHomologacao = Enums<'alvo_homologacao'>;

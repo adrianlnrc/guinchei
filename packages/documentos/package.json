@@ -1,0 +1,14 @@
+{
+  "name": "@guinchei/documentos",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Validação e máscara de CPF, CNPJ e CEP, com as mesmas regras do banco (TS puro, sem I/O)",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

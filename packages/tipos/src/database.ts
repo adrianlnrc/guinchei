@@ -191,31 +191,63 @@ export type Database = {
       };
       frotas: {
         Row: {
+          apolice_validade: string | null;
           ativa: boolean;
+          base_bairro: string | null;
+          base_cep: string | null;
+          base_endereco: string | null;
+          chave_pix: string | null;
           criado_em: string;
           documento: string;
           id: string;
           nome: string;
+          representante_id: string | null;
+          termos_prestador_em: string | null;
+          termos_prestador_versao: string | null;
           tipo: Database['public']['Enums']['tipo_frota'];
         };
         ComputedFields: never;
         Insert: {
+          apolice_validade?: string | null;
           ativa?: boolean;
+          base_bairro?: string | null;
+          base_cep?: string | null;
+          base_endereco?: string | null;
+          chave_pix?: string | null;
           criado_em?: string;
           documento: string;
           id?: string;
           nome: string;
+          representante_id?: string | null;
+          termos_prestador_em?: string | null;
+          termos_prestador_versao?: string | null;
           tipo: Database['public']['Enums']['tipo_frota'];
         };
         Update: {
+          apolice_validade?: string | null;
           ativa?: boolean;
+          base_bairro?: string | null;
+          base_cep?: string | null;
+          base_endereco?: string | null;
+          chave_pix?: string | null;
           criado_em?: string;
           documento?: string;
           id?: string;
           nome?: string;
+          representante_id?: string | null;
+          termos_prestador_em?: string | null;
+          termos_prestador_versao?: string | null;
           tipo?: Database['public']['Enums']['tipo_frota'];
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: 'frotas_representante_id_fkey';
+            columns: ['representante_id'];
+            isOneToOne: true;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+        ];
       };
       guincheiros: {
         Row: {
@@ -541,6 +573,31 @@ export type Database = {
         };
         Relationships: [];
       };
+      rascunhos_frota: {
+        Row: {
+          atualizado_em: string;
+          dados: NonNullable<Json>;
+          etapa: number;
+          tipo: Database['public']['Enums']['tipo_frota'];
+          usuario_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          atualizado_em?: string;
+          dados?: NonNullable<Json>;
+          etapa?: number;
+          tipo?: Database['public']['Enums']['tipo_frota'];
+          usuario_id?: string;
+        };
+        Update: {
+          atualizado_em?: string;
+          dados?: NonNullable<Json>;
+          etapa?: number;
+          tipo?: Database['public']['Enums']['tipo_frota'];
+          usuario_id?: string;
+        };
+        Relationships: [];
+      };
       tabela_precos: {
         Row: {
           adicional_feriado: number;
@@ -695,6 +752,7 @@ export type Database = {
       };
       abrir_rodada_match: { Args: { pedido_id: string }; Returns: number };
       aceitar_oferta: { Args: { tentativa_id: number }; Returns: string };
+      apolice_validade_aceitavel: { Args: { validade: string }; Returns: boolean };
       assinatura_do_trajeto: {
         Args: { destino: unknown; km_rebocado: number; origem: unknown };
         Returns: string;
@@ -749,6 +807,7 @@ export type Database = {
         Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
         Returns: undefined;
       };
+      enviar_cadastro_frota: { Args: Record<PropertyKey, never>; Returns: string };
       enviar_item_homologacao: {
         Args: {
           alvo: Database['public']['Enums']['alvo_homologacao'];
@@ -797,6 +856,8 @@ export type Database = {
         Args: { esperado: Database['public']['Enums']['papel']; perfil_id: string };
         Returns: boolean;
       };
+      pode_cadastrar_frota: { Args: Record<PropertyKey, never>; Returns: boolean };
+      pode_enviar_documento_de_prestador: { Args: Record<PropertyKey, never>; Returns: boolean };
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
       preco_para_confirmar: { Args: { cliente_id: string; pedido_id: string }; Returns: number };
       recusar_oferta: { Args: { tentativa_id: number }; Returns: undefined };
@@ -834,6 +895,7 @@ export type Database = {
         Returns: number;
       };
       sou_cliente_do_pedido: { Args: { pedido_id: string }; Returns: boolean };
+      sou_representante_da_frota: { Args: { frota: string }; Returns: boolean };
       tabela_precos_vigente: {
         Args: { em?: string };
         Returns: {
@@ -904,7 +966,7 @@ export type Database = {
         'cotado' | 'confirmado' | 'em_match' | 'atribuido' | 'sem_guincheiro' | 'estornado';
       etapa_foto: 'antes' | 'depois';
       metodo_pagamento: 'pix' | 'cartao';
-      papel: 'cliente' | 'guincheiro' | 'operacao';
+      papel: 'cliente' | 'guincheiro' | 'operacao' | 'representante';
       resultado_tentativa: 'oferecida' | 'aceita' | 'recusada' | 'expirada' | 'pulada_teto';
       rodas_giram: 'sim' | 'nao' | 'nao_sei';
       situacao_veiculo: 'nao_liga' | 'batida' | 'superaqueceu' | 'outro';
@@ -1042,7 +1104,7 @@ export const Constants = {
       ],
       etapa_foto: ['antes', 'depois'],
       metodo_pagamento: ['pix', 'cartao'],
-      papel: ['cliente', 'guincheiro', 'operacao'],
+      papel: ['cliente', 'guincheiro', 'operacao', 'representante'],
       resultado_tentativa: ['oferecida', 'aceita', 'recusada', 'expirada', 'pulada_teto'],
       rodas_giram: ['sim', 'nao', 'nao_sei'],
       situacao_veiculo: ['nao_liga', 'batida', 'superaqueceu', 'outro'],

@@ -57,14 +57,12 @@ describe('Entrada do Guincheiro por telefone e código', () => {
     expect(screen.queryByRole('main', { name: 'Em plantão' })).toBeNull();
   });
 
-  it('número sem perfil nenhum: o mesmo aviso, sem cadastro', async () => {
+  it('número sem perfil nenhum: não é expulso, recebe a oferta de cadastrar a Frota (#43)', async () => {
     const api = apiFalsa({ perfil: null });
     renderEm('/', api);
     await entrar('61900000006');
-    expect((await screen.findByRole('alert')).textContent).toBe(
-      'Este número não está cadastrado como Guincheiro.',
-    );
-    expect(api.sair).toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'Cadastrar minha Frota' })).toBeTruthy();
+    expect(api.sair).not.toHaveBeenCalled();
   });
 
   it('código errado avisa e fica na tela do código', async () => {
