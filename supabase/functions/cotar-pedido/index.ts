@@ -8,7 +8,8 @@
 //
 // Resposta: a cotação gravada (km, versão da tabela, frações dos adicionais e a
 // decomposição em centavos). Erros: { erro, mensagem } (ver _compartilhado/servidor.ts).
-import { calcularPrecoFechado, type TabelaPrecos } from '../../../packages/preco/src/index.ts';
+import { calcularPrecoFechado } from '../../../packages/preco/src/index.ts';
+import { tabelaDoBanco, type LinhaTabelaPrecos } from '../_compartilhado/precos.ts';
 import {
   ErroServidor,
   PEDIDO_INDISPONIVEL,
@@ -18,20 +19,6 @@ import {
   type ErroBanco,
 } from '../_compartilhado/servidor.ts';
 
-/** Linha de `tabela_precos`, como `dados_da_cotacao` devolve. */
-interface LinhaTabelaPrecos {
-  versao: number;
-  taxa_base: number;
-  por_km_ate_veiculo: number;
-  por_km_rebocado: number;
-  adicional_noturno: number;
-  noturno_das: number;
-  noturno_ate: number;
-  adicional_feriado: number;
-  preco_minimo: number;
-  comissao: number;
-}
-
 interface DadosDaCotacao {
   instante: string;
   km_ate_veiculo: number;
@@ -40,21 +27,6 @@ interface DadosDaCotacao {
   trajeto: string;
   tabela: LinhaTabelaPrecos;
   feriados: string[];
-}
-
-function tabelaDoBanco(linha: LinhaTabelaPrecos): TabelaPrecos {
-  return {
-    versao: linha.versao,
-    taxaBase: linha.taxa_base,
-    porKmAteVeiculo: linha.por_km_ate_veiculo,
-    porKmRebocado: linha.por_km_rebocado,
-    adicionalNoturno: Number(linha.adicional_noturno),
-    noturnoDas: linha.noturno_das,
-    noturnoAte: linha.noturno_ate,
-    adicionalFeriado: Number(linha.adicional_feriado),
-    precoMinimo: linha.preco_minimo,
-    comissao: Number(linha.comissao),
-  };
 }
 
 function traduzir(erro: ErroBanco): ErroServidor | null {
@@ -99,6 +71,8 @@ async function cotar(pedidoId: string, clienteId: string) {
     preco_adicional_feriado: preco.adicionalFeriado,
     preco_ajuste_minimo: preco.ajustePiso,
     preco_total: preco.total,
+    // O Match recalcula a oferta a cada Guincheiro com este mesmo instante (ADR-0009).
+    instante: dados.instante,
   });
 
   return {

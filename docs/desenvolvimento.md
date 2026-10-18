@@ -27,7 +27,7 @@ packages/
   mock/         dados do cenário do protótipo navegável (o preço vem de @guinchei/preco)
 supabase/
   config.toml   config do Supabase CLI (auth por telefone, números de teste)
-  functions/    Edge Functions (Deno): cotar-pedido e confirmar-pedido
+  functions/    Edge Functions (Deno): cotar-pedido, confirmar-pedido, ofertar-proximo e estornar-pedido
   migrations/   schema, transições de estado, RLS e bucket de Fotos de estado
   seeds/        dados de referência e usuários de teste
   tests/        testes de banco (pgTAP)
@@ -76,7 +76,7 @@ SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY=<ANON_KEY> SUPABASE_SERVIC
   pnpm --filter @guinchei/api test
 ```
 
-Ele entra como o Rafael e como o 5561900000006 (cadastro urgente); a `service_role` só apaga esse segundo usuário antes, para o teste poder rodar de novo sem `db reset`, e desliga por um instante os Guincheiros no teste de "sem guincho disponível" (e os religa no fim). O teste também passa pelas Edge Functions: abre o Pedido, grava o trajeto, cota, confirma e confere que o preço devolvido pela cotação, o gravado no Pedido e o valor autorizado são o mesmo, e que a cotação responde em menos de 2 s (RNF08).
+Ele entra como o Rafael e como o 5561900000006 (cadastro urgente); a `service_role` só apaga esse segundo usuário antes, para o teste poder rodar de novo sem `db reset`, e desliga por um instante os Guincheiros no teste de "sem guincho disponível" (e os religa no fim). O teste também passa pelas Edge Functions: abre o Pedido, grava o trajeto, cota, confirma e confere que o preço devolvido pela cotação, o gravado no Pedido e o valor autorizado são o mesmo, e que a cotação responde em menos de 2 s (RNF08). Por fim, percorre o Match (veja [Match](#match)) com os três Guincheiros do seed: confirmar oferta ao Marcos, a recusa passa ao Wagner (com quatro chamadas simultâneas a `ofertar-proximo` que não abrem uma segunda oferta) e o aceite cria a Corrida; e o esgotamento (recusa, expiração pelo pg_cron, recusa) até `sem_guincheiro`, seguido de "tentar de novo" com aceite e, noutro Pedido, do estorno. Para não esperar 30 s, ele baixa `parametros_match.timeout_oferta_segundos` para 3 s durante o bloco e devolve o valor anterior no fim (o bloco leva ~15 s). Depende das Edge Functions servidas e do disparo pelo pg_net, que localmente já vem configurado pelo seed `03_match_local.sql`; se você criou uma função nova, rode `pnpm supabase functions serve` antes.
 
 O CI (`.github/workflows/ci.yml`) roda `format:check`, `lint`, `typecheck`, `test` e `build` em todo PR. Os testes de banco ainda não rodam no CI (entram junto com o e2e); rode `pnpm test:db` antes de abrir PR que mexa em `supabase/`.
 
@@ -97,15 +97,17 @@ O schema está em `supabase/migrations/`, uma migração por assunto:
 | `*_trajeto_do_pedido.sql` | `limite_df()` e `ponto_no_df(latitude, longitude)` (polígono do DF); `definir_trajeto_pedido(pedido_id, origem_lat, origem_lng, origem_endereco, destino_lat, destino_lng, destino_endereco, km_rebocado)`: o Cliente grava o trajeto do próprio Pedido em `cotado`, só dentro do DF |
 | `*_cotacao_do_pedido.sql` | `dados_da_cotacao` e `gravar_cotacao`, só para `service_role` (Edge Function `cotar-pedido`) |
 | `*_pagamentos.sql` | tabela `pagamentos`; `preco_para_confirmar` e `registrar_pagamento`, só para `service_role` (Edge Function `confirmar-pedido`) |
+| `*_match.sql` | pg_cron e pg_net; `parametros_match`; colunas do Match (`pedidos.rodada_match` e `cotado_em`, `tentativas_match.km_ate_veiculo`, `expira_em` e `respondida_em`, `corridas.repasse`); `dados_do_match`, `registrar_tentativa`, `encerrar_rodada_sem_guincheiro`, `pagamento_para_estornar` e `registrar_estorno` (só `service_role`); `aceitar_oferta`, `recusar_oferta` e `tentar_de_novo` (pela API); `varrer_match` e os jobs `match-varrer` e `match-limpar-historico-cron` |
 
 Mudança de schema: `pnpm supabase migration new <nome>`, escreva o SQL, `pnpm supabase db reset`, `pnpm test:db` e `pnpm gen:tipos` (commite o `database.ts` gerado; ele já sai formatado pelo Prettier).
 
 Regras que o banco garante (e que os testes de banco cobrem):
 
-- **RLS:** o Cliente lê só os próprios Pedidos e Corridas; o Guincheiro lê os Pedidos oferecidos a ele (uma tentativa de Match que não foi `pulada_teto`) e a própria Corrida; a operação lê tudo. Ninguém lê perfil, Frota ou posição de outro, a não ser a operação. Cotar e confirmar o Pedido, registrar pagamento, registrar ofertas e criar Corrida ficam com `service_role` (Edge Functions). O Cliente lê os pagamentos do próprio Pedido; ninguém escreve em `pagamentos` pela API. Pela API, o usuário só cria o próprio perfil de Cliente (com o telefone verificado no login), edita os dados opcionais, o Cliente abre o próprio Pedido por `abrir_pedido` e, se voltar às perguntas, troca as respostas por `atualizar_pedido_cotado` (só as três respostas, só em `cotado`), grava origem e destino por `definir_trajeto_pedido` (só em `cotado`, só no DF; nada de INSERT ou UPDATE direto em `pedidos`), e o Guincheiro liga a disponibilidade e avança a própria Corrida.
+- **RLS:** o Cliente lê só os próprios Pedidos e Corridas; o Guincheiro lê os Pedidos oferecidos a ele (uma tentativa de Match que não foi `pulada_teto`) e a própria Corrida; a operação lê tudo. Ninguém lê perfil, Frota ou posição de outro, a não ser a operação. Cotar e confirmar o Pedido, registrar pagamento, registrar ofertas e estornar ficam com `service_role` (Edge Functions). O Cliente lê os pagamentos do próprio Pedido; ninguém escreve em `pagamentos` pela API. Pela API, o usuário só cria o próprio perfil de Cliente (com o telefone verificado no login), edita os dados opcionais, o Cliente abre o próprio Pedido por `abrir_pedido` e, se voltar às perguntas, troca as respostas por `atualizar_pedido_cotado` (só as três respostas, só em `cotado`), grava origem e destino por `definir_trajeto_pedido` (só em `cotado`, só no DF; nada de INSERT ou UPDATE direto em `pedidos`), o Guincheiro liga a disponibilidade, aceita ou recusa a oferta feita a ele (`aceitar_oferta`, que cria a Corrida, e `recusar_oferta`) e avança a própria Corrida, e o Cliente pede outra rodada do Match por `tentar_de_novo`.
 - **Pedido antes da cotação:** o Pedido nasce `cotado` sem origem, destino, distâncias nem Preço fechado; o Cliente grava o trajeto pelo mapa (`definir_trajeto_pedido`, #9) e a cotação (`cotar-pedido`, #10) preenche distância até o veículo e preço pelo servidor. O banco exige o Preço fechado inteiro ou nenhum, cotação só com trajeto completo, e preço em todo Pedido fora de `cotado`. No app, voltar às perguntas e confirmar de novo atualiza o mesmo Pedido (o id fica no fluxo) em vez de abrir outro.
 - **Cotação (RF05):** o preço é calculado no servidor, nunca no app: a Edge Function `cotar-pedido` chama `dados_da_cotacao` (Guincheiro elegível mais próximo, tabela vigente, feriados de perto da data de Brasília e a hora do servidor), calcula com `@guinchei/preco` e grava a decomposição inteira, com a versão da tabela e o ajuste do piso, por `gravar_cotacao`; o Pedido continua `cotado`. A gravação confere o `atualizado_em` lido: se o trajeto mudou no meio, nada é gravado (`GCT03`). Sem Guincheiro elegível, `GCT01` e o app mostra "Nenhum guincho disponível agora". Cada visita à tela de Preço cota de novo. **Provisório:** a distância até o veículo é a linha reta (PostGIS `geography`) do Guincheiro elegível mais próximo até a origem, e o km rebocado é o que o app gravou com o trajeto; a rota real no servidor depende do token de servidor do Mapbox.
-- **Confirmação e pagamento (RF06):** a Edge Function `confirmar-pedido` lê o Preço fechado gravado (`preco_para_confirmar`), autoriza esse mesmo valor no `GatewayPagamento` (`@guinchei/pagamento`, adaptador mock) e registra o resultado em `pagamentos` (`registrar_pagamento`, que confere de novo o valor com o Pedido travado). Autorizado: o Pedido vai de `cotado` a `confirmado`. Recusado: o pagamento fica registrado como `recusado`, o Pedido continua `cotado` e o app mostra o erro. No máximo um pagamento `autorizado` ou `capturado` por Pedido. O mock autoriza sempre. Para testar a recusa, ele tem a opção `recusarValoresTerminadosEm99` (desligada por padrão), que a Edge Function só liga com `PAGAMENTO_MOCK_RECUSA_TESTE=1` (veja [Edge Functions](#edge-functions)); assim nenhum Preço fechado real é recusado; capturar e estornar existem no mock, mas só serão chamados no Match (#11, estorno sem Guincheiro) e no fim da Corrida (#14, captura).
+- **Confirmação e pagamento (RF06):** a Edge Function `confirmar-pedido` lê o Preço fechado gravado (`preco_para_confirmar`), autoriza esse mesmo valor no `GatewayPagamento` (`@guinchei/pagamento`, adaptador mock) e registra o resultado em `pagamentos` (`registrar_pagamento`, que confere de novo o valor com o Pedido travado). Autorizado: o Pedido vai de `cotado` a `confirmado` e, na mesma transação, entra no Match (`em_match`, rodada 1; veja [Match](#match)). Recusado: o pagamento fica registrado como `recusado`, o Pedido continua `cotado` e o app mostra o erro. No máximo um pagamento `autorizado` ou `capturado` por Pedido. O mock autoriza sempre. Para testar a recusa, ele tem a opção `recusarValoresTerminadosEm99` (desligada por padrão), que a Edge Function só liga com `PAGAMENTO_MOCK_RECUSA_TESTE=1` (veja [Edge Functions](#edge-functions)); assim nenhum Preço fechado real é recusado; o estorno é chamado pela Edge Function `estornar-pedido` (sem Guincheiro, #11) e a captura fica para o fim da Corrida (#14).
+- **Match (RF07):** veja [Match](#match). O banco garante: no máximo uma oferta aberta por Pedido (índice único parcial), cada Guincheiro no máximo uma vez por rodada, oferta só com prazo, aceite e recusa só pelo Guincheiro ofertado e com a oferta aberta e no prazo, "tentar de novo" e estorno só pelo dono e só em `sem_guincheiro`. O Guincheiro não vê a tentativa `pulada_teto` (nem o Pedido, por ela).
 - **Só no DF (ADR-0001, trava 1 do ADR-0007):** `definir_trajeto_pedido` recusa origem ou destino fora do DF com o erro `GDF01` (o app mostra "O Guinchei atende só no Distrito Federal por enquanto."). O polígono é o de `packages/geo/src/limiteDF.ts` (IBGE, malha municipal, simplificado a ~55 m; a fonte está no cabeçalho do arquivo). `packages/geo/src/sincronia-sql.test.ts` confere que a migração tem os mesmos vértices e que o pgTAP (`supabase/tests/trajeto_do_pedido.test.sql`) testa os mesmos pontos de referência do Vitest. Trocar o trajeto de um Pedido apaga uma cotação anterior. Provisório: `km_rebocado` vem da rota do Mapbox calculada no app, e a cotação usa esse valor (veja acima).
 - **Aceite dos termos:** `aceite_termos_em` é sempre a hora do servidor, como `fotos_estado.criado_em`; o app não tem permissão de mandar a coluna e só grava `aceite_termos_versao`. A hora muda quando a versão muda.
 - **Transições:** a fonte da verdade é `packages/estados`. O banco tem a mesma tabela; `packages/estados/src/sincronia-sql.test.ts` (Vitest) compara a TS com a migração e `supabase/tests/transicoes.test.sql` (pgTAP) percorre todos os pares de estados e confere que o trigger aceita exatamente os da tabela. Mudou a máquina? Altere a TS, crie migração nova ajustando as tabelas e aponte o teste de sincronia para ela.
@@ -117,6 +119,7 @@ Regras que o banco garante (e que os testes de banco cobrem):
 
 - `01_referencia.sql`: tabela de preços versão 1 (valores do ADR-0009) e feriados nacionais e do DF de 2026 e 2027. Carnaval e Corpus Christi ficam de fora por serem ponto facultativo. É o único seed que vale para staging.
 - `02_usuarios_de_teste.sql`: os usuários abaixo, a Frota empresa "Reboque Planalto" e a Frota autônoma "Rita Campos", ambas ativas, e os três Guincheiros disponíveis com posição fixa. Só local.
+- `03_match_local.sql`: os dois segredos do Vault que o Match usa para chamar a Edge Function `ofertar-proximo` pelo pg_net (URL `http://kong:8000/functions/v1` e a `service_role` padrão do Supabase CLI local). Só local; em staging, veja [Match](#match).
 
 ### Usuários de teste
 
@@ -156,18 +159,72 @@ Ficam em `supabase/functions/` (Deno), uma pasta por função, com a base comum 
 | Função | Corpo | O que faz |
 |---|---|---|
 | `cotar-pedido` | `{ pedido_id }` | calcula o Preço fechado com `@guinchei/preco` e grava no Pedido (RF05) |
-| `confirmar-pedido` | `{ pedido_id, metodo: 'pix' \| 'cartao' }` | autoriza o Preço fechado gravado no `GatewayPagamento` mock e leva o Pedido a `confirmado` (RF06) |
+| `confirmar-pedido` | `{ pedido_id, metodo: 'pix' \| 'cartao' }` | autoriza o Preço fechado gravado no `GatewayPagamento` mock, leva o Pedido a `confirmado` e `em_match` e faz a primeira oferta (RF06, RF07) |
+| `ofertar-proximo` | `{ pedido_id }` | um passo do Match: oferta ao próximo Guincheiro ou leva o Pedido a `sem_guincheiro` (RF07). Só para o backend (exige a `service_role`); quem chama é o banco, pelo pg_net |
+| `estornar-pedido` | `{ pedido_id }` | o Cliente desiste do Pedido em `sem_guincheiro`: estorna no `GatewayPagamento` mock e leva pagamento e Pedido a `estornado` |
 
-As duas exigem o JWT do Cliente (o `supabase-js` manda sozinho em `functions.invoke`), conferem quem é no Auth e falam com o banco pela `service_role`, só por funções do banco. Erro volta como `{ erro, mensagem }`; o `@guinchei/api` traduz `erro` em `ErroApi.motivo`.
+`cotar-pedido`, `confirmar-pedido` e `estornar-pedido` exigem o JWT do Cliente (o `supabase-js` manda sozinho em `functions.invoke`), conferem quem é no Auth e falam com o banco pela `service_role`, só por funções do banco. Erro volta como `{ erro, mensagem }`; o `@guinchei/api` traduz `erro` em `ErroApi.motivo`.
 
-As regras não são copiadas: as funções importam `packages/preco/src/index.ts` e `packages/pagamento/src/index.ts` por caminho relativo (os dois pacotes são TS puro, sem imports). Por isso esses dois pacotes não podem ganhar dependências nem imports sem extensão `.ts`.
+As regras não são copiadas: as funções importam `packages/preco/src/index.ts`, `packages/pagamento/src/index.ts` e `packages/match/src/index.ts` por caminho relativo (os três pacotes são TS puro, sem imports). Por isso esses pacotes não podem ganhar dependências nem imports sem extensão `.ts`.
 
 - **Local:** o `pnpm supabase start` já serve as funções que existem em `supabase/functions/`. Para recarregar ao salvar (ou depois de criar uma função nova), rode `pnpm supabase functions serve` num terminal à parte. Os logs aparecem nesse terminal.
 - **Tipos:** o host não tem Deno; `pnpm typecheck` roda `tsc -p supabase/functions` com uma declaração mínima do runtime (`supabase/functions/deno.d.ts`).
 - **Teste:** o teste de integração do `@guinchei/api` (acima) passa pelas duas funções. Ele cota um Preço fechado terminado em 99 centavos (com uma versão temporária da tabela, apagada no fim) e confere a confirmação nos dois modos do mock:
   - padrão (`pnpm supabase start`, sem variável): autorizado, como em staging;
   - recusa de teste: sirva as funções com `pnpm supabase functions serve --env-file supabase/testes-recusa.env` e rode o teste com `PAGAMENTO_MOCK_RECUSA_TESTE=1` também no ambiente do Vitest (ele só diz ao teste qual resultado esperar): recusado, e o Pedido continua `cotado`.
-- **Staging:** `pnpm supabase functions deploy cotar-pedido confirmar-pedido --project-ref <ref>`. O deploy empacota os imports relativos de `packages/`; confira no primeiro deploy. O Supabase injeta sozinho `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, que é o que as funções usam hoje. **`PAGAMENTO_MOCK_RECUSA_TESTE` não deve existir em staging** (nem em nenhum ambiente com Cliente de verdade): com ela, o mock recusa todo Preço fechado terminado em 99 centavos. Segredos que vão existir (`pnpm supabase secrets set ...`): o token de servidor do Mapbox (`guinchei-server`) quando a cotação passar a usar a rota real, e as chaves do PSP real (RF12). Nenhum deles entra no repositório.
+- **Staging:** `pnpm supabase functions deploy cotar-pedido confirmar-pedido ofertar-proximo estornar-pedido --project-ref <ref>`, e a configuração do [Match](#configuração-em-staging). O deploy empacota os imports relativos de `packages/`; confira no primeiro deploy. O Supabase injeta sozinho `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`, que é o que as funções usam hoje. **`PAGAMENTO_MOCK_RECUSA_TESTE` não deve existir em staging** (nem em nenhum ambiente com Cliente de verdade): com ela, o mock recusa todo Preço fechado terminado em 99 centavos. Segredos que vão existir (`pnpm supabase secrets set ...`): o token de servidor do Mapbox (`guinchei-server`) quando a cotação passar a usar a rota real, e as chaves do PSP real (RF12). Nenhum deles entra no repositório.
+
+## Match
+
+Match por auto-atribuição ao Guincheiro elegível mais próximo (RF07, [ADR-0002](adr/0002-match-auto-atribuicao-mais-proximo.md)), com o repasse pela distância de quem recebe ([ADR-0009](adr/0009-tabela-de-precos-inicial-e-repasse-por-distancia.md)) e o desfecho sem aceite da nota de revisão do [ADR-0008](adr/0008-stack-tecnica-do-skeleton.md).
+
+### Ciclo
+
+1. **Início.** A `confirmar-pedido` autoriza o pagamento; `registrar_pagamento` leva o Pedido a `confirmado` e, na mesma transação, a `em_match` na rodada 1. A primeira oferta sai na mesma requisição (a lógica do Match roda no processo da `confirmar-pedido`); se falhar, a varredura tenta de novo.
+2. **Um passo** (`supabase/functions/_compartilhado/match.ts`, servido por `ofertar-proximo`): lê `dados_do_match` (candidatos de `guincheiros_elegiveis_proximos`, só Frotas ativas e Guincheiros disponíveis, com a distância de cada um; as tentativas da rodada; a tabela, os feriados e o instante da cotação) e decide com `decidirProximo` de `@guinchei/match`:
+   - **ofertar** ao mais próximo que ainda não recebeu nesta rodada: recalcula o preço com a distância dele (`calcularPrecoFechado`) e avalia com `avaliarOfertaAoGuincheiro`. Se a absorção passa da Comissão inteira, grava `pulada_teto` e segue para o próximo (não conta como tentativa). Senão grava a oferta (`oferecida`, com o preço recalculado, o repasse e `expira_em = now() + timeout`);
+   - **aguardar**, se já há oferta aberta;
+   - **esgotado**: teto de tentativas (recusa e expiração contam) ou ninguém novo para receber → `sem_guincheiro`.
+3. **Resposta do Guincheiro** pela API (`aceitarOferta`/`recusarOferta` do `@guinchei/api`): aceitar cria a Corrida `aceita` com o repasse oferecido, leva o Pedido a `atribuido` e o Guincheiro a indisponível; recusar marca `recusada` e pede a próxima oferta na hora. Ofertas abertas: `buscarOfertasAbertas` (um Guincheiro pode ter ofertas de Pedidos diferentes ao mesmo tempo).
+4. **Expiração.** O job `match-varrer` do pg_cron roda `varrer_match()` a cada **5 s** (o pg_cron 1.6 do Supabase aceita intervalos em segundos): marca `expirada` as ofertas vencidas e pede a próxima oferta. A expiração acontece entre o timeout e o timeout + 5 s.
+5. **Sem aceite.** O Pedido fica em `sem_guincheiro` com o pagamento **ainda autorizado**. O Cliente escolhe `tentarDeNovo` (rodada nova, mesmo Preço fechado e mesma autorização; todos os elegíveis podem receber de novo) ou `estornarPedido` (Edge Function `estornar-pedido`: `estornar` do `GatewayPagamento` mock, pagamento e Pedido `estornado`). Sem broadcast nem atribuição manual.
+
+**Como o banco pede a próxima oferta.** Recusa, "tentar de novo" e a varredura chamam `disparar_ofertar_proximo(pedido_id)`, que faz um POST assíncrono pelo **pg_net** para `<match_url_funcoes>/ofertar-proximo` com `Authorization: Bearer <match_chave_servico>`; o pg_net só envia depois do commit. A varredura também repete o pedido para Pedidos em `em_match` sem oferta aberta e parados há mais de 15 s (um POST perdido, uma primeira oferta que falhou).
+
+**Sem corrida.** Disparos simultâneos para o mesmo Pedido (o POST da recusa, a varredura, uma repetição) não abrem duas ofertas: `registrar_tentativa` e `encerrar_rodada_sem_guincheiro` travam o Pedido (`for update`) e conferem estado, rodada, a quantidade de tentativas lidas e que não há oferta aberta; se outra execução gravou antes, falham com `GMT03` e a Edge Function relê e decide de novo. O índice único parcial `tentativas_match_uma_aberta_por_pedido` é a última barreira. A varredura expira com `for update skip locked`, então duas varreduras não expiram a mesma oferta. Aceitar e recusar travam o Pedido antes da oferta, na mesma ordem.
+
+### Parâmetros
+
+`parametros_match` (uma linha, só `service_role`): `timeout_oferta_segundos` (padrão **30**) e `limite_tentativas` (padrão **3**, por rodada). Mudam sem deploy:
+
+```sql
+update public.parametros_match set timeout_oferta_segundos = 3;  -- timeout curto para testar à mão
+update public.parametros_match set timeout_oferta_segundos = 30; -- de volta ao padrão
+```
+
+O teste de integração faz isso sozinho. `LIMITE_TENTATIVAS_PADRAO` em `@guinchei/match` documenta o valor de referência; o valor em uso é o do banco.
+
+### Configuração em staging
+
+As migrações já criam as extensões `pg_cron` e `pg_net` e os dois jobs. Falta só, uma vez por projeto, dizer ao banco onde estão as Edge Functions e com que chave chamá-las, no Vault (SQL Editor do projeto):
+
+```sql
+select vault.create_secret('https://<project-ref>.supabase.co/functions/v1', 'match_url_funcoes',
+  'URL base das Edge Functions, para o Match pedir a próxima oferta');
+select vault.create_secret('<service_role key do projeto>', 'match_chave_servico',
+  'service_role usada pelo Match para chamar a Edge Function ofertar-proximo');
+```
+
+- A chave tem de ser **a mesma `SUPABASE_SERVICE_ROLE_KEY` que o Supabase injeta nas Edge Functions** (a `service_role` JWT legada, em Settings → API): `ofertar-proximo` compara o `Authorization` com ela e recusa qualquer outra. Trocou a chave do projeto? Atualize o segredo: `select vault.update_secret((select id from vault.secrets where name = 'match_chave_servico'), '<nova>');`.
+- Sem os dois segredos, `disparar_ofertar_proximo` só registra um aviso (`raise warning`) e nada avança depois da primeira oferta: recusa e expiração ficam paradas.
+- Deploy das quatro funções (veja [Edge Functions](#edge-functions)). `ofertar-proximo` fica com a verificação de JWT padrão; a `service_role` passa.
+- Conferir: `select jobname, schedule from cron.job;` (`match-varrer` a cada 5 s; `match-limpar-historico-cron` às 03:17 UTC, que apaga o histórico do pg_cron com mais de um dia) e, depois de uma recusa, `select status_code, content from net._http_response order by id desc limit 5;`.
+
+### Provisório
+
+- Um Guincheiro pode receber ofertas de Pedidos diferentes ao mesmo tempo; ao aceitar uma, fica indisponível e as outras falham com `guincheiro_indisponivel` (`GMT02`) até expirarem.
+- Estorno: se o Cliente pedir "tentar de novo" entre o estorno no provedor e o registro, o registro falha com o valor já estornado. Com o PSP real (RF12), conciliar.
+- O Painel do protótipo ainda mostra "atribuição manual" para Pedido sem aceite; a decisão do ADR-0008 é não ter atribuição manual.
 
 ## Convenções
 

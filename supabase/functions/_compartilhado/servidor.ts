@@ -91,21 +91,19 @@ export interface Requisicao {
   corpo: Record<string, unknown>;
 }
 
-/**
- * Serve uma função POST autenticada. `traduzir` converte o erro do banco (SQLSTATE) na
- * resposta ao app; o que não for traduzido vira 500 `falha`.
- */
-export function servir(
-  tratar: (requisicao: Requisicao) => Promise<unknown>,
-  traduzir: (erro: ErroBanco) => ErroServidor | null,
+type Traducao = (erro: ErroBanco) => ErroServidor | null;
+
+/** POST com CORS; erro do banco traduzido por `traduzir`, o resto vira 500 `falha`. */
+function servirPost(
+  tratar: (req: Request, corpo: Record<string, unknown>) => Promise<unknown>,
+  traduzir: Traducao,
 ): void {
   Deno.serve(async (req) => {
     if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
     if (req.method !== 'POST') return responder(405, { erro: 'falha', mensagem: 'Use POST' });
     try {
-      const clienteId = await usuarioDaRequisicao(req);
       const corpo = (await req.json().catch(() => ({}))) as Record<string, unknown>;
-      return responder(200, await tratar({ clienteId, corpo }));
+      return responder(200, await tratar(req, corpo));
     } catch (e) {
       const erro = e instanceof ErroBanco ? (traduzir(e) ?? e) : e;
       if (erro instanceof ErroServidor) {
@@ -115,6 +113,37 @@ export function servir(
       return responder(500, { erro: 'falha', mensagem: 'Erro inesperado no servidor' });
     }
   });
+}
+
+/**
+ * Serve uma função POST autenticada pelo JWT do usuário. `traduzir` converte o erro do
+ * banco (SQLSTATE) na resposta ao app; o que não for traduzido vira 500 `falha`.
+ */
+export function servir(
+  tratar: (requisicao: Requisicao) => Promise<unknown>,
+  traduzir: Traducao,
+): void {
+  servirPost(async (req, corpo) => {
+    const clienteId = await usuarioDaRequisicao(req);
+    return tratar({ clienteId, corpo });
+  }, traduzir);
+}
+
+/**
+ * Serve uma função POST só para o próprio backend (o pg_net do banco): exige a
+ * service_role no `Authorization`. Nenhum app chama.
+ */
+export function servirInterno(
+  tratar: (corpo: Record<string, unknown>) => Promise<unknown>,
+  traduzir: Traducao,
+): void {
+  servirPost(async (req, corpo) => {
+    const esperado = `Bearer ${variavel('SUPABASE_SERVICE_ROLE_KEY')}`;
+    if (req.headers.get('Authorization') !== esperado) {
+      throw new ErroServidor(401, 'sem_sessao', 'Só o backend chama esta função');
+    }
+    return tratar(corpo);
+  }, traduzir);
 }
 
 /** O Pedido não é do Cliente ou já saiu de `cotado` (P0002 nas funções do banco). */

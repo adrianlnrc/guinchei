@@ -4,7 +4,9 @@ import {
   type ApiGuinchei,
   type CadastroUrgente,
   type CotacaoPedido,
+  type OfertaAberta,
   type PagamentoAutorizado,
+  type PagamentoEstornado,
   type Perfil,
   type RespostasPedido,
   type TrajetoPedido,
@@ -95,5 +97,13 @@ export function apiFalsa({
         valor: COTACAO_DO_SERVIDOR.preco.total,
       }),
     ),
+    tentarDeNovo: vi.fn<(pedidoId: string) => Promise<void>>(async () => {}),
+    estornarPedido: vi.fn<(pedidoId: string) => Promise<PagamentoEstornado>>(async () => ({
+      estado: 'estornado',
+      valor: COTACAO_DO_SERVIDOR.preco.total,
+    })),
+    buscarOfertasAbertas: vi.fn<() => Promise<OfertaAberta[]>>(async () => []),
+    aceitarOferta: vi.fn<(tentativaId: number) => Promise<string>>(async () => 'corrida-1'),
+    recusarOferta: vi.fn<(tentativaId: number) => Promise<void>>(async () => {}),
   } satisfies ApiGuinchei;
 }

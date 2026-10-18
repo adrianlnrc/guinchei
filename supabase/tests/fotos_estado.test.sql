@@ -21,9 +21,9 @@ insert into public.pedidos (
   extensions.st_makepoint(-48.0560, -15.8100), 'QNA 12, Taguatinga Norte',
   4.2, 21.3, 1, 11000, 2100, 12780, 25880
 );
-insert into public.corridas (id, pedido_id, guincheiro_id)
+insert into public.corridas (id, pedido_id, guincheiro_id, repasse)
 values ('cccccccc-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001',
-        '22222222-2222-4222-8222-222222222202');
+        '22222222-2222-4222-8222-222222222202', 20984);
 
 select is(
   (select public from storage.buckets where id = 'fotos-estado'),

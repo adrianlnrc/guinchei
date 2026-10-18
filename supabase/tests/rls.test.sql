@@ -31,16 +31,17 @@ insert into public.pedidos (
    3, 6, 1, 11000, 1500, 3600, 16100);
 
 insert into public.tentativas_match
-  (pedido_id, guincheiro_id, rodada, ordem, resultado, preco_recalculado, repasse_oferecido)
+  (pedido_id, guincheiro_id, rodada, ordem, resultado, km_ate_veiculo, preco_recalculado,
+   repasse_oferecido, expira_em)
 values
-  ('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222201', 1, 1, 'recusada', 25880, 20704),
-  ('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222202', 1, 2, 'aceita', 26230, 20984),
-  ('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222203', 1, 3, 'pulada_teto', 33000, 26400),
-  ('aaaaaaaa-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222201', 1, 1, 'oferecida', 16100, 12880);
+  ('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222201', 1, 1, 'recusada', 4.2, 25880, 20704, now()),
+  ('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222202', 1, 2, 'aceita', 4.9, 26230, 20984, now()),
+  ('aaaaaaaa-0000-4000-8000-000000000001', '22222222-2222-4222-8222-222222222203', 1, 3, 'pulada_teto', 9.6, 33000, 26400, null),
+  ('aaaaaaaa-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222201', 1, 1, 'oferecida', 3, 16100, 12880, now() + interval '30 seconds');
 
-insert into public.corridas (id, pedido_id, guincheiro_id)
+insert into public.corridas (id, pedido_id, guincheiro_id, repasse)
 values ('cccccccc-0000-4000-8000-000000000001', 'aaaaaaaa-0000-4000-8000-000000000001',
-        '22222222-2222-4222-8222-222222222202');
+        '22222222-2222-4222-8222-222222222202', 20984);
 
 -- ---------------------------------------------------------------------------
 -- anon
