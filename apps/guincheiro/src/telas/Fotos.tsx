@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import { formatarHora, formatarKm } from '@guinchei/ui';
-import { LADOS, TRECHO } from '@guinchei/mock';
-import { Botao, Corpo, Foto, IndicadorHome, Mapa, Ponto, Rotulo, Tela } from '@guinchei/ui';
+import { formatarHora } from '@guinchei/ui';
+import { LADOS } from '@guinchei/mock';
+import { Botao, Corpo, Foto, IndicadorHome, Link, Rotulo, Tela } from '@guinchei/ui';
 import { contarFotos, usePlantao, type Etapa } from '../plantao';
-import { Navegacao, useChegada } from './Chamado';
 
 // GPS de exemplo; no skeleton vem do navegador (ADR-0008).
 const GPS = [
@@ -15,18 +14,31 @@ const GPS = [
 ];
 const GPS_DESTINO = '-15.8104, -48.0617';
 
+const TEXTO_DA_ETAPA: Record<Etapa, { rotulo: string; titulo: string }> = {
+  antes: { rotulo: 'Antes de carregar', titulo: 'Fotografe os quatro lados do carro' },
+  depois: { rotulo: 'Depois de descarregar', titulo: 'Fotografe o carro na entrega' },
+};
+
+/**
+ * Prévia das Fotos de estado (ADR-0011): opcionais, não travam nenhuma etapa da Corrida e,
+ * por enquanto, não são gravadas. O envio com hora do servidor e GPS entra na issue #13.
+ */
 export function Checklist() {
   const ir = useNavigate();
-  const { fotos, avancar } = usePlantao();
-  const feitas = contarFotos(fotos.antes);
-  const proxima = fotos.antes.findIndex((f) => !f);
+  const { etapa } = useParams();
+  const { fotos } = usePlantao();
+  if (etapa !== 'antes' && etapa !== 'depois') return <Navigate to="/corrida" replace />;
+  const lista = fotos[etapa];
+  const feitas = contarFotos(lista);
+  const proxima = lista.findIndex((f) => !f);
   const ladoProximo = LADOS[proxima];
+  const texto = TEXTO_DA_ETAPA[etapa];
 
   return (
-    <Tela rotulo="Checklist antes de carregar">
+    <Tela rotulo={`Fotos de estado: ${texto.rotulo.toLowerCase()}`}>
       <Corpo style={{ padding: '12px 24px 32px', gap: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Rotulo>Antes de carregar</Rotulo>
+          <Rotulo>{texto.rotulo}</Rotulo>
           <span style={{ font: '600 15px var(--fonte-titulo)' }}>
             {feitas} de {LADOS.length}
           </span>
@@ -35,20 +47,32 @@ export function Checklist() {
           className="titulo"
           style={{ font: '700 28px/1.12 var(--fonte-titulo)', letterSpacing: '-.01em' }}
         >
-          Fotografe os quatro lados do carro
+          {texto.titulo}
         </h1>
         <p className="apoio" style={{ fontSize: 15 }}>
-          As fotos guardam hora e GPS. Em caso de Disputa, são elas que protegem você.
+          Em caso de Disputa, as fotos protegem você. São opcionais: a Corrida segue sem elas.
         </p>
+        <div
+          role="note"
+          style={{
+            padding: '12px 14px',
+            borderRadius: 12,
+            background: 'var(--linha-fina)',
+            font: '400 14px/1.45 var(--fonte-texto)',
+          }}
+        >
+          Prévia: as fotos ainda não são gravadas. O envio com hora e GPS do servidor chega na
+          próxima versão.
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {LADOS.map((lado, i) => {
-            const foto = fotos.antes[i];
+            const foto = lista[i];
             const destaque = i === proxima;
             return (
               <button
                 key={lado}
                 type="button"
-                onClick={() => ir(`/camera/antes/${i}`)}
+                onClick={() => ir(`/camera/${etapa}/${i}`)}
                 style={{
                   display: 'flex',
                   gap: 14,
@@ -80,31 +104,26 @@ export function Checklist() {
                   <span
                     style={{ font: '600 13px var(--fonte-texto)', color: 'var(--sucesso-texto)' }}
                   >
-                    Enviada
+                    Feita
                   </span>
                 )}
               </button>
             );
           })}
         </div>
-        <div
-          style={{
-            padding: '12px 14px',
-            borderRadius: 12,
-            background: 'var(--linha-fina)',
-            font: '400 14px/1.45 var(--fonte-texto)',
-          }}
-        >
-          Viu alguma avaria? Fotografe de perto e anote antes de carregar.
-        </div>
         <div className="espaco" />
         {ladoProximo ? (
-          <Botao grande onClick={() => ir(`/camera/antes/${proxima}`)}>
-            Tirar foto da {ladoProximo.toLowerCase()}
-          </Botao>
+          <>
+            <Botao grande onClick={() => ir(`/camera/${etapa}/${proxima}`)}>
+              Tirar foto da {ladoProximo.toLowerCase()}
+            </Botao>
+            <Link centro onClick={() => ir('/corrida')}>
+              Voltar à Corrida
+            </Link>
+          </>
         ) : (
-          <Botao grande onClick={() => avancar('carregado', '/transporte')}>
-            Veículo carregado
+          <Botao grande onClick={() => ir('/corrida')}>
+            Voltar à Corrida
           </Botao>
         )}
       </Corpo>
@@ -128,9 +147,11 @@ export function Camera() {
   const relogio = useRelogioSegundos();
   const indice = Number(lado);
   const nomeLado = LADOS[indice];
-  if ((etapa !== 'antes' && etapa !== 'depois') || !nomeLado) return <Navigate to="/" replace />;
+  if ((etapa !== 'antes' && etapa !== 'depois') || !nomeLado) {
+    return <Navigate to="/corrida" replace />;
+  }
   const gps = (etapa === 'antes' ? GPS[indice] : undefined) ?? GPS_DESTINO;
-  const voltar = etapa === 'antes' ? '/fotos/antes' : '/entrega';
+  const voltar = `/fotos/${etapa}`;
 
   function disparar() {
     registrarFoto(etapa as Etapa, indice, { hora: formatarHora(new Date()), gps });
@@ -235,52 +256,6 @@ export function Camera() {
             style={{ width: 62, height: 62, borderRadius: '50%', background: 'var(--off-white)' }}
           />
         </button>
-        <IndicadorHome />
-      </div>
-    </Tela>
-  );
-}
-
-export function Transporte() {
-  const ir = useNavigate();
-  const chegada = useChegada(TRECHO.minutosReboque);
-  return (
-    <Tela mapa escura rotulo="Em transporte">
-      <Mapa
-        escuro
-        ruas={[
-          { top: 260, esp: 16, giro: -18 },
-          { left: 110, esp: 12 },
-          { left: 280, esp: 10, giro: -6 },
-        ]}
-        rota="292,460 290,290 116,300 116,150"
-        rotaEspessura={6}
-        marcadores={[
-          { left: 276, top: 444, tamanho: 32, tipo: 'guincho' },
-          { left: 104, top: 138, tamanho: 24, tipo: 'destino' },
-        ]}
-      />
-      <Navegacao instrucao="Siga 8 km pela EPTG" via="Sentido Taguatinga" />
-      <div className="folha folha--escura" style={{ gap: 14 }}>
-        <Ponto>Carregado · Fotos de estado enviadas</Ponto>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <span style={{ font: '700 28px var(--fonte-titulo)' }}>{TRECHO.minutosReboque} min</span>
-          <span style={{ font: '500 15px var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
-            {formatarKm(TRECHO.kmReboque)} · chega {chegada}
-          </span>
-        </div>
-        <div
-          className="cartao cartao--escuro"
-          style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 3 }}
-        >
-          <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-            Destino
-          </span>
-          <span style={{ font: '500 16px var(--fonte-texto)' }}>{TRECHO.destino}</span>
-        </div>
-        <Botao variante="claro" grande onClick={() => ir('/entrega', { replace: true })}>
-          Cheguei no destino
-        </Botao>
         <IndicadorHome />
       </div>
     </Tela>

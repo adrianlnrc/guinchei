@@ -1,11 +1,21 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { TRANSICOES_CORRIDA, TransicaoInvalida, transitarCorrida } from '@guinchei/mock';
-import { type EstadoCorrida } from '@guinchei/estados';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from 'react';
+import type { MeuGuincheiro, OfertaAberta } from '@guinchei/api';
 import { HISTORICO_GUINCHEIRO, LADOS, type CorridaHistorico } from '@guinchei/mock';
+import { useApi } from './api';
 
 export type Etapa = 'antes' | 'depois';
 
+/** Prévia das Fotos de estado: no skeleton elas ainda não são gravadas (issue #13). */
 export interface FotoEstado {
   hora: string;
   gps: string;
@@ -15,22 +25,27 @@ type Fotos = Record<Etapa, (FotoEstado | null)[]>;
 
 const fotosVazias = (): Fotos => ({ antes: LADOS.map(() => null), depois: LADOS.map(() => null) });
 
+export const contarFotos = (lista: (FotoEstado | null)[]) => lista.filter(Boolean).length;
+
 interface Plantao {
-  disponivel: boolean;
-  setDisponivel: (v: boolean) => void;
-  /** Mock do Match: um chamado por vez que o Guincheiro fica disponível. */
-  chamadoPendente: boolean;
-  consumirChamado: () => void;
-  estado: EstadoCorrida | null;
+  celular: string;
+  setCelular: (v: string) => void;
+  /** O Guincheiro logado; `null` até a sessão ser conferida. */
+  guincheiro: MeuGuincheiro | null;
+  setGuincheiro: Dispatch<SetStateAction<MeuGuincheiro | null>>;
+  /** Liga ou desliga o plantão: grava `guincheiros.disponivel` (volta atrás se falhar). */
+  definirDisponivel: (disponivel: boolean) => Promise<void>;
+  /** Agora, pelo relógio do servidor (o do aparelho pode estar errado). */
+  agoraNoServidor: () => number;
+  /** A oferta aberta a ser mostrada, a que vence primeiro; `null` se não há. */
+  oferta: OfertaAberta | null;
+  /** Relê as ofertas e acerta o relógio do servidor; devolve a oferta a mostrar. */
+  atualizarOferta: () => Promise<OfertaAberta | null>;
+  /** A oferta foi respondida ou venceu: não volta a ser mostrada. */
+  descartarOferta: (tentativaId: number) => void;
   fotos: Fotos;
-  aceitar: () => void;
-  /**
-   * Leva a Corrida ao estado `para` e abre `rota`. Se a transição não vale (o
-   * Guincheiro voltou no navegador, recarregou a página, faltam fotos), avisa e
-   * abre a tela do estado atual em vez de derrubar o app.
-   */
-  avancar: (para: EstadoCorrida, rota: string) => void;
   registrarFoto: (etapa: Etapa, lado: number, foto: FotoEstado) => void;
+  /** Guarda a Corrida entregue no histórico da sessão (o histórico ainda é do protótipo). */
   encerrar: (c: CorridaHistorico) => void;
   historico: CorridaHistorico[];
   aviso: string | null;
@@ -39,70 +54,56 @@ interface Plantao {
 
 const Contexto = createContext<Plantao | null>(null);
 
-export const contarFotos = (lista: (FotoEstado | null)[]) => lista.filter(Boolean).length;
-
-/** Tela em que o Guincheiro retoma a Corrida em cada estado. */
-const TELA_DO_ESTADO: Record<EstadoCorrida, string> = {
-  aceita: '/a-caminho',
-  a_caminho: '/a-caminho',
-  no_local: '/fotos/antes',
-  carregado: '/transporte',
-  entregue: '/repasse',
-};
-
 export function PlantaoProvider({ children }: { children: ReactNode }) {
-  const ir = useNavigate();
-  const [disponivel, setDisponivelBruto] = useState(true);
-  const [chamadoPendente, setChamadoPendente] = useState(true);
-  const setDisponivel = useCallback((v: boolean) => {
-    setDisponivelBruto(v);
-    setChamadoPendente(v);
-  }, []);
-  const consumirChamado = useCallback(() => setChamadoPendente(false), []);
-  const [estado, setEstado] = useState<EstadoCorrida | null>(null);
+  const api = useApi();
+  const [celular, setCelular] = useState('');
+  const [guincheiro, setGuincheiro] = useState<MeuGuincheiro | null>(null);
+  const [oferta, setOferta] = useState<OfertaAberta | null>(null);
   const [fotos, setFotos] = useState<Fotos>(fotosVazias);
   const [historico, setHistorico] = useState(HISTORICO_GUINCHEIRO);
   const [aviso, setAviso] = useState<string | null>(null);
+  // Diferença entre o relógio do servidor e o do aparelho, medida a cada leitura de ofertas.
+  const desvio = useRef(0);
+  const descartadas = useRef(new Set<number>());
+
+  const agoraNoServidor = useCallback(() => Date.now() + desvio.current, []);
 
   const avisar = useCallback((texto: string) => {
     setAviso(texto);
     setTimeout(() => setAviso((atual) => (atual === texto ? null : atual)), 3200);
   }, []);
 
-  const aceitar = useCallback(() => {
-    setFotos(fotosVazias());
-    setEstado(transitarCorrida('aceita', 'a_caminho', { antes: 0, depois: 0 }));
-  }, []);
-
-  const avancar = useCallback(
-    (para: EstadoCorrida, rota: string) => {
-      if (estado === null) {
-        avisar('Nenhuma Corrida em andamento.');
-        ir('/', { replace: true });
-        return;
-      }
-      // Tocar de novo o botão de uma etapa já feita só reabre a tela dela.
-      if (estado === para) {
-        ir(rota, { replace: true });
-        return;
-      }
+  const definirDisponivel = useCallback(
+    async (disponivel: boolean) => {
+      setGuincheiro((g) => (g ? { ...g, disponivel } : g));
       try {
-        const novo = transitarCorrida(estado, para, {
-          antes: contarFotos(fotos.antes),
-          depois: contarFotos(fotos.depois),
-        });
-        setEstado(novo);
-        ir(rota, { replace: true });
-      } catch (erro) {
-        if (!(erro instanceof TransicaoInvalida)) throw erro;
-        // Falta de Fotos de estado tem mensagem própria; fora de ordem, só leva de volta.
-        const foraDeOrdem = !TRANSICOES_CORRIDA[estado].includes(para);
-        avisar(foraDeOrdem ? 'A Corrida está em outra etapa. Voltamos para ela.' : erro.message);
-        ir(TELA_DO_ESTADO[estado], { replace: true });
+        await api.definirDisponibilidade(disponivel);
+      } catch {
+        setGuincheiro((g) => (g ? { ...g, disponivel: !disponivel } : g));
+        avisar('Não foi possível mudar a disponibilidade. Tente de novo.');
       }
     },
-    [estado, fotos, avisar, ir],
+    [api, avisar],
   );
+
+  const atualizarOferta = useCallback(async () => {
+    const antes = Date.now();
+    const [lista, hora] = await Promise.all([api.buscarOfertasAbertas(), api.horaDoServidor()]);
+    // Metade do tempo de ida e volta: o servidor leu a hora no meio da espera.
+    desvio.current = Date.parse(hora) - (antes + Date.now()) / 2;
+    const agora = Date.now() + desvio.current;
+    const valida =
+      lista.find(
+        (o) => !descartadas.current.has(o.tentativaId) && Date.parse(o.expiraEm) > agora,
+      ) ?? null;
+    setOferta(valida);
+    return valida;
+  }, [api]);
+
+  const descartarOferta = useCallback((tentativaId: number) => {
+    descartadas.current.add(tentativaId);
+    setOferta((atual) => (atual?.tentativaId === tentativaId ? null : atual));
+  }, []);
 
   const registrarFoto = useCallback((etapa: Etapa, lado: number, foto: FotoEstado) => {
     setFotos((f) => ({ ...f, [etapa]: f[etapa].map((atual, i) => (i === lado ? foto : atual)) }));
@@ -110,20 +111,21 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
 
   const encerrar = useCallback((c: CorridaHistorico) => {
     setHistorico((h) => [c, ...h]);
-    setEstado(null);
     setFotos(fotosVazias());
   }, []);
 
   const valor = useMemo(
     () => ({
-      disponivel,
-      setDisponivel,
-      chamadoPendente,
-      consumirChamado,
-      estado,
+      celular,
+      setCelular,
+      guincheiro,
+      setGuincheiro,
+      definirDisponivel,
+      agoraNoServidor,
+      oferta,
+      atualizarOferta,
+      descartarOferta,
       fotos,
-      aceitar,
-      avancar,
       registrarFoto,
       encerrar,
       historico,
@@ -131,14 +133,14 @@ export function PlantaoProvider({ children }: { children: ReactNode }) {
       avisar,
     }),
     [
-      disponivel,
-      setDisponivel,
-      chamadoPendente,
-      consumirChamado,
-      estado,
+      celular,
+      guincheiro,
+      definirDisponivel,
+      agoraNoServidor,
+      oferta,
+      atualizarOferta,
+      descartarOferta,
       fotos,
-      aceitar,
-      avancar,
       registrarFoto,
       encerrar,
       historico,

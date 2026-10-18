@@ -98,6 +98,7 @@ O schema está em `supabase/migrations/`, uma migração por assunto:
 | `*_cotacao_do_pedido.sql` | `dados_da_cotacao` e `gravar_cotacao`, só para `service_role` (Edge Function `cotar-pedido`) |
 | `*_pagamentos.sql` | tabela `pagamentos`; `preco_para_confirmar` e `registrar_pagamento`, só para `service_role` (Edge Function `confirmar-pedido`) |
 | `*_match.sql` | pg_cron e pg_net; `parametros_match`; colunas do Match (`pedidos.rodada_match` e `cotado_em`, `tentativas_match.km_ate_veiculo`, `expira_em` e `respondida_em`, `corridas.repasse`); `dados_do_match`, `registrar_tentativa`, `encerrar_rodada_sem_guincheiro`, `pagamento_para_estornar` e `registrar_estorno` (só `service_role`); `aceitar_oferta`, `recusar_oferta` e `tentar_de_novo` (pela API); `varrer_match` e os jobs `match-varrer` e `match-limpar-historico-cron` |
+| `*_corrida_do_guincheiro.sql` | trigger que devolve o Guincheiro ao plantão (`disponivel = true`) quando a Corrida chega a `entregue`; `hora_do_servidor()` (o app conta o prazo da oferta pela hora do banco); `tentativas_match` e `corridas` na publicação `supabase_realtime`, de forma idempotente (bloco `DO` que confere `pg_publication_tables`) |
 
 Mudança de schema: `pnpm supabase migration new <nome>`, escreva o SQL, `pnpm supabase db reset`, `pnpm test:db` e `pnpm gen:tipos` (commite o `database.ts` gerado; ele já sai formatado pelo Prettier).
 
@@ -225,6 +226,18 @@ select vault.create_secret('<service_role key do projeto>', 'match_chave_servico
 - Um Guincheiro pode receber ofertas de Pedidos diferentes ao mesmo tempo; ao aceitar uma, fica indisponível e as outras falham com `guincheiro_indisponivel` (`GMT02`) até expirarem.
 - Estorno: se o Cliente pedir "tentar de novo" entre o estorno no provedor e o registro, o registro falha com o valor já estornado. Com o PSP real (RF12), conciliar.
 - O Painel do protótipo ainda mostra "atribuição manual" para Pedido sem aceite; a decisão do ADR-0008 é não ter atribuição manual.
+
+## App do Guincheiro
+
+`apps/guincheiro` (porta 5174), PWA instalável (manifest, ícones e service worker do `vite-plugin-pwa`). Para rodar contra o Supabase local: `cp apps/guincheiro/.env.example apps/guincheiro/.env.local`, preencha `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY` e rode `pnpm dev:guincheiro`. Sem as duas variáveis, o app mostra "App sem configuração do servidor".
+
+- **Entrada:** telefone + código (ADR-0010), com os números do seed (Marcos 61 90000-0002, Wagner …03, Rita …04; código 123456). O Guincheiro não se cadastra pelo app: telefone verificado sem perfil de Guincheiro (Cliente, operação ou número sem perfil) encerra a sessão e mostra "Este número não está cadastrado como Guincheiro". Rotas do app exigem Guincheiro (`ExigeGuincheiro`).
+- **Plantão:** o interruptor grava `guincheiros.disponivel` (`definirDisponibilidade`); a tela relê o valor do banco ao abrir. O chamado só abre com o plantão ligado.
+- **Chamado em tempo real:** `assinarOfertas` (Supabase Realtime, Postgres Changes em `tentativas_match`, sem filtro: a RLS entrega só as ofertas feitas ao Guincheiro) avisa a cada mudança e uma vez ao conectar; a tela relê `buscarOfertasAbertas`. A contagem regressiva usa `expira_em` e a hora do servidor (`hora_do_servidor()`, com o desvio medido a cada leitura), nunca o relógio do aparelho. Aceitar e recusar são `aceitarOferta` e `recusarOferta` (#11). O valor mostrado é o repasse gravado na oferta, pela distância do próprio Guincheiro.
+- **Corrida:** um botão por etapa, na ordem: "Saí para o local" (`aceita → a_caminho`), "Cheguei" (`no_local`), "Carreguei" (`carregado`), "Entreguei" (`entregue`), por `avancarCorrida` (UPDATE de `corridas.estado`; a RLS limita à Corrida dele e o trigger do #6 confere a transição). Se a Corrida já estava em outra etapa (outra aba, a operação), o app avisa e mostra a etapa certa. `minhaCorridaAtual` retoma a Corrida ao abrir ou recarregar; `assinarCorrida` atualiza a tela por Realtime. Ao `entregue`, o banco devolve o Guincheiro ao plantão e a tela de repasse (`/repasse/:id`) mostra o valor gravado na Corrida. A captura do pagamento fica fora (#14).
+- **Fotos de estado (#13):** as telas de fotos do protótipo continuam como prévia opcional ("Fotos de estado (opcional)" nas etapas no local e carregado): não gravam nada e não bloqueiam nenhuma etapa (ADR-0011). Avaliação do Cliente e histórico/ganhos do plantão também seguem do protótipo (dados de exemplo, só na sessão).
+- **Push com a tela bloqueada:** fora, depende do spike #3. O app não promete tocar com a tela bloqueada; precisa ficar aberto.
+- **Testes:** Vitest de componente com a API dublada (`apps/guincheiro/src/teste/apiFalsa.ts`: login, chamado, contagem, aceitar, recusar, expirar, ordem dos botões, repasse); pgTAP `corrida_do_guincheiro.test.sql` (avanço, disponibilidade, `hora_do_servidor`, publicação Realtime); integração do `@guinchei/api` (Cliente confirma, a oferta chega pelo Realtime só a quem a recebeu, aceita e avança até `entregue`).
 
 ## Convenções
 

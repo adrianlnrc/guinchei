@@ -112,11 +112,10 @@ export function apiFalsa({
     sair: vi.fn(async () => {
       logado = false;
     }),
-    buscarMeuGuincheiro: vi.fn(
-      async (): Promise<MeuGuincheiro | null> =>
-        logado && perfil?.papel === 'guincheiro'
-          ? { nome: perfil.nome, frota: 'Reboque Planalto', disponivel: estaDisponivel }
-          : null,
+    buscarMeuGuincheiro: vi.fn(async (): Promise<MeuGuincheiro | null> =>
+      logado && perfil?.papel === 'guincheiro'
+        ? { nome: perfil.nome, frota: 'Reboque Planalto', disponivel: estaDisponivel }
+        : null,
     ),
     definirDisponibilidade: vi.fn(async (valor: boolean) => {
       estaDisponivel = valor;
@@ -135,9 +134,12 @@ export function apiFalsa({
       abertas = abertas.filter((o) => o.tentativaId !== tentativaId);
     }),
     minhaCorridaAtual: vi.fn(async () => atual),
-    buscarCorrida: vi.fn(async (id: string) => (atual?.id === id ? atual : entregues.get(id)) ?? null),
+    buscarCorrida: vi.fn(
+      async (id: string) => (atual?.id === id ? atual : entregues.get(id)) ?? null,
+    ),
     avancarCorrida: vi.fn(async (id: string, para: EstadoCorrida) => {
-      if (!atual || atual.id !== id) throw new ErroApi('corrida_indisponivel', 'Corrida não encontrada');
+      if (!atual || atual.id !== id)
+        throw new ErroApi('corrida_indisponivel', 'Corrida não encontrada');
       if (!podeTransitar('corrida', atual.estado, para)) {
         throw new ErroApi('transicao_invalida', 'A Corrida está em outra etapa');
       }

@@ -405,7 +405,10 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     }
 
     /** A oferta aberta deste Pedido para o Guincheiro (ele pode ter ofertas de outros). */
-    function ofertaDoPedido(guincheiro: ApiGuinchei, pedidoId: string) {
+    function ofertaDoPedido(
+      guincheiro: Pick<ApiGuinchei, 'buscarOfertasAbertas'>,
+      pedidoId: string,
+    ) {
       return esperar(
         async () => (await guincheiro.buscarOfertasAbertas()).find((o) => o.pedidoId === pedidoId),
         `oferta do Pedido ${pedidoId}`,
@@ -604,10 +607,14 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       // Aqui a oferta não deve expirar antes do aceite: prazo de 20 s neste bloco.
       const TIMEOUT_DO_BLOCO_S = 20;
       beforeAll(async () => {
-        await admin()
+        const servico = admin();
+        await servico
           .from('parametros_match')
           .update({ timeout_oferta_segundos: TIMEOUT_DO_BLOCO_S })
           .eq('id', true);
+        // Corridas deixadas em andamento pelos outros testes: aqui cada um começa sem Corrida.
+        await servico.from('corridas').delete().in('guincheiro_id', GUINCHEIROS);
+        await servico.from('guincheiros').update({ disponivel: true }).in('id', GUINCHEIROS);
       });
       afterAll(async () => {
         await admin()
@@ -623,7 +630,29 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         });
         const api = criarApiGuincheiro(supabase);
         await api.confirmarCodigo(telefone, CODIGO_DE_TESTE);
-        return api;
+        return { supabase, api };
+      }
+
+      /**
+       * Escuta `tentativas_match` direto no Realtime e guarda os Pedidos dos eventos que chegam
+       * a este login: prova que a RLS filtra no Realtime (cada Guincheiro só recebe o seu).
+       */
+      async function escutarTentativas(supabase: ReturnType<typeof criarClienteApi>) {
+        const pedidos = new Set<string>();
+        let pronto!: () => void;
+        const conectado = new Promise<void>((r) => (pronto = r));
+        const canal = supabase
+          .channel(`tentativas-${Math.random()}`)
+          .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'tentativas_match' },
+            (mudanca) => pedidos.add((mudanca.new as { pedido_id: string }).pedido_id),
+          )
+          .subscribe((status) => {
+            if (status === 'SUBSCRIBED') pronto();
+          });
+        await conectado;
+        return { pedidos, parar: () => void supabase.removeChannel(canal) };
       }
 
       /** Assina as ofertas e espera o canal ficar pronto (o primeiro aviso é o da conexão). */
@@ -640,10 +669,12 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       }
 
       it('a oferta chega pelo Realtime só a quem a recebeu; aceitar e avançar até entregue', async () => {
-        const [marcos, wagner] = await Promise.all([
+        const [doMarcosLogin, doWagnerLogin] = await Promise.all([
           entrarComoGuincheiro(MARCOS.telefone),
           entrarComoGuincheiro(WAGNER.telefone),
         ]);
+        const marcos = doMarcosLogin.api;
+        const wagner = doWagnerLogin.api;
         expect((await marcos.buscarMeuPerfil())?.papel).toBe('guincheiro');
         await marcos.definirDisponibilidade(false);
         expect((await marcos.buscarMeuGuincheiro())?.disponivel).toBe(false);
@@ -655,24 +686,28 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         });
 
         const doMarcos = await assinarEContar(marcos);
-        const doWagner = await assinarEContar(wagner);
+        const brutoMarcos = await escutarTentativas(doMarcosLogin.supabase);
+        const brutoWagner = await escutarTentativas(doWagnerLogin.supabase);
+        // Logo depois de SUBSCRIBED o Realtime ainda pode estar ligando a replicação do canal.
+        await new Promise<void>((r) => setTimeout(r, 2000));
         try {
           const { id } = await pedidoConfirmado();
           // O Marcos, o mais perto, recebe a oferta pelo Realtime, sem consultar antes.
-          await esperar(async () => doMarcos.avisos() > 0, 'evento da oferta no Realtime');
-          const [oferta] = (await marcos.buscarOfertasAbertas()).filter((o) => o.pedidoId === id);
-          expect(oferta).toBeDefined();
+          await esperar(async () => doMarcos.avisos() > 0, 'aviso de oferta no Realtime');
+          await esperar(async () => brutoMarcos.pedidos.has(id), 'evento da oferta do Pedido');
+          const oferta = await ofertaDoPedido(marcos, id);
 
           // Pela hora do servidor, a oferta vence dentro do prazo do bloco.
           const agora = Date.parse(await marcos.horaDoServidor());
-          expect(Date.parse(oferta!.expiraEm) - agora).toBeGreaterThan(0);
-          expect(Date.parse(oferta!.expiraEm) - agora).toBeLessThanOrEqual(
+          expect(Date.parse(oferta.expiraEm) - agora).toBeGreaterThan(0);
+          expect(Date.parse(oferta.expiraEm) - agora).toBeLessThanOrEqual(
             TIMEOUT_DO_BLOCO_S * 1000,
           );
 
-          const corridaId = await marcos.aceitarOferta(oferta!.tentativaId);
-          // A RLS vale no Realtime: o Wagner não recebeu nada da oferta do Marcos.
-          expect(doWagner.avisos()).toBe(0);
+          const corridaId = await marcos.aceitarOferta(oferta.tentativaId);
+          // A RLS vale no Realtime: o Wagner não recebeu nenhum evento do Pedido do Marcos.
+          await new Promise<void>((r) => setTimeout(r, 1500));
+          expect(brutoWagner.pedidos.has(id)).toBe(false);
           expect((await marcos.buscarMeuGuincheiro())?.disponivel).toBe(false);
 
           const estados: string[] = [];
@@ -690,8 +725,8 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
               id: corridaId,
               pedidoId: id,
               estado: 'aceita',
-              repasse: oferta!.repasse,
-              precoRecalculado: oferta!.precoRecalculado,
+              repasse: oferta.repasse,
+              precoRecalculado: oferta.precoRecalculado,
               pedido: { origemEndereco: 'Eixo Monumental, Brasília' },
             });
 
@@ -714,16 +749,17 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           expect((await marcos.buscarMeuGuincheiro())?.disponivel).toBe(true);
           expect(await marcos.buscarCorrida(corridaId)).toMatchObject({
             estado: 'entregue',
-            repasse: oferta!.repasse,
+            repasse: oferta.repasse,
           });
         } finally {
           doMarcos.cancelar();
-          doWagner.cancelar();
+          brutoMarcos.parar();
+          brutoWagner.parar();
         }
       }, 60_000);
 
       it('o Cliente não é Guincheiro: o perfil diz o papel', async () => {
-        const rafael = await entrarComoGuincheiro(RAFAEL.telefone);
+        const { api: rafael } = await entrarComoGuincheiro(RAFAEL.telefone);
         expect((await rafael.buscarMeuPerfil())?.papel).toBe('cliente');
         expect(await rafael.buscarMeuGuincheiro()).toBeNull();
         await rafael.sair();

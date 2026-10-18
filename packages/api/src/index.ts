@@ -198,17 +198,16 @@ export interface CorridaDoGuincheiro {
  * o plantão, a Corrida e as assinaturas do Realtime. As assinaturas devolvem a função que
  * cancela a assinatura.
  */
-export interface ApiGuincheiro
-  extends Pick<
-    ApiGuinchei,
-    | 'enviarCodigo'
-    | 'confirmarCodigo'
-    | 'temSessao'
-    | 'buscarMeuPerfil'
-    | 'buscarOfertasAbertas'
-    | 'aceitarOferta'
-    | 'recusarOferta'
-  > {
+export interface ApiGuincheiro extends Pick<
+  ApiGuinchei,
+  | 'enviarCodigo'
+  | 'confirmarCodigo'
+  | 'temSessao'
+  | 'buscarMeuPerfil'
+  | 'buscarOfertasAbertas'
+  | 'aceitarOferta'
+  | 'recusarOferta'
+> {
   /** Encerra a sessão no aparelho. */
   sair(): Promise<void>;
   /** `null` sem sessão ou se o perfil logado não é de Guincheiro. */
