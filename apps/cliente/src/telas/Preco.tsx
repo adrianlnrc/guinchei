@@ -17,17 +17,9 @@ type EstadoCotacao =
   | { tipo: 'pronta'; cotacao: CotacaoPedido }
   | { tipo: 'erro'; motivo: MotivoErroApi; mensagem: string };
 
-/** Motivos em que a mensagem do servidor já é a que o Cliente deve ler. */
-const MOTIVOS_COM_MENSAGEM_DO_SERVIDOR: readonly MotivoErroApi[] = [
-  'sem_guincheiro',
-  'sem_trajeto',
-  'sem_cotacao',
-  'pagamento_recusado',
-  'pedido_indisponivel',
-];
-
+/** Erro conhecido: a mensagem do servidor é a que o Cliente lê; o resto vira `padrao`. */
 function mensagemDoErro(e: unknown, padrao: string): { motivo: MotivoErroApi; mensagem: string } {
-  if (e instanceof ErroApi && MOTIVOS_COM_MENSAGEM_DO_SERVIDOR.includes(e.motivo)) {
+  if (e instanceof ErroApi && e.motivo !== 'falha') {
     return { motivo: e.motivo, mensagem: e.message };
   }
   return { motivo: 'falha', mensagem: padrao };
