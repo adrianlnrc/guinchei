@@ -585,6 +585,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      categoria_cnh_cobre_pbt: { Args: { categoria: string; pbt_kg: number }; Returns: boolean };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       contraparte_da_corrida: {
         Args: { corrida_id: string };
