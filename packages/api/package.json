@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@guinchei/geo": "workspace:*",
+    "@guinchei/pagamento": "workspace:*",
+    "@guinchei/preco": "workspace:*",
     "@guinchei/tipos": "workspace:*",
     "@supabase/supabase-js": "^2.118.0"
   }

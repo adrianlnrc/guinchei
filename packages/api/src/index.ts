@@ -1,5 +1,12 @@
-import { createClient, isAuthApiError, type SupabaseClient } from '@supabase/supabase-js';
+import {
+  createClient,
+  FunctionsHttpError,
+  isAuthApiError,
+  type SupabaseClient,
+} from '@supabase/supabase-js';
 import type { Endereco } from '@guinchei/geo';
+import type { MetodoPagamento } from '@guinchei/pagamento';
+import type { PrecoFechado } from '@guinchei/preco';
 import type { Database, Enums, Tables } from '@guinchei/tipos';
 
 export interface ConfigApi {
@@ -23,7 +30,8 @@ export interface TrajetoPedido {
   destino: Endereco;
   /**
    * Distância da rota de carro entre origem e destino. Provisório: vem da rota calculada no
-   * app; a cotação (#10) recalcula no servidor.
+   * app e a cotação usa esse valor; recalcular no servidor depende do token de servidor do
+   * Mapbox.
    */
   kmRebocado: number;
 }
@@ -37,8 +45,42 @@ export interface CadastroUrgente {
   termosVersao: string;
 }
 
+/** Preço fechado calculado e gravado pelo servidor (Edge Function `cotar-pedido`). */
+export interface CotacaoPedido {
+  /** Distância em linha reta do Guincheiro elegível mais próximo até a origem (provisório). */
+  kmAteVeiculo: number;
+  kmRebocado: number;
+  tabelaPrecosVersao: number;
+  /** Frações da tabela usada, para o rótulo dos adicionais (ex.: 0.15). */
+  adicionalNoturno: number;
+  adicionalFeriado: number;
+  /** Decomposição em centavos, igual à gravada no Pedido. */
+  preco: PrecoFechado;
+}
+
+/** Autorização do Preço fechado no pagamento (Edge Function `confirmar-pedido`). */
+export interface PagamentoAutorizado {
+  id: string;
+  estado: 'autorizado';
+  /** Centavos: o Preço fechado gravado. */
+  valor: number;
+}
+
 export type MotivoErroApi =
-  'codigo_invalido' | 'cpf_ja_cadastrado' | 'sem_sessao' | 'fora_do_df' | 'falha';
+  | 'codigo_invalido'
+  | 'cpf_ja_cadastrado'
+  | 'sem_sessao'
+  | 'fora_do_df'
+  /** Nenhum Guincheiro elegível na hora da cotação. */
+  | 'sem_guincheiro'
+  /** O Pedido ainda não tem origem e destino. */
+  | 'sem_trajeto'
+  /** O Pedido não tem Preço fechado (ex.: o trajeto mudou depois de cotar). */
+  | 'sem_cotacao'
+  | 'pagamento_recusado'
+  /** O Pedido não é do Cliente ou já saiu de `cotado`. */
+  | 'pedido_indisponivel'
+  | 'falha';
 
 export class ErroApi extends Error {
   constructor(
@@ -65,6 +107,10 @@ export interface ApiGuinchei {
   atualizarPedido(id: string, respostas: RespostasPedido): Promise<void>;
   /** Grava origem e destino do próprio Pedido em `cotado`; recusa ponto fora do DF. */
   definirTrajeto(id: string, trajeto: TrajetoPedido): Promise<void>;
+  /** O servidor calcula o Preço fechado e o grava no Pedido, que continua em `cotado`. */
+  cotarPedido(id: string): Promise<CotacaoPedido>;
+  /** Autoriza o Preço fechado gravado (mock) e leva o Pedido a `confirmado`. */
+  confirmarPedido(id: string, metodo: MetodoPagamento): Promise<PagamentoAutorizado>;
 }
 
 export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): ClienteSupabase {
@@ -78,6 +124,39 @@ export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): Cl
 const CPF_UNICO = 'perfis_cpf_key';
 /** Código do erro de `definir_trajeto_pedido` para ponto fora do DF. */
 const FORA_DO_DF = 'GDF01';
+
+const MOTIVOS_DAS_FUNCOES: readonly MotivoErroApi[] = [
+  'sem_sessao',
+  'sem_guincheiro',
+  'sem_trajeto',
+  'sem_cotacao',
+  'pagamento_recusado',
+  'pedido_indisponivel',
+];
+
+/** Chama uma Edge Function; o erro dela chega como `{ erro, mensagem }`. */
+async function chamarFuncao<T>(
+  supabase: ClienteSupabase,
+  nome: string,
+  corpo: Record<string, unknown>,
+  mensagemDeFalha: string,
+): Promise<T> {
+  const { data, error } = await supabase.functions.invoke<T>(nome, { body: corpo });
+  if (!error) return data as T;
+  if (error instanceof FunctionsHttpError) {
+    // `context` é a Response da função.
+    const contexto = error.context as { json(): Promise<unknown> };
+    const resposta = (await contexto.json().catch(() => null)) as {
+      erro?: string;
+      mensagem?: string;
+    } | null;
+    const motivo = MOTIVOS_DAS_FUNCOES.find((m) => m === resposta?.erro);
+    if (motivo && resposta?.mensagem) {
+      throw new ErroApi(motivo, resposta.mensagem, { cause: error });
+    }
+  }
+  throw new ErroApi('falha', mensagemDeFalha, { cause: error });
+}
 
 export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
   async function usuarioLogado() {
@@ -183,6 +262,24 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
         throw new ErroApi('fora_do_df', 'Origem ou destino fora do DF', { cause: error });
       }
       if (error) throw new ErroApi('falha', 'Não foi possível gravar o trajeto', { cause: error });
+    },
+
+    async cotarPedido(id) {
+      return chamarFuncao<CotacaoPedido>(
+        supabase,
+        'cotar-pedido',
+        { pedido_id: id },
+        'Não foi possível calcular o preço',
+      );
+    },
+
+    async confirmarPedido(id, metodo) {
+      return chamarFuncao<PagamentoAutorizado>(
+        supabase,
+        'confirmar-pedido',
+        { pedido_id: id, metodo },
+        'Não foi possível confirmar o pagamento',
+      );
     },
   };
 }

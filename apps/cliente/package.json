@@ -15,7 +15,7 @@
     "@guinchei/estados": "workspace:*",
     "@guinchei/geo": "workspace:*",
     "@guinchei/mock": "workspace:*",
-    "@guinchei/preco": "workspace:*",
+    "@guinchei/pagamento": "workspace:*",
     "@guinchei/ui": "workspace:*",
     "@tanstack/react-query": "^5.104.3",
     "mapbox-gl": "3.32.0",

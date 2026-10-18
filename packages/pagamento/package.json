@@ -1,0 +1,14 @@
+{
+  "name": "@guinchei/pagamento",
+  "version": "0.0.0",
+  "private": true,
+  "description": "GatewayPagamento (autorizar, capturar, estornar) e o adaptador mock, sem PSP real",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
