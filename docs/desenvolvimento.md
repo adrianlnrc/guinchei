@@ -26,7 +26,7 @@ packages/
   ui/           tokens da identidade visual e componentes React
   mock/         dados do cenário do protótipo navegável (o preço vem de @guinchei/preco)
 e2e/
-  fotos-de-estado/   roteiro de navegador (Playwright) das Fotos de estado; manual, fora do CI
+  skeleton.spec.ts   e2e do walking skeleton (Playwright), rodado no CI; veja [E2E](#e2e)
 supabase/
   config.toml   config do Supabase CLI (auth por telefone, números de teste)
   functions/    Edge Functions (Deno): cotar-pedido, confirmar-pedido, ofertar-proximo e estornar-pedido
@@ -64,6 +64,7 @@ cp apps/cliente/.env.example apps/cliente/.env.local
 | `pnpm format` | Prettier (`format:check` só verifica) |
 | `pnpm build` | build de produção dos três apps |
 | `pnpm test:db` | testes de banco (pgTAP) no Supabase local |
+| `pnpm e2e` | e2e do skeleton (Playwright), veja [E2E](#e2e) |
 | `pnpm gen:tipos` | regera `packages/tipos/src/database.ts` a partir do schema local |
 | `pnpm supabase db reset` | recria o banco local: migrações + seed |
 | `pnpm supabase functions serve` | serve as Edge Functions com recarga ao salvar (veja [Edge Functions](#edge-functions)) |
@@ -71,7 +72,7 @@ cp apps/cliente/.env.example apps/cliente/.env.local
 
 Para testar um pacote só: `pnpm --filter @guinchei/preco test`.
 
-O `@guinchei/api` tem um teste de integração (`packages/api/src/integracao.test.ts`) que só roda com `SUPABASE_URL` definida; sem ela, fica pulado (o CI ainda não sobe o Supabase). Com o Supabase local de pé, passe as chaves que o `pnpm supabase status -o env` mostra:
+O `@guinchei/api` tem um teste de integração (`packages/api/src/integracao.test.ts`) que só roda com `SUPABASE_URL` definida; sem ela, fica pulado nos comandos locais sem Supabase (o job `integracao-e-e2e` do CI sobe o Supabase e roda o teste). Com o Supabase local de pé, passe as chaves que o `pnpm supabase status -o env` mostra:
 
 ```bash
 SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY=<ANON_KEY> SUPABASE_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY> \
@@ -80,7 +81,7 @@ SUPABASE_URL=http://127.0.0.1:54321 SUPABASE_ANON_KEY=<ANON_KEY> SUPABASE_SERVIC
 
 Ele entra como o Rafael e como o 5561900000006 (cadastro urgente); a `service_role` só apaga esse segundo usuário antes, para o teste poder rodar de novo sem `db reset`, e desliga por um instante os Guincheiros no teste de "sem guincho disponível" (e os religa no fim). O teste também passa pelas Edge Functions: abre o Pedido, grava o trajeto, cota, confirma e confere que o preço devolvido pela cotação, o gravado no Pedido e o valor autorizado são o mesmo, e que a cotação responde em menos de 2 s (RNF08). Por fim, percorre o Match (veja [Match](#match)) com os três Guincheiros do seed: confirmar oferta ao Marcos, a recusa passa ao Wagner (com quatro chamadas simultâneas a `ofertar-proximo` que não abrem uma segunda oferta) e o aceite cria a Corrida; e o esgotamento (recusa, expiração pelo pg_cron, recusa) até `sem_guincheiro`, seguido de "tentar de novo" com aceite e, noutro Pedido, do estorno. Para não esperar 30 s, ele baixa `parametros_match.timeout_oferta_segundos` para 3 s durante o bloco e devolve o valor anterior no fim (o bloco leva ~15 s). Um bloco final cobre o acompanhamento do Cliente (veja [Acompanhamento do Cliente](#acompanhamento-do-cliente)): o Cliente assina o Realtime, o Guincheiro aceita e avança a Corrida e o Cliente recebe cada etapa; o Cliente B (o 5561900000006, que ganha perfil se ainda não tiver) não recebe nenhum evento do Pedido do Rafael. Depende das Edge Functions servidas e do disparo pelo pg_net, que localmente já vem configurado pelo seed `03_match_local.sql`; se você criou uma função nova, rode `pnpm supabase functions serve` antes.
 
-O CI (`.github/workflows/ci.yml`) roda `format:check`, `lint`, `typecheck`, `test` e `build` em todo PR. Os testes de banco ainda não rodam no CI (entram junto com o e2e); rode `pnpm test:db` antes de abrir PR que mexa em `supabase/`.
+O CI (`.github/workflows/ci.yml`) roda `format:check`, `lint`, `typecheck`, `test` e `build` em todo PR. O job `integracao-e-e2e` (separado, para o `verificar` continuar rápido) sobe o Supabase local no Docker do runner e roda `pnpm test:db`, a integração do `@guinchei/api` e o [E2E](#e2e); o relatório e os traces do Playwright viram o artefato `playwright-report` quando falha.
 
 ## Banco de dados
 
@@ -271,6 +272,39 @@ ADR-0011 (issue #13): fotos e vídeos do veículo, **opcionais**, registrados pe
 - **Componentes:** `@guinchei/ui` tem `useFotosEstado`, `RegistrarFotoEstado` e `GaleriaFotosEstado`, sem dependência do Supabase (recebem a API); os dois apps usam os mesmos.
 - **Limitações (fora de escopo do skeleton):** o app não impede fraude de GPS (coordenadas do navegador, que o aparelho pode forjar) nem de galeria (`capture` é só uma dica: alguns navegadores deixam escolher arquivo da galeria, e o servidor não confere EXIF); o banco não confere que o arquivo existe no bucket nem a duração do vídeo; sem notificação ao outro lado quando chega foto nova; o Painel de operação ainda mostra as fotos do protótipo (a leitura pela operação já é permitida pela RLS).
 - **Testes:** pgTAP `fotos_estado.test.sql` (hora do servidor, autor, RLS da tabela e do bucket) e `fotos_estado_etapa.test.sql` (etapa por estado, limite de 6 por autor, Corrida sem fotos); Vitest de componente nos dois apps (aviso só sem fotos da etapa, vídeo > 30 s recusado, limite de 6, galeria, sugestão do Cliente); integração do `@guinchei/api` com Storage real (cada lado lê a imagem do outro por URL assinada, outro Cliente não lê, 7º item recusado e arquivo limpo, arquivo registrado não se apaga, encerrar sem fotos); roteiro de navegador em `e2e/fotos-de-estado/` (Playwright, Chromium, `setInputFiles` com um PNG).
+
+## E2E
+
+`e2e/skeleton.spec.ts` é o Definition of Done do skeleton ([PRD](produto/PRD.md), com a nota de revisão de 2026-10-17) como teste: o app do Cliente e o do Guincheiro em **dois navegadores ao mesmo tempo** (Playwright, Chromium, viewport de celular), contra os apps em build de produção (`vite preview`), o Supabase local e as Edge Functions. Limitações conhecidas do skeleton: [limitacoes-do-skeleton.md](produto/limitacoes-do-skeleton.md).
+
+Cenários (um banco limpo antes e depois de cada um):
+
+1. **Fluxo completo.** O Guincheiro (Marcos, 5561900000002) entra e fica em plantão; o Cliente (Rafael, 5561900000001) entra com o número de teste, abre o Pedido em três toques, origem pela localização do aparelho e destino pela busca, vê o Preço fechado (igual ao gravado pelo servidor) antes de pagar e paga com Pix (mock). Só o Marcos, o mais próximo dos três, recebe a oferta, que aparece na tela dele sozinha (Realtime). Ele aceita, toca "Saí para o local", "Cheguei", registra uma foto (o Cliente também registra a dele), "Carreguei" sem aviso e, em "Entreguei" sem foto de depois, confirma o aviso. O Cliente vê o status até "entregue" e a foto do Guincheiro na galeria, e nenhuma das duas páginas é recarregada.
+2. **Sem Guincheiro, tentar de novo.** Com todos fora do plantão depois da cotação, o Pedido vai a `sem_guincheiro` e o Cliente vê as duas opções; com os Guincheiros de volta, "Tentar de novo" abre a rodada 2 e o Marcos recebe a oferta.
+3. **Sem Guincheiro, estornar.** "Estornar o pagamento" mostra o estorno; o pagamento e o Pedido ficam `estornado`.
+
+O preparo e a conferência do banco usam a `service_role` (`e2e/suporte/banco.ts`); o fluxo em si passa só pelas telas. Cada cenário apaga as Corridas antes de religar o plantão (a guarda `GDP01` recusa `disponivel = true` com Corrida aberta). Os cenários não dependem da ordem. Nada espera tempo fixo: tudo é `expect(...)` com prazo de 30 s, e o Match sem Guincheiro conclui na hora (não depende do timeout de 30 s da oferta).
+
+**Como rodar.** Com o Supabase de pé e o banco recriado:
+
+```bash
+pnpm supabase start
+pnpm supabase db reset
+pnpm e2e                    # builda Cliente e Guincheiro com as chaves locais e roda o Playwright
+pnpm e2e --grep estorna     # um cenário só; argumentos vão para o `playwright test`
+E2E_SEM_BUILD=1 pnpm e2e    # repete sem rebuildar os apps
+```
+
+Os navegadores vêm de `pnpm --filter @guinchei/e2e exec playwright install chromium` (o CI faz isso). Quem já tem um Chromium compatível pode usar `PLAYWRIGHT_BROWSERS_PATH=<pasta>` ou `CHROMIUM_PATH=<executável>`. O Playwright fixa `1.56.1`; troque o Chromium junto com a versão.
+
+**Depurar.** Com `CI=1` (como no job) a falha guarda o trace em `e2e/resultados/<teste>/trace.zip` e o relatório em `e2e/playwright-report`; abra com `pnpm --filter @guinchei/e2e exec playwright show-trace e2e/resultados/<teste>/trace.zip`. Sem `CI`, o trace fica desligado; para ver o navegador, rode `pnpm --filter @guinchei/e2e exec playwright test --headed` depois do build. No GitHub, baixe o artefato `playwright-report` do job.
+
+**O que é simulado.**
+
+- **Mapbox:** o build do e2e usa o token falso `VITE_MAPBOX_TOKEN=pk.e2e` e o contexto do Cliente responde toda chamada a `api.mapbox.com` com fixtures (`e2e/suporte/mapbox.ts`): estilo vazio, Geocoding v6 (busca e reverso), Directions v5 (21,3 km, 28 min) e a telemetria. O mapa do `mapbox-gl` sobe de verdade (WebGL pelo SwiftShader) e o trajeto é gravado pela tela, mas endereços e rota não vêm do Mapbox real; o que ele responde para o DF segue pendente (veja [Mapbox](#mapbox)). Chamada ao Mapbox sem fixture reprova o cenário.
+- **Pagamento:** o `GatewayPagamento` mock das Edge Functions (autoriza sempre, estorna). Nada de PSP.
+- **Login:** os números de teste do Auth, código 123456. O Auth aceita um envio de código por número a cada 5 s, então o login repete o pedido até o código ser pedido.
+- **Service worker** do PWA bloqueado no teste, para não ficar entre a página e as fixtures.
 
 ## Convenções
 

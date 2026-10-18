@@ -25,3 +25,46 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+
+  # Banco, Edge Functions e navegador de verdade: separado do `verificar` para ele continuar
+  # rápido. Sobe o Supabase local no Docker do runner e roda os testes que precisam dele.
+  integracao-e-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Subir o Supabase local (Postgres, Auth, Realtime, Storage e Edge Functions)
+        run: pnpm exec supabase start -x studio,logflare,vector,imgproxy,mailpit,supavisor
+      - name: Recriar o banco (migrações e seed)
+        run: pnpm exec supabase db reset
+      - name: Chaves do Supabase local para os testes seguintes
+        run: |
+          pnpm exec supabase status -o env > "$RUNNER_TEMP/supabase.env"
+          {
+            echo "SUPABASE_URL=$(grep '^API_URL=' "$RUNNER_TEMP/supabase.env" | cut -d'"' -f2)"
+            echo "SUPABASE_ANON_KEY=$(grep '^ANON_KEY=' "$RUNNER_TEMP/supabase.env" | cut -d'"' -f2)"
+            echo "SUPABASE_SERVICE_ROLE_KEY=$(grep '^SERVICE_ROLE_KEY=' "$RUNNER_TEMP/supabase.env" | cut -d'"' -f2)"
+          } >> "$GITHUB_ENV"
+      - name: Testes de banco (pgTAP)
+        run: pnpm test:db
+      - name: Integração do @guinchei/api
+        run: pnpm --filter @guinchei/api test
+      - name: Instalar o Chromium do Playwright
+        run: pnpm --filter @guinchei/e2e exec playwright install --with-deps chromium
+      - name: E2E (Cliente e Guincheiro, build de produção)
+        run: pnpm e2e
+      - name: Publicar relatório e trace do Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/resultados
+          retention-days: 7

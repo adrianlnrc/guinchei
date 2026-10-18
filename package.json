@@ -17,6 +17,7 @@
     "typecheck": "pnpm -r typecheck && tsc -p supabase/functions",
     "test": "pnpm -r test",
     "test:db": "supabase test db",
+    "e2e": "node e2e/executar.mjs",
     "gen:tipos": "supabase gen types typescript --local > packages/tipos/src/database.ts && prettier --write packages/tipos/src/database.ts",
     "supabase": "supabase"
   },
