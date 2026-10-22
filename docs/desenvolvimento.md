@@ -158,6 +158,26 @@ Login por telefone + código (ADR-0010). Os números são fictícios e estão em
 
 No app do Cliente, digite o celular com DDD, sem o +55 (ex.: `(61) 90000-0001`); o app envia em E.164 (`+5561900000001`). Os ids fixos dos usuários estão no seed, e os testes de banco contam com eles: rode `pnpm supabase db reset` antes de `pnpm test:db` se tiver mexido nos dados locais.
 
+## Banco hospedado (projeto Supabase)
+
+O projeto hospedado é `vxpjfrtdllmwwztnpglm`. Os apps apontam para ele pelo `.env.local` de cada um (`VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`, a chave publishable; nada disso é commitado).
+
+Aplicar as migrações no projeto (de `supabase/migrations/`, em ordem de nome):
+
+```
+pnpm supabase login                       # ou SUPABASE_ACCESS_TOKEN no ambiente
+pnpm supabase link --project-ref vxpjfrtdllmwwztnpglm
+pnpm supabase db push                     # pede a senha do banco (SUPABASE_DB_PASSWORD)
+```
+
+O que as migrações já cuidam sozinhas: extensões `postgis`, `pg_net` e `pg_cron`, os buckets de Storage e os jobs do `pg_cron`. O que fica por conta de quem publica:
+
+- **Seed de teste não vai com o `db push`.** Os Guincheiros e usuários de `supabase/seeds/` só servem ao banco local; em produção as Frotas entram pelo cadastro e pela homologação.
+- **Vault do Match:** crie os segredos `match_url_funcoes` e `match_chave_servico` (URL das Edge Functions e chave de serviço), senão a oferta não dispara.
+- **Edge Functions:** `pnpm supabase functions deploy` para `cotar-pedido`, `confirmar-pedido`, `ofertar-proximo` e `estornar-pedido`; a `PAGAMENTO_MOCK_RECUSA_TESTE` não pode existir lá.
+- **Auth por telefone:** configure o provedor do código (ADR-0010). O código fixo `123456` e os números de `[auth.sms.test_otp]` valem só no ambiente local.
+- Depois de aplicar, confira os avisos de segurança do projeto (RLS) no painel do Supabase.
+
 ## Mapbox
 
 Mapa (`mapbox-gl`), busca de endereço (Geocoding v6) e rota (Directions v5) ficam atrás da interface `ServicoMapas` de `@guinchei/geo` (ADR-0008). São três tokens, criados na conta do Mapbox:
