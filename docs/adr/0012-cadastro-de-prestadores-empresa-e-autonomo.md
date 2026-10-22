@@ -43,3 +43,9 @@ Nada abaixo muda a decisão; só a precisa no banco e no app.
 - **Dono dos itens de Frota:** passa a ser o representante (antes, no #42, o Guincheiro que enviava). O representante envia e reenvia os itens da Frota e dos veículos; o Guincheiro, os dele. Reenviar torna quem reenviou o dono do item.
 - **Apólice:** o formulário e o servidor recusam validade vencida ou a vencer em menos de 30 dias (ADR-0007), para não aprovar o que vence antes da ativação.
 - **Termos para prestadores:** texto provisório, versionado como os termos de uso (ADR-0010); o perfil novo do representante grava essa versão como aceite dos termos.
+
+## Detalhamento do convite de Guincheiro (issue #46)
+
+- **Convite por telefone:** o representante convida um número (`convites_guincheiro`: telefone, Frota, estado `pendente`/`aceito`/`cancelado`, validade de 7 dias). Um número tem no máximo um convite pendente, então duas Frotas nunca disputam o mesmo número; número que já tem conta (Guincheiro, Cliente, representante ou operação) não é convidado.
+- **Conta própria no primeiro login:** o convidado entra por telefone + código (ADR-0010) e, no primeiro acesso, informa nome e CPF e aceita os termos de uso; `aceitar_convite_guincheiro()` cria o perfil de Guincheiro e a linha em `guincheiros` na Frota que convidou, e marca o convite como aceito. O número convidado vale mais do que o cadastro da própria Frota autônoma.
+- **Fora do Match até a homologação:** o Guincheiro nasce `disponivel = false`; CNH, antecedentes e selfie vêm na etapa de documentos (#47), e a operação homologa antes de qualquer chamado.
