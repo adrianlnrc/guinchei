@@ -138,7 +138,7 @@ export function apiFalsa({
   /** Fotos de estado que a Corrida já tem (dos dois lados). */
   fotos?: FotoEstado[];
   /** Cadastro de Frota em andamento, guardado no banco. */
-  rascunho?: RascunhoFrota | null;
+  rascunho?: (Omit<RascunhoFrota, 'tipo'> & { tipo?: RascunhoFrota['tipo'] }) | null;
   /** A Frota que a pessoa logada já cadastrou. */
   frota?: MinhaFrota | null;
   /** Telefone do login (dígitos, com o 55). */
@@ -146,7 +146,7 @@ export function apiFalsa({
 } = {}) {
   let logado = sessao;
   let perfilAtual = perfil;
-  let rascunhoAtual = rascunho;
+  let rascunhoAtual: RascunhoFrota | null = rascunho && { tipo: 'autonomo', ...rascunho };
   let frotaAtual = frota;
   const arquivosEnviados: string[] = [];
   let estaDisponivel = disponivel;
@@ -189,6 +189,31 @@ export function apiFalsa({
       arquivosEnviados.push(caminho);
       return caminho;
     }),
+    // Como o banco: só item recusado ou vencido volta a `pendente`, com a validade nova.
+    reenviarItemDaFrota: vi.fn(
+      async (itemId: string, arquivo: ArquivoDeMidia, validade?: string) => {
+        if (arquivo.type !== 'application/pdf' && !arquivo.type.startsWith('image/')) {
+          throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+        }
+        if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+          throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+        }
+        const item = frotaAtual?.itens.find((i) => i.id === itemId);
+        if (!frotaAtual || !item)
+          throw new ErroApi('item_indisponivel', 'Este item não existe mais');
+        if (item.estado !== 'recusado' && item.estado !== 'vencido') {
+          throw new ErroApi('transicao_invalida', 'Este item já foi decidido ou aguarda reenvio');
+        }
+        frotaAtual = {
+          ...frotaAtual,
+          itens: frotaAtual.itens.map((i) =>
+            i.id === itemId
+              ? { ...i, estado: 'pendente', motivo: null, validade: validade ?? i.validade }
+              : i,
+          ),
+        };
+      },
+    ),
     enviarCadastroFrota: vi.fn(async () => {
       if (!rascunhoAtual) {
         throw new ErroApi('sem_cadastro_em_andamento', 'Não há cadastro em andamento');
@@ -201,7 +226,7 @@ export function apiFalsa({
       };
       frotaAtual = {
         id: 'frota-nova',
-        tipo: 'autonomo',
+        tipo: rascunhoAtual.tipo,
         documento: d.documento ?? '',
         nome: d.nome ?? '',
         ativa: false,

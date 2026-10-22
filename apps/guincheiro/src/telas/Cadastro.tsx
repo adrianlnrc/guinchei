@@ -10,11 +10,13 @@ import { Botao, Corpo, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
 import { Dados } from './cadastro/Dados';
+import { DadosEmpresa } from './cadastro/DadosEmpresa';
 import { Documentos } from './cadastro/Documentos';
 import { Endereco } from './cadastro/Endereco';
 import { Pix } from './cadastro/Pix';
 import { Termos } from './cadastro/Termos';
-import type { PropsDaEtapa } from './cadastro/campos';
+import type { PropsDaEtapa, TipoDeFrota } from './cadastro/campos';
+import { ROTULO_EMPRESA, ROTULO_PESSOA_FISICA } from './cadastro/regras';
 
 const ROTULO_DA_ETAPA: Record<EtapaCadastroFrota, string> = {
   1: 'Cadastro: dados',
@@ -24,16 +26,26 @@ const ROTULO_DA_ETAPA: Record<EtapaCadastroFrota, string> = {
   5: 'Cadastro: termos',
 };
 
+/** O que depende do tipo de Frota e some quando a pessoa troca de formulário. */
+const DADOS_DE_IDENTIDADE_VAZIOS: DadosCadastroFrota = {
+  documento: undefined,
+  nome: undefined,
+  representanteNome: undefined,
+  representanteCpf: undefined,
+};
+
 const FALHA_AO_SALVAR = 'Não foi possível salvar o cadastro. Tente de novo.';
 
 /** A mensagem que a pessoa lê quando o servidor recusa o envio do cadastro. */
-function mensagemDoEnvio(e: unknown): string {
+function mensagemDoEnvio(e: unknown, tipo: TipoDeFrota): string {
   if (!(e instanceof ErroApi)) return 'Não foi possível enviar o cadastro. Tente de novo.';
   switch (e.motivo) {
     case 'cpf_ja_cadastrado':
       return 'Este CPF já está cadastrado em outra conta.';
     case 'documento_ja_cadastrado':
-      return 'Este documento já tem uma Frota cadastrada.';
+      return tipo === 'empresa'
+        ? 'Este CNPJ já tem uma Frota cadastrada. Volte à primeira etapa e confira o número.'
+        : 'Este documento já tem uma Frota cadastrada.';
     case 'documento_invalido':
     case 'cpf_representante_invalido':
     case 'dados_incompletos':
@@ -48,8 +60,10 @@ function mensagemDoEnvio(e: unknown): string {
 }
 
 /**
- * Cadastro da Frota autônoma (ADR-0012): para quem entrou por telefone e ainda não é
- * prestador. Quem já enviou o cadastro vai para a própria Frota.
+ * Cadastro de Frota (ADR-0012): para quem entrou por telefone e ainda não é prestador. A
+ * primeira pergunta é se atende como pessoa física (Frota autônoma) ou como empresa (Frota
+ * empresa); as cinco etapas são as mesmas, só a primeira muda. Quem já enviou o cadastro vai
+ * para a própria Frota.
  */
 export function Cadastro() {
   const estado = useSessao();
@@ -74,6 +88,7 @@ function Assistente() {
   const [carga, setCarga] = useState<Carga | 'enviada' | undefined>(undefined);
   const [falhou, setFalhou] = useState(false);
   const [etapa, setEtapa] = useState<EtapaCadastroFrota | null>(null);
+  const [tipo, setTipo] = useState<TipoDeFrota>('autonomo');
   const [dados, setDados] = useState<DadosCadastroFrota>({});
   // O que já foi gravado, para cada gravação partir do dado mais novo mesmo em chamadas seguidas.
   const gravado = useRef<DadosCadastroFrota>({});
@@ -94,7 +109,7 @@ function Assistente() {
     async (parcial: DadosCadastroFrota, naEtapa: EtapaCadastroFrota): Promise<string | null> => {
       const novos = { ...gravado.current, ...parcial };
       try {
-        await api.salvarRascunhoFrota({ etapa: naEtapa, dados: novos });
+        await api.salvarRascunhoFrota({ tipo, etapa: naEtapa, dados: novos });
       } catch (e) {
         return e instanceof ErroApi && e.motivo === 'cadastro_indisponivel'
           ? e.message
@@ -104,7 +119,7 @@ function Assistente() {
       setDados(novos);
       return null;
     },
-    [api],
+    [api, tipo],
   );
 
   if (falhou) {
@@ -125,28 +140,49 @@ function Assistente() {
   if (carga === 'enviada') return <Navigate to="/frota" replace />;
 
   const { rascunho, telefone } = carga;
-  const comecar = () => {
-    gravado.current = rascunho?.dados ?? {};
+  /** Abre o formulário do tipo escolhido; o rascunho só segue se for do mesmo tipo. */
+  const comecar = (escolhido: TipoDeFrota) => {
+    const mesmoTipo = rascunho !== null && rascunho.tipo === escolhido;
+    // Trocar de tipo aproveita endereço, documentos e Pix; o documento e o representante são
+    // de outro tipo de Frota e recomeçam.
+    gravado.current = mesmoTipo
+      ? rascunho.dados
+      : { ...rascunho?.dados, ...DADOS_DE_IDENTIDADE_VAZIOS };
     setDados(gravado.current);
-    setEtapa(rascunho?.etapa ?? 1);
+    setTipo(escolhido);
+    setEtapa(mesmoTipo ? rascunho.etapa : 1);
   };
 
   if (etapa === null) {
-    const retomar = rascunho !== null;
     return (
       <Tela escura rotulo="Cadastro de Frota">
         <Corpo style={{ padding: '28px 24px 32px', gap: 18 }}>
           <div className="marca">guinchei</div>
           <Rotulo style={{ marginTop: 24, color: 'var(--cinza-medio)' }}>Prestador</Rotulo>
-          <h1 className="titulo">Cadastre a sua Frota</h1>
+          <h1 className="titulo">Como você atende?</h1>
           <p className="apoio">
-            Este número ainda não está em nenhuma Frota. Se você atende sozinho, com CPF ou MEI,
-            cadastre a sua em cinco etapas curtas: dados, endereço, documentos, Pix e termos. Você
-            pode parar e continuar depois.
+            Este número ainda não está em nenhuma Frota. Cadastre a sua em cinco etapas curtas:
+            dados, endereço, documentos, Pix e termos. Você pode parar e continuar depois.
           </p>
           <div className="espaco" />
-          <Botao variante="claro" grande onClick={comecar}>
-            {retomar ? 'Continuar meu cadastro' : 'Cadastrar minha Frota'}
+          {rascunho && (
+            <Botao variante="claro" grande onClick={() => comecar(rascunho.tipo)}>
+              Continuar meu cadastro
+            </Botao>
+          )}
+          <Botao
+            variante={rascunho ? 'contorno-escuro' : 'claro'}
+            grande
+            onClick={() => comecar('autonomo')}
+          >
+            {ROTULO_PESSOA_FISICA}
+          </Botao>
+          <Botao
+            variante={rascunho ? 'contorno-escuro' : 'claro'}
+            grande
+            onClick={() => comecar('empresa')}
+          >
+            {ROTULO_EMPRESA}
           </Botao>
         </Corpo>
       </Tela>
@@ -154,6 +190,7 @@ function Assistente() {
   }
 
   const propsComuns: PropsDaEtapa = {
+    tipo,
     dados,
     telefone,
     continuar: async (parcial) => {
@@ -170,7 +207,7 @@ function Assistente() {
     try {
       await api.enviarCadastroFrota();
     } catch (e) {
-      return mensagemDoEnvio(e);
+      return mensagemDoEnvio(e, tipo);
     }
     ir('/frota', { replace: true });
     return null;
@@ -178,7 +215,8 @@ function Assistente() {
 
   return (
     <Tela escura rotulo={ROTULO_DA_ETAPA[etapa]}>
-      {etapa === 1 && <Dados {...propsComuns} />}
+      {etapa === 1 && tipo === 'autonomo' && <Dados {...propsComuns} />}
+      {etapa === 1 && tipo === 'empresa' && <DadosEmpresa {...propsComuns} />}
       {etapa === 2 && <Endereco {...propsComuns} />}
       {etapa === 3 && <Documentos {...propsComuns} />}
       {etapa === 4 && <Pix {...propsComuns} />}

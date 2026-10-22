@@ -61,7 +61,9 @@ describe('Entrada do Guincheiro por telefone e código', () => {
     const api = apiFalsa({ perfil: null });
     renderEm('/', api);
     await entrar('61900000006');
-    expect(await screen.findByRole('button', { name: 'Cadastrar minha Frota' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Pessoa física (tenho um guincho)' }),
+    ).toBeTruthy();
     expect(api.sair).not.toHaveBeenCalled();
   });
 

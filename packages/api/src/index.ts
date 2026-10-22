@@ -58,7 +58,7 @@ export const TAMANHO_MAXIMO_DOCUMENTO_BYTES = 10_485_760;
  * servidor. CPF, CNPJ e CEP vão só com dígitos (o CNPJ alfanumérico, com letras maiúsculas).
  */
 export interface DadosCadastroFrota {
-  /** CPF ou CNPJ do MEI do autônomo. */
+  /** CPF ou CNPJ do MEI do autônomo; CNPJ da empresa (aceita o alfanumérico). */
   documento?: string;
   nome?: string;
   representanteNome?: string;
@@ -82,6 +82,8 @@ export type EtapaCadastroFrota = 1 | 2 | 3 | 4 | 5;
 
 /** O cadastro em andamento, guardado no banco para retomar em qualquer aparelho. */
 export interface RascunhoFrota {
+  /** Qual dos dois formulários: `empresa` (CNPJ) ou `autonomo` (CPF ou MEI), ADR-0012. */
+  tipo: Enums<'tipo_frota'>;
   etapa: EtapaCadastroFrota;
   dados: DadosCadastroFrota;
 }
@@ -420,6 +422,13 @@ export interface ApiGuincheiro extends Pick<
    * o número já é de Cliente, Guincheiro ou de quem já enviou a Frota.
    */
   salvarRascunhoFrota(rascunho: RascunhoFrota): Promise<void>;
+  /**
+   * O representante reenvia o documento de um item da Frota recusado (ou vencido): envia o
+   * arquivo ao bucket e volta o item a `pendente`, na fila do Painel. A apólice leva a nova
+   * validade. Erros: `arquivo_invalido`, `arquivo_grande`, `item_indisponivel`,
+   * `transicao_invalida` (o item não está recusado nem vencido), `documento_vencido`.
+   */
+  reenviarItemDaFrota(itemId: string, arquivo: ArquivoDeMidia, validade?: string): Promise<void>;
   /**
    * Envia o alvará ou a apólice ao bucket `documentos-prestadores` (`<usuario>/<uuid>.<ext>`)
    * e devolve o caminho, para o rascunho. PDF ou imagem de até 10 MiB; erros
@@ -1078,6 +1087,27 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     return data.session?.user.id ?? null;
   }
 
+  /** Envia o documento ao bucket de prestadores, na pasta de quem envia, e devolve o caminho. */
+  async function enviarDocumentoDePrestador(arquivo: ArquivoDeMidia): Promise<string> {
+    const id = await meuId();
+    if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+    const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
+    if (!extensao) {
+      throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+    }
+    if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+      throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+    }
+    const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
+    const envio = await supabase.storage
+      .from(BUCKET_DOCUMENTOS)
+      .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+    if (envio.error) {
+      throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
+    }
+    return caminho;
+  }
+
   async function completarCorrida(
     linha: {
       id: string;
@@ -1160,38 +1190,39 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     async buscarRascunhoFrota() {
       const { data, error } = await supabase
         .from('rascunhos_frota')
-        .select('etapa, dados')
+        .select('tipo, etapa, dados')
         .maybeSingle();
       if (error) throw new ErroApi('falha', 'Não foi possível ler o cadastro', { cause: error });
       if (!data) return null;
-      return { etapa: data.etapa as EtapaCadastroFrota, dados: dadosDoJson(data.dados) };
+      return {
+        tipo: data.tipo,
+        etapa: data.etapa as EtapaCadastroFrota,
+        dados: dadosDoJson(data.dados),
+      };
     },
 
-    async salvarRascunhoFrota({ etapa, dados }) {
+    async salvarRascunhoFrota({ tipo, etapa, dados }) {
       const { error } = await supabase
         .from('rascunhos_frota')
-        .upsert({ etapa, dados: dadosParaJson(dados) }, { onConflict: 'usuario_id' });
+        .upsert({ tipo, etapa, dados: dadosParaJson(dados) }, { onConflict: 'usuario_id' });
       if (error) throw erroDoCadastroDeFrota(error, 'Não foi possível salvar o cadastro');
     },
 
     async enviarDocumentoDaFrota(arquivo) {
-      const id = await meuId();
-      if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
-      const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
-      if (!extensao) {
-        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+      return enviarDocumentoDePrestador(arquivo);
+    },
+
+    async reenviarItemDaFrota(itemId, arquivo, validade) {
+      const caminho = await enviarDocumentoDePrestador(arquivo);
+      const { error } = await supabase.rpc('reenviar_item_homologacao', {
+        item_id: itemId,
+        arquivo: caminho,
+        validade,
+      });
+      if (error?.code === '42501') {
+        throw new ErroApi('sem_permissao', 'Este item não é da sua Frota', { cause: error });
       }
-      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
-        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
-      }
-      const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
-      const envio = await supabase.storage
-        .from(BUCKET_DOCUMENTOS)
-        .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
-      if (envio.error) {
-        throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
-      }
-      return caminho;
+      if (error) throw erroDaHomologacao(error, 'Não foi possível reenviar o documento');
     },
 
     async enviarCadastroFrota() {
