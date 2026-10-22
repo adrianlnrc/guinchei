@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import type { ItemHomologacao, MinhaFrota as Frota } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
+import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS } from '../rotas';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
 import { formatarData } from './cadastro/regras';
 
@@ -37,6 +38,7 @@ export function MinhaFrota() {
   if (estado === 'nao_e_guincheiro') {
     return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_GUINCHEIRO }} />;
   }
+  if (estado === 'convidado') return <Navigate to={ROTA_DADOS_PESSOAIS} replace />;
   if (estado === 'sem_perfil') return <Navigate to="/cadastro" replace />;
   if (estado === 'pronto') return <Navigate to="/" replace />;
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
@@ -138,6 +140,11 @@ function Andamento() {
         <Botao variante="claro" grande disabled={saindo} onClick={sair}>
           Sair
         </Botao>
+        {frota && (
+          <Link centro onClick={() => ir(ROTA_CONVITES)}>
+            Convidar Guincheiros
+          </Link>
+        )}
         <Link centro onClick={() => globalThis.location.reload()}>
           Atualizar
         </Link>

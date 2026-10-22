@@ -5,6 +5,10 @@ import {
   TAMANHO_MAXIMO_DOCUMENTO_BYTES,
   type ApiGuincheiro,
   type ArquivoDeMidia,
+  type CadastroGuincheiroConvidado,
+  type ConviteGuincheiro,
+  type GuincheiroDaFrota,
+  type MeuConvite,
   type FotoEstado,
   type OpcoesFotoEstado,
   type CorridaDoGuincheiro,
@@ -129,6 +133,9 @@ export function apiFalsa({
   rascunho = null,
   frota = null,
   telefone = '5561900000008',
+  convite = null,
+  convites = [],
+  guincheirosDaFrota = [],
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
@@ -143,9 +150,18 @@ export function apiFalsa({
   frota?: MinhaFrota | null;
   /** Telefone do login (dígitos, com o 55). */
   telefone?: string;
+  /** O convite pendente do telefone de quem entrou sem perfil. */
+  convite?: MeuConvite | null;
+  /** Convites pendentes da Frota do representante logado. */
+  convites?: ConviteGuincheiro[];
+  /** Guincheiros já vinculados à Frota do representante logado. */
+  guincheirosDaFrota?: GuincheiroDaFrota[];
 } = {}) {
   let logado = sessao;
   let perfilAtual = perfil;
+  let conviteAtual = convite;
+  let convitesAtuais = [...convites];
+  let frotaDoGuincheiro = 'Reboque Planalto';
   let rascunhoAtual = rascunho;
   let frotaAtual = frota;
   const arquivosEnviados: string[] = [];
@@ -169,9 +185,56 @@ export function apiFalsa({
     }),
     buscarMeuGuincheiro: vi.fn(async (): Promise<MeuGuincheiro | null> =>
       logado && perfilAtual?.papel === 'guincheiro'
-        ? { nome: perfilAtual.nome, frota: 'Reboque Planalto', disponivel: estaDisponivel }
+        ? { nome: perfilAtual.nome, frota: frotaDoGuincheiro, disponivel: estaDisponivel }
         : null,
     ),
+    // Como o servidor: só quem ainda não tem perfil vê o convite do telefone.
+    buscarMeuConvite: vi.fn(async (): Promise<MeuConvite | null> =>
+      logado && !perfilAtual ? conviteAtual : null,
+    ),
+    aceitarConvite: vi.fn(async ({ nome, cpf, termosVersao }: CadastroGuincheiroConvidado) => {
+      if (!conviteAtual) throw new ErroApi('sem_convite', 'Não há convite para este número');
+      if (!nome.trim() || !termosVersao) {
+        throw new ErroApi('dados_incompletos', 'Informe o nome e aceite os termos de uso');
+      }
+      perfilAtual = {
+        ...PERFIL_MARCOS,
+        id: '22222222-2222-4222-8222-222222222299',
+        nome: nome.trim(),
+        cpf,
+        telefone,
+        aceite_termos_versao: termosVersao,
+      };
+      frotaDoGuincheiro = conviteAtual.frotaNome;
+      conviteAtual = null;
+      estaDisponivel = false;
+    }),
+    convidarGuincheiro: vi.fn(async (numero: string) => {
+      const digitos = numero.replace(/\D/g, '');
+      if (!/^55\d{10,11}$/.test(digitos)) {
+        throw new ErroApi('telefone_invalido', 'Informe o celular com DDD');
+      }
+      if (convitesAtuais.some((c) => c.telefone === digitos)) {
+        throw new ErroApi('convite_repetido', 'Este número já tem um convite pendente');
+      }
+      const novo: ConviteGuincheiro = {
+        id: `convite-${convitesAtuais.length + 1}`,
+        telefone: digitos,
+        criadoEm: '2026-10-22T12:00:00Z',
+        validoAte: '2026-10-29T12:00:00Z',
+        vencido: false,
+      };
+      convitesAtuais = [novo, ...convitesAtuais];
+      return novo.id;
+    }),
+    listarConvites: vi.fn(async () => [...convitesAtuais]),
+    cancelarConvite: vi.fn(async (id: string) => {
+      if (!convitesAtuais.some((c) => c.id === id)) {
+        throw new ErroApi('convite_indisponivel', 'O convite não está mais pendente');
+      }
+      convitesAtuais = convitesAtuais.filter((c) => c.id !== id);
+    }),
+    listarGuincheirosDaFrota: vi.fn(async () => [...guincheirosDaFrota]),
     telefoneDaSessao: vi.fn(async () => (logado ? telefone : null)),
     buscarRascunhoFrota: vi.fn(async () => rascunhoAtual),
     salvarRascunhoFrota: vi.fn(async (novo: RascunhoFrota) => {

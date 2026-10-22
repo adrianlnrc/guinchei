@@ -278,6 +278,8 @@ max_frequency = "5s"
 5561900000006 = "123456" # Cliente novo, sem perfil no seed (testa o cadastro urgente)
 5561900000007 = "123456" # Guincheiro: Paulo Mendes (Guincho Capital, Frota pendente de homologação)
 5561900000008 = "123456" # Pessoa nova, sem usuário nem perfil no seed (testa o cadastro de Frota autônoma, #43)
+5561900000046 = "123456" # Convidado da Reboque Planalto no seed, sem usuário nem perfil (primeiro acesso do Guincheiro, #46)
+5561900000047 = "123456" # Pessoa nova, sem convite no seed (o e2e a convida pelo representante, #46)
 
 # Configure logged in session timeouts.
 # [auth.sessions]

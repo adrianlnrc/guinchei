@@ -69,6 +69,65 @@ export type Database = {
           },
         ];
       };
+      convites_guincheiro: {
+        Row: {
+          aceito_em: string | null;
+          aceito_por: string | null;
+          criado_em: string;
+          criado_por: string | null;
+          estado: Database['public']['Enums']['estado_convite'];
+          frota_id: string;
+          id: string;
+          telefone: string;
+          valido_ate: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          aceito_em?: string | null;
+          aceito_por?: string | null;
+          criado_em?: string;
+          criado_por?: string | null;
+          estado?: Database['public']['Enums']['estado_convite'];
+          frota_id: string;
+          id?: string;
+          telefone: string;
+          valido_ate?: string;
+        };
+        Update: {
+          aceito_em?: string | null;
+          aceito_por?: string | null;
+          criado_em?: string;
+          criado_por?: string | null;
+          estado?: Database['public']['Enums']['estado_convite'];
+          frota_id?: string;
+          id?: string;
+          telefone?: string;
+          valido_ate?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'convites_guincheiro_aceito_por_fkey';
+            columns: ['aceito_por'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'convites_guincheiro_criado_por_fkey';
+            columns: ['criado_por'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'convites_guincheiro_frota_id_fkey';
+            columns: ['frota_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       corridas: {
         Row: {
           atualizado_em: string;
@@ -751,6 +810,10 @@ export type Database = {
         Returns: string;
       };
       abrir_rodada_match: { Args: { pedido_id: string }; Returns: number };
+      aceitar_convite_guincheiro: {
+        Args: { cpf: string; nome: string; termos_versao: string };
+        Returns: string;
+      };
       aceitar_oferta: { Args: { tentativa_id: number }; Returns: string };
       apolice_validade_aceitavel: { Args: { validade: string }; Returns: boolean };
       assinatura_do_trajeto: {
@@ -766,6 +829,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      cancelar_convite_guincheiro: { Args: { convite_id: string }; Returns: undefined };
       categoria_cnh_cobre_pbt: { Args: { categoria: string; pbt_kg: number }; Returns: boolean };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       conferir_arquivo_homologacao: { Args: { arquivo: string; dono: string }; Returns: undefined };
@@ -776,6 +840,7 @@ export type Database = {
           nome: string;
         }[];
       };
+      convidar_guincheiro: { Args: { telefone: string }; Returns: string };
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
       dados_da_cotacao: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
@@ -837,6 +902,16 @@ export type Database = {
         };
         Returns: undefined;
       };
+      guincheiros_da_minha_frota: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          criado_em: string;
+          disponivel: boolean;
+          id: string;
+          nome: string;
+          telefone: string;
+        }[];
+      };
       guincheiros_elegiveis_proximos: {
         Args: { latitude: number; limite?: number; longitude: number };
         Returns: {
@@ -849,6 +924,13 @@ export type Database = {
       hora_do_servidor: { Args: Record<PropertyKey, never>; Returns: string };
       limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
       marcar_itens_vencidos: { Args: Record<PropertyKey, never>; Returns: number };
+      meu_convite_guincheiro: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          frota_nome: string;
+          valido_ate: string;
+        }[];
+      };
       pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };
       pedido_oferecido_a_mim: { Args: { pedido_id: string }; Returns: boolean };
@@ -959,6 +1041,7 @@ export type Database = {
     Enums: {
       abrangencia_feriado: 'nacional' | 'df';
       alvo_homologacao: 'frota' | 'guincheiro' | 'veiculo';
+      estado_convite: 'pendente' | 'aceito' | 'cancelado';
       estado_corrida: 'aceita' | 'a_caminho' | 'no_local' | 'carregado' | 'entregue';
       estado_homologacao: 'pendente' | 'aprovado' | 'recusado' | 'vencido';
       estado_pagamento: 'autorizado' | 'capturado' | 'estornado' | 'recusado';
@@ -1091,6 +1174,7 @@ export const Constants = {
     Enums: {
       abrangencia_feriado: ['nacional', 'df'],
       alvo_homologacao: ['frota', 'guincheiro', 'veiculo'],
+      estado_convite: ['pendente', 'aceito', 'cancelado'],
       estado_corrida: ['aceita', 'a_caminho', 'no_local', 'carregado', 'entregue'],
       estado_homologacao: ['pendente', 'aprovado', 'recusado', 'vencido'],
       estado_pagamento: ['autorizado', 'capturado', 'estornado', 'recusado'],

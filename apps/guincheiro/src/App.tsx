@@ -6,6 +6,9 @@ import { PlantaoProvider, usePlantao } from './plantao';
 import { ExigeGuincheiro } from './sessao';
 import { Cadastro } from './telas/Cadastro';
 import { MinhaFrota } from './telas/MinhaFrota';
+import { Convites } from './telas/Convites';
+import { DadosPessoais } from './telas/DadosPessoais';
+import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS } from './rotas';
 import { Celular, Codigo } from './telas/Entrada';
 import { Plantao } from './telas/Plantao';
 import { Chamado } from './telas/Chamado';
@@ -29,6 +32,8 @@ export function App({ api }: { api: ApiGuincheiro }) {
               <Route path="/codigo" element={<Codigo />} />
               <Route path="/cadastro" element={<Cadastro />} />
               <Route path="/frota" element={<MinhaFrota />} />
+              <Route path={ROTA_CONVITES} element={<Convites />} />
+              <Route path={ROTA_DADOS_PESSOAIS} element={<DadosPessoais />} />
               <Route
                 path="/"
                 element={
