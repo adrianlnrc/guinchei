@@ -62,7 +62,7 @@ const semPerfil = (extra: Parameters<typeof apiFalsa>[0] = {}) =>
 
 async function comecar(api: ReturnType<typeof apiFalsa>) {
   renderEm('/cadastro', api);
-  fireEvent.click(await screen.findByRole('button', { name: 'Cadastrar minha Frota' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Pessoa física (tenho um guincho)' }));
 }
 
 const retomar = async () =>
@@ -83,14 +83,18 @@ describe('Quem ainda não tem perfil de prestador', () => {
       target: { value: CODIGO_CERTO },
     });
     tocar('Confirmar');
-    expect(await screen.findByRole('button', { name: 'Cadastrar minha Frota' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Pessoa física (tenho um guincho)' }),
+    ).toBeTruthy();
     expect(api.sair).not.toHaveBeenCalled();
     expect(screen.queryByRole('main', { name: 'Em plantão' })).toBeNull();
   });
 
   it('com a sessão guardada, qualquer rota de Guincheiro leva ao cadastro', async () => {
     renderEm('/corrida', semPerfil());
-    expect(await screen.findByRole('button', { name: 'Cadastrar minha Frota' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Pessoa física (tenho um guincho)' }),
+    ).toBeTruthy();
   });
 
   it('Cliente continua sem cadastro: o aviso é o de sempre e a sessão sai', async () => {
@@ -98,7 +102,7 @@ describe('Quem ainda não tem perfil de prestador', () => {
     renderEm('/cadastro', api);
     expect(await screen.findByLabelText('Celular com DDD')).toBeTruthy();
     expect(api.sair).toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Cadastrar minha Frota' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pessoa física (tenho um guincho)' })).toBeNull();
   });
 
   it('quem já enviou o cadastro cai direto na própria Frota, sem plantão', async () => {
@@ -144,7 +148,7 @@ describe('Etapa 1: dados', () => {
     preencher('CPF', '529.982.247-25');
     tocar('Continuar');
     await etapa('Cadastro: endereço');
-    expect(rascunhoSalvo(api)).toEqual({ etapa: 2, dados: DADOS_DA_ETAPA_1 });
+    expect(rascunhoSalvo(api)).toEqual({ tipo: 'autonomo', etapa: 2, dados: DADOS_DA_ETAPA_1 });
   });
 
   it('no MEI, valida o CNPJ e pede o representante (nome e CPF)', async () => {
@@ -209,7 +213,7 @@ describe('Etapa 2: endereço da base', () => {
     preencher('CEP', '70000-000');
     tocar('Continuar');
     await etapa('Cadastro: documentos');
-    expect(rascunhoSalvo(api)).toEqual({ etapa: 3, dados: DADOS_DA_ETAPA_2 });
+    expect(rascunhoSalvo(api)).toEqual({ tipo: 'autonomo', etapa: 3, dados: DADOS_DA_ETAPA_2 });
   });
 
   it('Voltar mantém o que já foi preenchido', async () => {
@@ -330,7 +334,7 @@ describe('Etapa 4: Pix', () => {
     preencher('Chave Pix', ' aurora@exemplo.com ');
     tocar('Continuar');
     await etapa('Cadastro: termos');
-    expect(rascunhoSalvo(api)).toEqual({ etapa: 5, dados: DADOS_DA_ETAPA_4 });
+    expect(rascunhoSalvo(api)).toEqual({ tipo: 'autonomo', etapa: 5, dados: DADOS_DA_ETAPA_4 });
   });
 });
 
@@ -393,7 +397,6 @@ describe('Retomada do cadastro', () => {
     const api = semPerfil({ rascunho: { etapa: 3, dados: DADOS_DA_ETAPA_3 } });
     renderEm('/cadastro', api);
     const continuar = await screen.findByRole('button', { name: 'Continuar meu cadastro' });
-    expect(screen.queryByRole('button', { name: 'Cadastrar minha Frota' })).toBeNull();
     fireEvent.click(continuar);
     const tela = await etapa('Cadastro: documentos');
     expect(tela.textContent).toContain('Etapa 3 de 5');
@@ -481,6 +484,8 @@ describe('Minha Frota (depois do envio)', () => {
 
   it('quem não tem Frota enviada é levado ao cadastro', async () => {
     renderEm('/frota', semPerfil());
-    expect(await screen.findByRole('button', { name: 'Cadastrar minha Frota' })).toBeTruthy();
+    expect(
+      await screen.findByRole('button', { name: 'Pessoa física (tenho um guincho)' }),
+    ).toBeTruthy();
   });
 });

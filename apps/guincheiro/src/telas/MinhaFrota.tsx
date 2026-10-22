@@ -1,10 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import type { ItemHomologacao, MinhaFrota as Frota } from '@guinchei/api';
+import {
+  ErroApi,
+  TAMANHO_MAXIMO_DOCUMENTO_BYTES,
+  type ItemHomologacao,
+  type MinhaFrota as Frota,
+} from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
+import { MensagemDeErro } from '../MensagemDeErro';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
-import { formatarData } from './cadastro/regras';
+import { Campo } from './cadastro/campos';
+import { erroDaValidadeDaApolice, formatarData, validadeMinimaDaApolice } from './cadastro/regras';
+
+const LIMITE_EM_MB = TAMANHO_MAXIMO_DOCUMENTO_BYTES / (1024 * 1024);
+
+/** O representante reenvia o que a operação recusou ou o que venceu. */
+const PODE_REENVIAR: ReadonlySet<ItemHomologacao['estado']> = new Set(['recusado', 'vencido']);
 
 const NOME_DO_ITEM: Record<ItemHomologacao['tipo'], string> = {
   alvara: 'Alvará de funcionamento',
@@ -43,6 +55,87 @@ export function MinhaFrota() {
   return <Andamento />;
 }
 
+/**
+ * Reenvio de um item da Frota recusado ou vencido: novo arquivo (e, na apólice, a nova
+ * validade). Ao reenviar, o item volta a `pendente` e à fila do Painel.
+ */
+function Reenvio({ item, aoReenviar }: { item: ItemHomologacao; aoReenviar: () => void }) {
+  const api = useApi();
+  const nome = NOME_DO_ITEM[item.tipo];
+  const apolice = item.tipo === 'apolice_rc';
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [validade, setValidade] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function reenviar() {
+    if (!arquivo) return;
+    if (apolice) {
+      const recusa = erroDaValidadeDaApolice(validade);
+      if (recusa) {
+        setErro(recusa);
+        return;
+      }
+    }
+    setErro(null);
+    setEnviando(true);
+    try {
+      await api.reenviarItemDaFrota(item.id, arquivo, apolice ? validade : undefined);
+      aoReenviar();
+    } catch (e) {
+      setErro(
+        e instanceof ErroApi &&
+          [
+            'arquivo_invalido',
+            'arquivo_grande',
+            'documento_vencido',
+            'transicao_invalida',
+          ].includes(e.motivo)
+          ? e.message
+          : `Não foi possível reenviar. Use um PDF ou uma foto de até ${LIMITE_EM_MB} MB e tente de novo.`,
+      );
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div style={{ display: 'grid', gap: 10, marginTop: 6 }}>
+      <input
+        type="file"
+        accept="application/pdf,image/*"
+        aria-label={`Novo arquivo: ${nome}`}
+        disabled={enviando}
+        onChange={(e) => {
+          setArquivo(e.target.files?.[0] ?? null);
+          setErro(null);
+        }}
+        style={{ font: '400 14px var(--fonte-texto)' }}
+      />
+      {apolice && (
+        <Campo
+          rotulo="Nova validade da apólice"
+          type="date"
+          min={validadeMinimaDaApolice()}
+          value={validade}
+          onChange={(e) => {
+            setValidade(e.target.value);
+            setErro(null);
+          }}
+        />
+      )}
+      <MensagemDeErro>{erro}</MensagemDeErro>
+      <Botao
+        variante="claro"
+        disabled={!arquivo || (apolice && !validade) || enviando}
+        onClick={reenviar}
+        aria-label={`Reenviar ${nome}`}
+      >
+        Reenviar documento
+      </Botao>
+    </div>
+  );
+}
+
 function Andamento() {
   const api = useApi();
   const ir = useNavigate();
@@ -61,6 +154,14 @@ function Andamento() {
       vigente = false;
     };
   }, [api]);
+
+  async function recarregar() {
+    try {
+      setFrota(await api.buscarMinhaFrota());
+    } catch {
+      setErro(true);
+    }
+  }
 
   async function sair() {
     setSaindo(true);
@@ -83,6 +184,9 @@ function Andamento() {
         {frota ? (
           <>
             <h1 className="titulo">{frota.nome}</h1>
+            <p className="apoio" style={{ fontSize: 14 }}>
+              {frota.tipo === 'empresa' ? 'Frota empresa' : 'Frota autônoma'}
+            </p>
             <p className="apoio">
               {frota.ativa
                 ? 'Frota ativa.'
@@ -124,6 +228,9 @@ function Andamento() {
                   )}
                   {item.motivo && (
                     <div style={{ font: '400 14px var(--fonte-texto)' }}>{item.motivo}</div>
+                  )}
+                  {item.alvo === 'frota' && PODE_REENVIAR.has(item.estado) && (
+                    <Reenvio item={item} aoReenviar={recarregar} />
                   )}
                 </li>
               ))}

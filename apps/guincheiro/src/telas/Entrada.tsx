@@ -10,7 +10,7 @@ import { AVISO_NAO_E_GUINCHEIRO } from '../sessao';
 
 /**
  * Entra o Guincheiro que a Frota já cadastrou. Quem não tem perfil é levado, depois do código,
- * a cadastrar a própria Frota (autônomo, ADR-0012).
+ * a cadastrar a própria Frota, como pessoa física ou empresa (ADR-0012).
  */
 export function Celular() {
   const ir = useNavigate();
@@ -40,8 +40,9 @@ export function Celular() {
         <Rotulo style={{ marginTop: 24, color: 'var(--cinza-medio)' }}>Guincheiro</Rotulo>
         <h1 className="titulo">Qual é o seu celular?</h1>
         <p className="apoio">
-          Use o número que a sua Frota informou ao Guinchei. Se você atende sozinho, entre com o seu
-          celular e cadastre a sua Frota. Vamos mandar um código pelo WhatsApp.
+          Use o número que a sua Frota informou ao Guinchei. Se você ainda não é prestador, entre
+          com o seu celular e cadastre a sua Frota como pessoa física (se você tem um guincho) ou
+          como empresa (CNPJ). Vamos mandar um código pelo WhatsApp.
         </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
           <div

@@ -1,12 +1,16 @@
 import type { CSSProperties, InputHTMLAttributes, ReactNode } from 'react';
-import type { DadosCadastroFrota, EtapaCadastroFrota } from '@guinchei/api';
+import type { DadosCadastroFrota, EtapaCadastroFrota, RascunhoFrota } from '@guinchei/api';
 import { Botao, Link, Progresso, Rotulo } from '@guinchei/ui';
 import { MensagemDeErro } from '../../MensagemDeErro';
 
 export const TOTAL_DE_ETAPAS = 5;
 
+/** Frota autônoma (pessoa física) ou Frota empresa (CNPJ): o formulário que a pessoa escolheu. */
+export type TipoDeFrota = RascunhoFrota['tipo'];
+
 /** O que cada etapa recebe do assistente. As funções devolvem a mensagem de erro, se falharem. */
 export interface PropsDaEtapa {
+  tipo: TipoDeFrota;
   dados: DadosCadastroFrota;
   /** Telefone do login (dígitos, com o 55). */
   telefone: string | null;

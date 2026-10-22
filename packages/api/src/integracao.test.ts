@@ -1624,18 +1624,22 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         representanteCpf: documento,
         baseCep: '70000000',
       };
-      await sessao.api.salvarRascunhoFrota({ etapa: 2, dados });
+      await sessao.api.salvarRascunhoFrota({ tipo: 'autonomo', etapa: 2, dados });
       // Salvar de novo atualiza o mesmo rascunho.
       const maisDados = {
         ...dados,
         baseEndereco: 'SQN 308 Bloco A, loja 2',
         baseBairro: 'Asa Norte',
       };
-      await sessao.api.salvarRascunhoFrota({ etapa: 3, dados: maisDados });
+      await sessao.api.salvarRascunhoFrota({ tipo: 'autonomo', etapa: 3, dados: maisDados });
 
       const outroAparelho = novoGuincheiro();
       await outroAparelho.api.confirmarCodigo(SEM_FROTA, CODIGO_DE_TESTE);
-      expect(await outroAparelho.api.buscarRascunhoFrota()).toEqual({ etapa: 3, dados: maisDados });
+      expect(await outroAparelho.api.buscarRascunhoFrota()).toEqual({
+        tipo: 'autonomo',
+        etapa: 3,
+        dados: maisDados,
+      });
     });
 
     it('o upload tem tipo e tamanho limitados e vai para a pasta de quem envia', async () => {
@@ -1664,7 +1668,11 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     it('o envio recusa documento inválido, termos em falta, CPF repetido e apólice vencida ou a vencer', async () => {
       const { api } = sessao;
       const tentar = async (dados: Partial<ReturnType<typeof dadosCompletos>>) => {
-        await api.salvarRascunhoFrota({ etapa: 5, dados: { ...dadosCompletos(), ...dados } });
+        await api.salvarRascunhoFrota({
+          tipo: 'autonomo',
+          etapa: 5,
+          dados: { ...dadosCompletos(), ...dados },
+        });
         return motivoDe(api.enviarCadastroFrota());
       };
 
@@ -1685,7 +1693,7 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
 
     it('enviar cria a Frota inativa, o perfil de representante e os itens pendentes', async () => {
       const { api } = sessao;
-      await api.salvarRascunhoFrota({ etapa: 5, dados: dadosCompletos() });
+      await api.salvarRascunhoFrota({ tipo: 'autonomo', etapa: 5, dados: dadosCompletos() });
       frotaId = await api.enviarCadastroFrota();
 
       expect(await api.buscarRascunhoFrota()).toBeNull();
@@ -1768,16 +1776,238 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
 
     it('quem já enviou a Frota não abre outro rascunho; o Cliente nunca abre', async () => {
       expect(
-        await motivoDe(sessao.api.salvarRascunhoFrota({ etapa: 1, dados: { nome: 'Outra' } })),
+        await motivoDe(
+          sessao.api.salvarRascunhoFrota({ tipo: 'autonomo', etapa: 1, dados: { nome: 'Outra' } }),
+        ),
       ).toBe('cadastro_indisponivel');
 
       const cliente = novoGuincheiro();
       await cliente.api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
       expect(
-        await motivoDe(cliente.api.salvarRascunhoFrota({ etapa: 1, dados: { nome: 'Rafael' } })),
+        await motivoDe(
+          cliente.api.salvarRascunhoFrota({
+            tipo: 'autonomo',
+            etapa: 1,
+            dados: { nome: 'Rafael' },
+          }),
+        ),
       ).toBe('cadastro_indisponivel');
       expect(await cliente.api.buscarRascunhoFrota()).toBeNull();
       expect(await cliente.api.buscarMinhaFrota()).toBeNull();
+    });
+  });
+
+  describe('Cadastro de Frota empresa (#44): CNPJ, representante e reenvio', () => {
+    // O mesmo número do cadastro do autônomo: o usuário daquela rodada já é representante e sai
+    // do caminho (o telefone dele muda no beforeAll), como entre uma rodada e outra.
+    const SEM_FROTA = '+5561900000008';
+
+    /** CPF válido novo a cada chamada: o teste roda de novo sem `db reset`. */
+    function cpfNovo(): string {
+      const base = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+      const digito = (digitos: number[]) => {
+        const soma = digitos.reduce((s, d, i) => s + d * (digitos.length + 1 - i), 0);
+        return ((soma * 10) % 11) % 10;
+      };
+      const d1 = digito(base);
+      const d2 = digito([...base, d1]);
+      const cpf = [...base, d1, d2].join('');
+      return /^(\d)\1{10}$/.test(cpf) ? cpfNovo() : cpf;
+    }
+
+    /** CNPJ alfanumérico válido novo a cada chamada (a coluna `documento` é única). */
+    function cnpjNovo(): string {
+      const alfabeto = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      const base = Array.from({ length: 12 }, () => alfabeto[Math.floor(Math.random() * 36)]!);
+      const valores = base.map((c) => c.charCodeAt(0) - 48);
+      const verificador = (pesos: number[], v: number[]) => {
+        const soma = pesos.reduce((s, peso, i) => s + v[i]! * peso, 0);
+        return soma % 11 < 2 ? 0 : 11 - (soma % 11);
+      };
+      const d1 = verificador([5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], valores);
+      const d2 = verificador([6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2], [...valores, d1]);
+      return `${base.join('')}${d1}${d2}`;
+    }
+
+    const emDias = (dias: number) => {
+      const data = new Date(Date.now() - 3 * 3600 * 1000);
+      data.setUTCDate(data.getUTCDate() + dias);
+      return data.toISOString().slice(0, 10);
+    };
+    const pdf = () => new Blob([new Uint8Array([37, 80, 68, 70, 45])], { type: 'application/pdf' });
+    const motivoDe = async (promessa: Promise<unknown>) =>
+      ((await promessa.catch((e: unknown) => e)) as ErroApi).motivo;
+
+    function novoGuincheiro() {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      return { supabase, api: criarApiGuincheiro(supabase) };
+    }
+
+    // Os testes seguem o cadastro de uma empresa, na ordem, e dividem o estado abaixo.
+    let sessao: ReturnType<typeof novoGuincheiro>;
+    let cnpj: string;
+    let cpfRepresentante: string;
+    let alvara: string;
+    let apolice: string;
+    let frotaId: string;
+
+    beforeAll(async () => {
+      // Quem cadastrou uma Frota não pode ser apagado (a trilha de auditoria referencia os
+      // itens): na rodada seguinte o número de teste passa a ser outro usuário.
+      const servidor = admin();
+      const { data } = await servidor.auth.admin.listUsers();
+      const anterior = data.users.find((u) => `+${u.phone}` === SEM_FROTA);
+      if (anterior) {
+        const livre = `55619${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+        await servidor.auth.admin.updateUserById(anterior.id, { phone: livre });
+        await servidor.from('perfis').update({ telefone: livre }).eq('id', anterior.id);
+      }
+      cnpj = cnpjNovo();
+      cpfRepresentante = cpfNovo();
+      sessao = novoGuincheiro();
+    });
+
+    const dadosCompletos = () => ({
+      documento: cnpj,
+      nome: 'Reboque Horizonte Ltda',
+      representanteNome: 'Helena Prado',
+      representanteCpf: cpfRepresentante,
+      baseCep: '71000000',
+      baseEndereco: 'SIA Trecho 3, lote 10',
+      baseBairro: 'SIA',
+      chavePix: cnpj,
+      termosVersao: 'prestadores-teste',
+      apoliceValidade: emDias(60),
+      alvaraArquivo: alvara,
+      apoliceArquivo: apolice,
+    });
+
+    it('o rascunho de empresa guarda o tipo e outro aparelho o retoma', async () => {
+      const { api } = sessao;
+      await api.enviarCodigo(SEM_FROTA);
+      await api.confirmarCodigo(SEM_FROTA, CODIGO_DE_TESTE);
+      expect(await api.buscarRascunhoFrota()).toBeNull();
+
+      const dados = { documento: cnpj, nome: 'Reboque Horizonte Ltda' };
+      await api.salvarRascunhoFrota({ tipo: 'empresa', etapa: 1, dados });
+      const outroAparelho = novoGuincheiro();
+      await outroAparelho.api.confirmarCodigo(SEM_FROTA, CODIGO_DE_TESTE);
+      expect(await outroAparelho.api.buscarRascunhoFrota()).toEqual({
+        tipo: 'empresa',
+        etapa: 1,
+        dados,
+      });
+
+      alvara = await api.enviarDocumentoDaFrota(pdf());
+      apolice = await api.enviarDocumentoDaFrota(pdf());
+    });
+
+    it('a empresa só aceita CNPJ (o CPF é recusado, como em frotas_documento_valido)', async () => {
+      const { api } = sessao;
+      const tentar = async (dados: Partial<ReturnType<typeof dadosCompletos>>) => {
+        await api.salvarRascunhoFrota({
+          tipo: 'empresa',
+          etapa: 5,
+          dados: { ...dadosCompletos(), ...dados },
+        });
+        return motivoDe(api.enviarCadastroFrota());
+      };
+      expect(await tentar({ documento: cpfNovo() })).toBe('documento_invalido');
+      expect(await tentar({ documento: '11222333000182' })).toBe('documento_invalido');
+      expect(await tentar({ representanteCpf: '123' })).toBe('cpf_representante_invalido');
+      expect(await api.buscarMinhaFrota()).toBeNull();
+    });
+
+    it('CNPJ já cadastrado é recusado com o motivo documento_ja_cadastrado', async () => {
+      const { api } = sessao;
+      // O CNPJ da Reboque Planalto (seed).
+      await api.salvarRascunhoFrota({
+        tipo: 'empresa',
+        etapa: 5,
+        dados: { ...dadosCompletos(), documento: '11222333000181' },
+      });
+      expect(await motivoDe(api.enviarCadastroFrota())).toBe('documento_ja_cadastrado');
+      expect(await api.buscarMinhaFrota()).toBeNull();
+    });
+
+    it('enviar cria a Frota empresa e o representante, que não vira Guincheiro', async () => {
+      const { api } = sessao;
+      await api.salvarRascunhoFrota({ tipo: 'empresa', etapa: 5, dados: dadosCompletos() });
+      frotaId = await api.enviarCadastroFrota();
+
+      expect(await api.buscarMeuPerfil()).toMatchObject({
+        papel: 'representante',
+        nome: 'Helena Prado',
+        cpf: cpfRepresentante,
+      });
+      expect(await api.buscarMeuGuincheiro()).toBeNull();
+      const minha = await api.buscarMinhaFrota();
+      expect(minha).toMatchObject({
+        id: frotaId,
+        tipo: 'empresa',
+        documento: cnpj,
+        nome: 'Reboque Horizonte Ltda',
+        ativa: false,
+      });
+      expect(minha!.itens.map((i) => [i.tipo, i.estado])).toEqual([
+        ['alvara', 'pendente'],
+        ['apolice_rc', 'pendente'],
+      ]);
+    });
+
+    it('item recusado: o representante vê o motivo, reenvia, e o item volta à fila do Painel', async () => {
+      const painel = criarApiPainel(
+        criarClienteApi({ supabaseUrl: SUPABASE_URL!, supabaseAnonKey: SUPABASE_ANON_KEY! }),
+      );
+      await painel.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      const detalhe = await painel.buscarFrotaHomologacao(frotaId);
+      const idDe = (tipo: string) => detalhe!.itens.find((i) => i.tipo === tipo)!.id;
+      await painel.aprovarItem(idDe('alvara'));
+      await painel.recusarItem(idDe('apolice_rc'), 'Apólice sem cobertura de avaria');
+
+      const { api } = sessao;
+      const recusado = (await api.buscarMinhaFrota())!.itens.find((i) => i.tipo === 'apolice_rc');
+      expect(recusado).toMatchObject({
+        estado: 'recusado',
+        motivo: 'Apólice sem cobertura de avaria',
+      });
+      expect((await painel.listarFilaHomologacao()).some((f) => f.id === frotaId)).toBe(false);
+
+      // Item aprovado não se reenvia; arquivo inválido e validade vencida não passam.
+      expect(await motivoDe(api.reenviarItemDaFrota(idDe('alvara'), pdf(), undefined))).toBe(
+        'transicao_invalida',
+      );
+      expect(
+        await motivoDe(
+          api.reenviarItemDaFrota(recusado!.id, { type: 'video/mp4', size: 10 }, emDias(90)),
+        ),
+      ).toBe('arquivo_invalido');
+      expect(await motivoDe(api.reenviarItemDaFrota(recusado!.id, pdf(), emDias(-1)))).toBe(
+        'documento_vencido',
+      );
+
+      await api.reenviarItemDaFrota(recusado!.id, pdf(), emDias(90));
+      const depois = (await api.buscarMinhaFrota())!.itens.find((i) => i.tipo === 'apolice_rc');
+      expect(depois).toMatchObject({ estado: 'pendente', motivo: null, validade: emDias(90) });
+      const fila = await painel.listarFilaHomologacao();
+      expect(fila.find((f) => f.id === frotaId)).toMatchObject({ pendentes: 1 });
+    });
+
+    it('quem é de outra Frota não reenvia item que não é dele', async () => {
+      const marcos = novoGuincheiro();
+      await marcos.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+      const { data } = await admin()
+        .from('itens_homologacao')
+        .select('id')
+        .eq('frota_id', frotaId)
+        .limit(1)
+        .single();
+      expect(await motivoDe(marcos.api.reenviarItemDaFrota(data!.id, pdf(), emDias(90)))).toBe(
+        'item_indisponivel',
+      );
     });
   });
 

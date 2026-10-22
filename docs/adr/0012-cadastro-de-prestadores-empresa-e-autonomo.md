@@ -43,3 +43,9 @@ Nada abaixo muda a decisão; só a precisa no banco e no app.
 - **Dono dos itens de Frota:** passa a ser o representante (antes, no #42, o Guincheiro que enviava). O representante envia e reenvia os itens da Frota e dos veículos; o Guincheiro, os dele. Reenviar torna quem reenviou o dono do item.
 - **Apólice:** o formulário e o servidor recusam validade vencida ou a vencer em menos de 30 dias (ADR-0007), para não aprovar o que vence antes da ativação.
 - **Termos para prestadores:** texto provisório, versionado como os termos de uso (ADR-0010); o perfil novo do representante grava essa versão como aceite dos termos.
+
+## Detalhamento do formulário da empresa (issue #44)
+
+- **A primeira pergunta do cadastro** é a escolha entre "Pessoa física (tenho um guincho)" (Frota autônoma) e "Empresa (CNPJ)" (Frota empresa). Os termos de domínio seguem Frota autônoma e Frota empresa; "pessoa física" é só o rótulo da pergunta. A escolha fica em `rascunhos_frota.tipo` e vira `frotas.tipo`; a validação do documento é a mesma do banco (`frotas_documento_valido`) nos dois formulários.
+- **O representante da empresa não vira Guincheiro:** tem perfil `representante`, sem linha em `guincheiros`, e acompanha a homologação e reenvia itens recusados da Frota pelo app. Os Guincheiros da empresa entram depois, por convite (ticket próprio).
+

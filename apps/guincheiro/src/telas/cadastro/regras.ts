@@ -1,5 +1,9 @@
 import { DIAS_MINIMOS_VALIDADE_APOLICE } from '@guinchei/api';
 
+/** As duas respostas da primeira pergunta do cadastro de Frota (ADR-0012). */
+export const ROTULO_PESSOA_FISICA = 'Pessoa física (tenho um guincho)';
+export const ROTULO_EMPRESA = 'Empresa (CNPJ)';
+
 /** AAAA-MM-DD, pelo calendário do aparelho (o servidor confere de novo, em Brasília). */
 function dataIso(data: Date): string {
   const mes = String(data.getMonth() + 1).padStart(2, '0');
