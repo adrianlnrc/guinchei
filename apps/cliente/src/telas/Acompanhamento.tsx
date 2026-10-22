@@ -421,6 +421,7 @@ function NaCorrida({
   acompanhamento: Acompanhamento;
   etapa: EtapaDaCorrida;
 }) {
+  const ir = useNavigate();
   const texto = TEXTOS[etapa];
   const guincheiro = acompanhamento.corrida?.guincheiro ?? null;
   const nome = guincheiro?.nome ?? 'O Guincheiro';
@@ -499,7 +500,16 @@ function NaCorrida({
           <FotosDaCorrida corridaId={acompanhamento.corrida.id} estado={etapa} />
         )}
         <div className="espaco" />
-        {entregue ? <NovoPedido /> : <CancelarEmBreve />}
+        {entregue ? (
+          <>
+            <NovoPedido />
+            <Link centro onClick={() => ir('/meu-cadastro')}>
+              Completar meu cadastro
+            </Link>
+          </>
+        ) : (
+          <CancelarEmBreve />
+        )}
       </Corpo>
     </Tela>
   );

@@ -119,25 +119,25 @@ set local role authenticated;
 set local request.jwt.claims to '{"sub": "55555555-5555-4555-8555-555555555555", "role": "authenticated", "phone": "5561900000098"}';
 
 select throws_ok(
-  $$ insert into public.perfis (id, papel, nome, telefone, cpf, aceite_termos_versao)
+  $$ insert into public.perfis (id, papel, nome, telefone, cpf, cep, aceite_termos_versao)
      values ('55555555-5555-4555-8555-555555555555', 'guincheiro', 'Novo', '5561900000098',
-             '98765432100', 'v1') $$,
+             '98765432100', '70040010', 'v1') $$,
   '42501',
   null,
   'ninguém se cadastra como Guincheiro pela API'
 );
 select throws_ok(
-  $$ insert into public.perfis (id, papel, nome, telefone, cpf, aceite_termos_versao)
+  $$ insert into public.perfis (id, papel, nome, telefone, cpf, cep, aceite_termos_versao)
      values ('55555555-5555-4555-8555-555555555555', 'cliente', 'Novo', '5561900000097',
-             '98765432100', 'v1') $$,
+             '98765432100', '70040010', 'v1') $$,
   '42501',
   null,
   'o telefone do perfil é o verificado no login'
 );
 select lives_ok(
-  $$ insert into public.perfis (id, papel, nome, telefone, cpf, aceite_termos_versao)
+  $$ insert into public.perfis (id, papel, nome, telefone, cpf, cep, aceite_termos_versao)
      values ('55555555-5555-4555-8555-555555555555', 'cliente', 'Novo', '5561900000098',
-             '98765432100', 'v1') $$,
+             '98765432100', '70040010', 'v1') $$,
   'o usuário cria o próprio perfil de Cliente'
 );
 

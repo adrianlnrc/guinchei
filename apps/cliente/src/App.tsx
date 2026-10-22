@@ -8,6 +8,7 @@ import { ExigePerfil } from './sessao';
 import { AvisoGlobal } from './AvisoGlobal';
 import { BoasVindas, Celular, Codigo } from './telas/Entrada';
 import { Cadastro } from './telas/Cadastro';
+import { MeuCadastro } from './telas/MeuCadastro';
 import { PedidoEtapa } from './telas/Pedido';
 import { Local } from './telas/Local';
 import { Pagamento, Preco } from './telas/Preco';
@@ -32,6 +33,14 @@ export function App({ api, mapas }: { api: ApiGuinchei; mapas: Mapas | null }) {
                   element={
                     <ExigePerfil>
                       <PedidoEtapa />
+                    </ExigePerfil>
+                  }
+                />
+                <Route
+                  path="/meu-cadastro"
+                  element={
+                    <ExigePerfil>
+                      <MeuCadastro />
                     </ExigePerfil>
                   }
                 />

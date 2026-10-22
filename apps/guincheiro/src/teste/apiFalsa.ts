@@ -28,6 +28,7 @@ export const PERFIL_MARCOS: Perfil = {
   aceite_termos_em: '2026-10-17T12:00:00Z',
   aceite_termos_versao: 'provisoria-2026-10',
   email: null,
+  cep: null,
   data_nascimento: null,
   telefone_secundario: null,
   criado_em: '2026-10-17T12:00:00Z',

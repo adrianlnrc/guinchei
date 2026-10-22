@@ -534,6 +534,7 @@ export type Database = {
         Row: {
           aceite_termos_em: string;
           aceite_termos_versao: string;
+          cep: string | null;
           cpf: string;
           criado_em: string;
           data_nascimento: string | null;
@@ -548,6 +549,7 @@ export type Database = {
         Insert: {
           aceite_termos_em?: string;
           aceite_termos_versao: string;
+          cep?: string | null;
           cpf: string;
           criado_em?: string;
           data_nascimento?: string | null;
@@ -561,6 +563,7 @@ export type Database = {
         Update: {
           aceite_termos_em?: string;
           aceite_termos_versao?: string;
+          cep?: string | null;
           cpf?: string;
           criado_em?: string;
           data_nascimento?: string | null;
@@ -756,6 +759,29 @@ export type Database = {
       assinatura_do_trajeto: {
         Args: { destino: unknown; km_rebocado: number; origem: unknown };
         Returns: string;
+      };
+      atualizar_cadastro_cliente: {
+        Args: { cep: string; email?: string; nome: string };
+        Returns: {
+          aceite_termos_em: string;
+          aceite_termos_versao: string;
+          cep: string | null;
+          cpf: string;
+          criado_em: string;
+          data_nascimento: string | null;
+          email: string | null;
+          id: string;
+          nome: string;
+          papel: Database['public']['Enums']['papel'];
+          telefone: string;
+          telefone_secundario: string | null;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'perfis';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
       };
       atualizar_pedido_cotado: {
         Args: {

@@ -14,17 +14,17 @@ set local role authenticated;
 set local request.jwt.claims to '{"sub": "66666666-6666-4666-8666-666666666666", "role": "authenticated", "phone": "5561900000096"}';
 
 select throws_ok(
-  $$ insert into public.perfis (id, papel, nome, telefone, cpf, aceite_termos_em, aceite_termos_versao)
+  $$ insert into public.perfis (id, papel, nome, telefone, cpf, cep, aceite_termos_em, aceite_termos_versao)
      values ('66666666-6666-4666-8666-666666666666', 'cliente', 'Novo', '5561900000096',
-             '39053344705', '2020-01-01', 'v1') $$,
+             '39053344705', '70040010', '2020-01-01', 'v1') $$,
   '42501',
   null,
   'o app não consegue mandar a hora do aceite'
 );
 select lives_ok(
-  $$ insert into public.perfis (id, papel, nome, telefone, cpf, aceite_termos_versao)
+  $$ insert into public.perfis (id, papel, nome, telefone, cpf, cep, aceite_termos_versao)
      values ('66666666-6666-4666-8666-666666666666', 'cliente', 'Novo', '5561900000096',
-             '39053344705', 'v1') $$,
+             '39053344705', '70040010', 'v1') $$,
   'o cadastro urgente manda só a versão dos termos'
 );
 select is(

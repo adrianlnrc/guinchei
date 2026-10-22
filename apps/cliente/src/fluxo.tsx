@@ -130,3 +130,8 @@ export function mascararCelular(digitos: string): string {
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
+
+/** Telefone do login (só dígitos, com o 55) como o Cliente digitou: "(61) 90000-0001". */
+export function celularDoLogin(telefone: string): string {
+  return mascararCelular(telefone.replace(/\D/g, '').replace(/^55/, ''));
+}

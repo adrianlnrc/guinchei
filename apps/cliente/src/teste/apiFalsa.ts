@@ -7,6 +7,7 @@ import {
   type ArquivoDeMidia,
   type FotoEstado,
   type OpcoesFotoEstado,
+  type CadastroCliente,
   type CadastroUrgente,
   type EtapaDoAcompanhamento,
   type CotacaoPedido,
@@ -30,6 +31,7 @@ export const PERFIL_RAFAEL: Perfil = {
   aceite_termos_em: '2026-10-17T12:00:00Z',
   aceite_termos_versao: 'provisoria-2026-10',
   email: null,
+  cep: null,
   data_nascimento: null,
   telefone_secundario: null,
   criado_em: '2026-10-17T12:00:00Z',
@@ -103,17 +105,25 @@ export function apiFalsa({
       telefoneLogado = telefone.replace(/\D/g, '');
     }),
     temSessao: vi.fn(async () => logado),
+    telefoneDaSessao: vi.fn(async () => (logado ? telefoneLogado : null)),
     buscarMeuPerfil: vi.fn(async () => (logado ? meuPerfil : null)),
-    criarPerfilUrgente: vi.fn(async ({ nome, cpf, termosVersao }: CadastroUrgente) => {
+    criarPerfilUrgente: vi.fn(async ({ nome, cpf, cep, termosVersao }: CadastroUrgente) => {
       if (cpf === PERFIL_RAFAEL.cpf) throw new ErroApi('cpf_ja_cadastrado', 'CPF já cadastrado');
       meuPerfil = {
         ...PERFIL_RAFAEL,
         id: 'perfil-novo',
         nome,
         cpf,
+        cep,
         telefone: telefoneLogado,
         aceite_termos_versao: termosVersao,
       };
+      return meuPerfil;
+    }),
+    // Como o banco: CPF e telefone ficam; o e-mail vazio apaga o que havia.
+    atualizarMeuCadastro: vi.fn(async ({ nome, cep, email }: CadastroCliente) => {
+      if (!meuPerfil) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+      meuPerfil = { ...meuPerfil, nome: nome.trim(), cep, email: email?.trim() || null };
       return meuPerfil;
     }),
     abrirPedido: vi.fn(async () => 'pedido-novo'),

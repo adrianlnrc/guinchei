@@ -61,3 +61,16 @@ export function mascararCep(digitos: string): string {
   const d = digitos.replace(/\D/g, '').slice(0, 8);
   return d.replace(/^(\d{5})(\d)/, '$1-$2');
 }
+
+/**
+ * 8 dígitos sem máscara, não todos iguais. Mesma regra de `perfis_cep_check`; não restringe
+ * ao DF (a praça do Pedido é outra regra, ADR-0001).
+ */
+export function cepValido(cep: string): boolean {
+  return /^\d{8}$/.test(cep) && !/^(\d)\1{7}$/.test(cep);
+}
+
+/** Formato simples, o mesmo de `perfis_email_check`: algo@dominio.ext, sem espaços. */
+export function emailValido(email: string): boolean {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+}

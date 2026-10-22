@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cepValido,
   cnpjValido,
   cpfValido,
   documentoValido,
+  emailValido,
   mascararCep,
   mascararCnpj,
   mascararCpf,
@@ -81,5 +83,34 @@ describe('máscaras', () => {
     expect(mascararCep('70')).toBe('70');
     expect(mascararCep('70000000')).toBe('70000-000');
     expect(mascararCep('70.000-000999')).toBe('70000-000');
+  });
+});
+
+describe('cepValido', () => {
+  it('aceita 8 dígitos, de qualquer UF', () => {
+    expect(cepValido('70040010')).toBe(true);
+    expect(cepValido('01310100')).toBe(true);
+  });
+
+  it('recusa dígitos todos iguais, tamanho errado, máscara e letras', () => {
+    expect(cepValido('11111111')).toBe(false);
+    expect(cepValido('00000000')).toBe(false);
+    expect(cepValido('7004001')).toBe(false);
+    expect(cepValido('700400100')).toBe(false);
+    expect(cepValido('70040-010')).toBe(false);
+    expect(cepValido('7004001a')).toBe(false);
+  });
+});
+
+describe('emailValido', () => {
+  it('aceita o formato simples', () => {
+    expect(emailValido('ana@exemplo.com.br')).toBe(true);
+  });
+
+  it('recusa sem arroba, sem domínio com ponto ou com espaço', () => {
+    expect(emailValido('ana')).toBe(false);
+    expect(emailValido('ana@exemplo')).toBe(false);
+    expect(emailValido('ana @exemplo.com')).toBe(false);
+    expect(emailValido('@exemplo.com')).toBe(false);
   });
 });

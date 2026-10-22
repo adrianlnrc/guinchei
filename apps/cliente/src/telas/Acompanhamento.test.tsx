@@ -149,6 +149,19 @@ describe('Acompanhamento do Pedido', () => {
     expect(await screen.findByRole('button', { name: 'Carro de passeio' })).toBeTruthy();
   });
 
+  it('ao fim da Corrida, oferece o cadastro completo, e só ali', async () => {
+    await abrirEm('entregue');
+    fireEvent.click(screen.getByRole('button', { name: 'Completar meu cadastro' }));
+    expect(await screen.findByRole('heading', { name: 'Meu cadastro' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(await screen.findByRole('button', { name: 'Fazer novo Pedido' })).toBeTruthy();
+  });
+
+  it('durante a Corrida o cadastro completo não aparece', async () => {
+    await abrirEm('a_caminho');
+    expect(screen.queryByRole('button', { name: 'Completar meu cadastro' })).toBeNull();
+  });
+
   describe('ao reabrir o app', () => {
     it('recupera o Pedido mais recente em andamento, na etapa em que ele está', async () => {
       const api = await abrirEm('a_caminho');
