@@ -59,6 +59,9 @@ function Veiculo() {
         <p className="apoio" style={{ fontSize: 14, textAlign: 'center' }}>
           Um toque já leva para a próxima pergunta.
         </p>
+        <Link centro onClick={() => ir('/meu-cadastro')}>
+          Meu cadastro
+        </Link>
       </Corpo>
     </Tela>
   );

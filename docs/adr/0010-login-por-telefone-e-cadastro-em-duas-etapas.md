@@ -31,3 +31,11 @@ O Cliente pede guincho com o carro parado na rua. E-mail e senha são atrito nes
 - (+) Custo baixo por login.
 - (−) Risco de banimento do número na API não oficial; mitigado por número dedicado e SMS de reserva.
 - (−) CPF é dado pessoal: tratamento conforme LGPD (RNF03).
+
+## Nota de revisão (2026-10-22)
+
+Decisão do dono do produto (issue #57), que ajusta as duas etapas do cadastro sem mudar o login:
+
+- **Cadastro emergencial** (antes do primeiro Pedido): telefone (do login, só informação na tela), CPF, **CEP** e nome, mais o aceite dos termos. O CEP entra com 8 dígitos (máscara 00000-000 na tela, só dígitos no banco), não pode ter todos os dígitos iguais e **não se restringe ao DF**: o CEP é do Cliente, não do Pedido (a praça do ADR-0001 vale para origem e destino).
+- **Cadastro no app** (completo, nunca bloqueia um Pedido): tela "Meu cadastro" com nome, CPF e telefone (só leitura), CEP e e-mail (formato simples, opcional). Acessível pelo início do Pedido e ao fim da Corrida. Substitui o "cadastro completo" acima: **data de nascimento (18+) e telefone secundário saem da tela** e do fluxo. As colunas `data_nascimento` e `telefone_secundario` continuam em `perfis`, sem uso.
+- No banco, `perfis.cep` (check de 8 dígitos, não todos iguais) é obrigatório só na criação do perfil de Cliente (política de INSERT); perfis anteriores, do seed e de prestadores, ficam com `cep` nulo. A atualização passa pela função `atualizar_cadastro_cliente(nome, cep, email)`, só do próprio Cliente; CPF, telefone e papel não têm GRANT de UPDATE.

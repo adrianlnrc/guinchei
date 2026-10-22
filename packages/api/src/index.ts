@@ -44,8 +44,19 @@ export interface CadastroUrgente {
   nome: string;
   /** 11 dígitos, sem máscara. */
   cpf: string;
+  /** 8 dígitos, sem máscara (qualquer CEP do país, não só do DF). */
+  cep: string;
   /** Versão dos termos de uso aceita. */
   termosVersao: string;
+}
+
+/** Cadastro no app (completo, nunca bloqueia Pedido): o que o Cliente pode mudar. */
+export interface CadastroCliente {
+  nome: string;
+  /** 8 dígitos, sem máscara. */
+  cep: string;
+  /** Opcional; vazio apaga o e-mail. */
+  email?: string;
 }
 
 /** Dias que a apólice precisa valer, a contar do envio do cadastro (ADR-0007). */
@@ -228,6 +239,10 @@ export interface FotoEstado {
 export type MotivoErroApi =
   | 'codigo_invalido'
   | 'cpf_ja_cadastrado'
+  /** Cadastro do Cliente: o CEP não tem 8 dígitos ou são todos iguais. */
+  | 'cep_invalido'
+  /** Cadastro do Cliente: o e-mail não tem formato válido. */
+  | 'email_invalido'
   | 'sem_sessao'
   | 'fora_do_df'
   /** Nenhum Guincheiro elegível na hora da cotação. */
@@ -304,9 +319,17 @@ export interface ApiGuinchei {
   enviarCodigo(telefone: string): Promise<void>;
   confirmarCodigo(telefone: string, codigo: string): Promise<void>;
   temSessao(): Promise<boolean>;
+  /** Telefone do login (só dígitos, com o 55); `null` sem sessão. */
+  telefoneDaSessao(): Promise<string | null>;
   /** Perfil de quem está logado; `null` sem sessão ou antes do cadastro urgente. */
   buscarMeuPerfil(): Promise<Perfil | null>;
+  /** Erros: `cpf_ja_cadastrado`, `cep_invalido`. */
   criarPerfilUrgente(dados: CadastroUrgente): Promise<Perfil>;
+  /**
+   * Atualiza nome, CEP e e-mail do próprio Cliente (CPF e telefone não mudam) e devolve o
+   * perfil. Erros: `cep_invalido`, `email_invalido`.
+   */
+  atualizarMeuCadastro(dados: CadastroCliente): Promise<Perfil>;
   /** Abre o Pedido em `cotado` e devolve o id. */
   abrirPedido(respostas: RespostasPedido): Promise<string>;
   /** Troca as respostas do próprio Pedido enquanto está em `cotado` (não abre outro). */
@@ -400,6 +423,7 @@ export interface ApiGuincheiro extends Pick<
   | 'enviarCodigo'
   | 'confirmarCodigo'
   | 'temSessao'
+  | 'telefoneDaSessao'
   | 'buscarMeuPerfil'
   | 'buscarOfertasAbertas'
   | 'aceitarOferta'
@@ -411,8 +435,6 @@ export interface ApiGuincheiro extends Pick<
   sair(): Promise<void>;
   /** `null` sem sessão ou se o perfil logado não é de Guincheiro. */
   buscarMeuGuincheiro(): Promise<MeuGuincheiro | null>;
-  /** Telefone do login (só dígitos, com o 55), para preencher o representante do cadastro. */
-  telefoneDaSessao(): Promise<string | null>;
   /** Cadastro de Frota em andamento de quem está logado; `null` se não há. */
   buscarRascunhoFrota(): Promise<RascunhoFrota | null>;
   /**
@@ -466,6 +488,9 @@ export function criarClienteApi({ supabaseUrl, supabaseAnonKey }: ConfigApi): Cl
 }
 
 const CPF_UNICO = 'perfis_cpf_key';
+const CEP_CHECK = 'perfis_cep_check';
+const EMAIL_CHECK = 'perfis_email_check';
+const VIOLACAO_DE_CHECK = '23514';
 /** Violação de check: o trigger de transição recusou o novo estado. */
 const TRANSICAO_RECUSADA = '23514';
 /** PostgREST: `.single()` sem nenhuma linha. */
@@ -692,6 +717,10 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       return (await usuarioLogado()) !== null;
     },
 
+    async telefoneDaSessao() {
+      return (await usuarioLogado())?.phone ?? null;
+    },
+
     async buscarMeuPerfil() {
       const usuario = await usuarioLogado();
       if (!usuario) return null;
@@ -704,7 +733,7 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       return data;
     },
 
-    async criarPerfilUrgente({ nome, cpf, termosVersao }) {
+    async criarPerfilUrgente({ nome, cpf, cep, termosVersao }) {
       const usuario = await usuarioLogado();
       if (!usuario?.phone) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
       const { data, error } = await supabase
@@ -716,6 +745,7 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
           // O banco só aceita o telefone verificado no login (o do JWT).
           telefone: usuario.phone,
           cpf,
+          cep,
           // A hora do aceite é a do servidor (o banco grava; o app não pode mandar).
           aceite_termos_versao: termosVersao,
         })
@@ -725,6 +755,25 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
         throw new ErroApi('cpf_ja_cadastrado', 'CPF já cadastrado em outra conta', {
           cause: error,
         });
+      }
+      if (error?.code === VIOLACAO_DE_CHECK && error.message.includes(CEP_CHECK)) {
+        throw new ErroApi('cep_invalido', 'CEP inválido', { cause: error });
+      }
+      if (error) throw new ErroApi('falha', 'Não foi possível salvar o cadastro', { cause: error });
+      return data;
+    },
+
+    async atualizarMeuCadastro({ nome, cep, email }) {
+      const { data, error } = await supabase.rpc('atualizar_cadastro_cliente', {
+        nome,
+        cep,
+        email: email ?? '',
+      });
+      if (error?.code === VIOLACAO_DE_CHECK && error.message.includes(CEP_CHECK)) {
+        throw new ErroApi('cep_invalido', 'CEP inválido', { cause: error });
+      }
+      if (error?.code === VIOLACAO_DE_CHECK && error.message.includes(EMAIL_CHECK)) {
+        throw new ErroApi('email_invalido', 'E-mail inválido', { cause: error });
       }
       if (error) throw new ErroApi('falha', 'Não foi possível salvar o cadastro', { cause: error });
       return data;
@@ -1152,10 +1201,7 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
       return { nome: data.perfis.nome, frota: data.frotas.nome, disponivel: data.disponivel };
     },
 
-    async telefoneDaSessao() {
-      const { data } = await supabase.auth.getSession();
-      return data.session?.user.phone ?? null;
-    },
+    telefoneDaSessao: base.telefoneDaSessao,
 
     async buscarRascunhoFrota() {
       const { data, error } = await supabase

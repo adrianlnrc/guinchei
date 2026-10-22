@@ -968,6 +968,7 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           await apiB.criarPerfilUrgente({
             nome: 'Bia Costa',
             cpf: '11144477735',
+            cep: '70040010',
             termosVersao: 'v-teste',
           });
         }
@@ -1160,6 +1161,7 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           await estranho.criarPerfilUrgente({
             nome: 'Bia Costa',
             cpf: '11144477735',
+            cep: '70040010',
             termosVersao: 'v-teste',
           });
         }
@@ -1802,19 +1804,40 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(await api.buscarMeuPerfil()).toBeNull();
 
       const cpfDoRafael = await api
-        .criarPerfilUrgente({ nome: 'Ana Lima', cpf: '12345678062', termosVersao: 'v-teste' })
+        .criarPerfilUrgente({
+          nome: 'Ana Lima',
+          cpf: '12345678062',
+          cep: '70040010',
+          termosVersao: 'v-teste',
+        })
         .catch((e: unknown) => e);
       expect((cpfDoRafael as ErroApi).motivo).toBe('cpf_ja_cadastrado');
+
+      // CEP com os 8 dígitos todos iguais ou fora do formato: o banco recusa.
+      for (const cep of ['11111111', '7004001', '70040-010']) {
+        const invalido = await api
+          .criarPerfilUrgente({
+            nome: 'Ana Lima',
+            cpf: '52998224725',
+            cep,
+            termosVersao: 'v-teste',
+          })
+          .catch((e: unknown) => e);
+        expect((invalido as ErroApi).motivo).toBe('cep_invalido');
+      }
 
       const perfil = await api.criarPerfilUrgente({
         nome: 'Ana Lima',
         cpf: '52998224725',
+        cep: '70040010',
         termosVersao: 'v-teste',
       });
       expect(perfil).toMatchObject({
         papel: 'cliente',
         nome: 'Ana Lima',
         telefone: '5561900000006',
+        cep: '70040010',
+        email: null,
         aceite_termos_versao: 'v-teste',
       });
       expect(await api.buscarMeuPerfil()).toEqual(perfil);
@@ -1822,6 +1845,70 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       await expect(
         api.abrirPedido({ tipoVeiculo: 'carro', situacao: 'nao_liga', rodasGiram: 'nao' }),
       ).resolves.toMatch(/^[0-9a-f-]{36}$/);
+    });
+
+    it('o cadastro no app muda nome, CEP e e-mail; CPF e telefone ficam', async () => {
+      const { api, supabase } = novaApi();
+      // Sem reenviar o código (limite de um envio a cada 5 s): o número de teste confirma direto.
+      await api.confirmarCodigo(SEM_PERFIL, CODIGO_DE_TESTE);
+      // O perfil é o do cadastro urgente do teste anterior (o `beforeAll` apaga o usuário).
+      const antes = (await api.buscarMeuPerfil())!;
+      expect(antes.cep).toBe('70040010');
+
+      const depois = await api.atualizarMeuCadastro({
+        nome: '  Ana Lima Souza ',
+        cep: '72000000',
+        email: 'ana@exemplo.com.br',
+      });
+      expect(depois).toMatchObject({
+        id: antes.id,
+        nome: 'Ana Lima Souza',
+        cep: '72000000',
+        email: 'ana@exemplo.com.br',
+        cpf: '52998224725',
+        telefone: '5561900000006',
+      });
+      expect(await api.buscarMeuPerfil()).toEqual(depois);
+
+      // Sem e-mail, apaga o que havia.
+      expect(
+        (await api.atualizarMeuCadastro({ nome: 'Ana Lima Souza', cep: '72000000' })).email,
+      ).toBeNull();
+
+      const motivo = async (dados: Parameters<typeof api.atualizarMeuCadastro>[0]) =>
+        ((await api.atualizarMeuCadastro(dados).catch((e: unknown) => e)) as ErroApi).motivo;
+      expect(await motivo({ nome: 'Ana', cep: '99999999' })).toBe('cep_invalido');
+      expect(await motivo({ nome: 'Ana', cep: '7200' })).toBe('cep_invalido');
+      expect(await motivo({ nome: 'Ana', cep: '72000000', email: 'sem-arroba' })).toBe(
+        'email_invalido',
+      );
+      expect((await api.buscarMeuPerfil())?.cep).toBe('72000000');
+
+      // Pelas tabelas, o app segue sem poder trocar CPF, telefone, papel nem o CEP.
+      for (const campos of [
+        { cpf: '12345678909' },
+        { telefone: '5561900000099' },
+        { papel: 'operacao' as const },
+        { cep: null },
+      ]) {
+        const { error } = await supabase.from('perfis').update(campos).eq('id', antes.id);
+        expect(error?.code).toBe('42501');
+      }
+    });
+
+    it('a função do cadastro no app é só do Cliente com perfil', async () => {
+      const sem = novaApi();
+      expect(
+        (await sem.supabase.rpc('atualizar_cadastro_cliente', { nome: 'X', cep: '70040010' })).error
+          ?.code,
+      ).toBe('42501');
+
+      const marcos = novaApi();
+      await marcos.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+      expect(
+        (await marcos.supabase.rpc('atualizar_cadastro_cliente', { nome: 'X', cep: '70040010' }))
+          .error?.code,
+      ).toBe('42501');
     });
   });
 });

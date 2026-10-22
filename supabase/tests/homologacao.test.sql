@@ -159,7 +159,7 @@ insert into public.itens_homologacao
 values
   ('a1000000-0000-4000-8000-000000000005', 'f0000000-0000-4000-8000-000000000003', 'frota',
    'f0000000-0000-4000-8000-000000000003', 'antecedentes', '22222222-2222-4222-8222-222222222204',
-   '22222222-2222-4222-8222-222222222204/antigo.pdf', current_date - 1);
+   '22222222-2222-4222-8222-222222222204/antigo.pdf', public.hoje_em_brasilia() - 1);
 
 set local role authenticated;
 set local request.jwt.claims to '{"sub": "33333333-3333-4333-8333-333333333333", "role": "authenticated"}';
@@ -170,7 +170,7 @@ select throws_ok(
 reset role;
 
 -- A apólice (aprovada acima) tem a validade empurrada para ontem.
-update public.itens_homologacao set validade = current_date - 1
+update public.itens_homologacao set validade = public.hoje_em_brasilia() - 1
 where id = 'a1000000-0000-4000-8000-000000000002';
 
 set local role authenticated;
@@ -264,11 +264,11 @@ select throws_ok(
   'GHM06', null, 'reenvio exige o arquivo no bucket'
 );
 select throws_ok(
-  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000003', '22222222-2222-4222-8222-222222222204/cnh-nova.jpg', current_date - 1) $$,
+  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000003', '22222222-2222-4222-8222-222222222204/cnh-nova.jpg', public.hoje_em_brasilia() - 1) $$,
   'GHM05', null, 'reenvio com validade vencida é rejeitado'
 );
 select lives_ok(
-  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000003', '22222222-2222-4222-8222-222222222204/cnh-nova.jpg', current_date + 700) $$,
+  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000003', '22222222-2222-4222-8222-222222222204/cnh-nova.jpg', public.hoje_em_brasilia() + 700) $$,
   'o dono reenvia o item recusado'
 );
 select results_eq(
@@ -278,7 +278,7 @@ select results_eq(
   'reenviar volta para pendente, limpa o motivo e põe o item no fim da fila'
 );
 select lives_ok(
-  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222204/apolice-nova.pdf', current_date + 365) $$,
+  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000002', '22222222-2222-4222-8222-222222222204/apolice-nova.pdf', public.hoje_em_brasilia() + 365) $$,
   'o dono reenvia o item vencido'
 );
 

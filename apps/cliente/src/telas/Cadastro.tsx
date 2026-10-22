@@ -1,17 +1,19 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { Navigate } from 'react-router-dom';
 import { ErroApi } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
+import { cepValido, mascararCep } from '@guinchei/documentos';
 import { useApi } from '../api';
 import { cpfValido, mascararCpf } from '../cpf';
-import { useFluxo } from '../fluxo';
+import { celularDoLogin, useFluxo } from '../fluxo';
 import { MensagemDeErro } from '../MensagemDeErro';
 import { useSessao } from '../sessao';
 import { TERMOS_TEXTO, TERMOS_VERSAO } from '../termos';
 
-// Cadastro urgente (ADR-0010): nome, CPF e aceite dos termos. O telefone vem do login.
+// Cadastro emergencial (ADR-0010, revisão de 2026-10-22): nome, CPF, CEP e aceite dos termos.
+// O telefone vem do login e aparece só como informação.
 
-const campo: CSSProperties = {
+export const campo: CSSProperties = {
   width: '100%',
   height: 60,
   padding: '0 16px',
@@ -21,7 +23,7 @@ const campo: CSSProperties = {
   font: '500 18px var(--fonte-texto)',
 };
 
-const rotuloCampo: CSSProperties = {
+export const rotuloCampo: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
@@ -42,28 +44,48 @@ function Formulario() {
   const { setPerfil } = useFluxo();
   const [nome, setNome] = useState('');
   const [cpf, setCpf] = useState('');
+  const [cep, setCep] = useState('');
+  const [telefone, setTelefone] = useState<string | null>(null);
   const [aceite, setAceite] = useState(false);
   const [verTermos, setVerTermos] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
-  const completo = nome.trim().length > 0 && cpf.length === 11 && aceite;
+  const completo = nome.trim().length > 0 && cpf.length === 11 && cep.length === 8 && aceite;
+
+  useEffect(() => {
+    let vigente = true;
+    api
+      .telefoneDaSessao()
+      .then((t) => vigente && setTelefone(t))
+      .catch(() => {});
+    return () => {
+      vigente = false;
+    };
+  }, [api]);
 
   async function continuar() {
     if (!cpfValido(cpf)) {
       setErro('CPF inválido. Confira os números.');
       return;
     }
+    if (!cepValido(cep)) {
+      setErro('CEP inválido. Confira os números.');
+      return;
+    }
     setErro(null);
     setEnviando(true);
     try {
       // Com o perfil no fluxo, o Cadastro redireciona para o Pedido.
-      setPerfil(await api.criarPerfilUrgente({ nome, cpf, termosVersao: TERMOS_VERSAO }));
+      setPerfil(await api.criarPerfilUrgente({ nome, cpf, cep, termosVersao: TERMOS_VERSAO }));
     } catch (e) {
+      const motivo = e instanceof ErroApi ? e.motivo : null;
       setErro(
-        e instanceof ErroApi && e.motivo === 'cpf_ja_cadastrado'
+        motivo === 'cpf_ja_cadastrado'
           ? 'Este CPF já está cadastrado em outra conta.'
-          : 'Não foi possível salvar o cadastro. Tente de novo.',
+          : motivo === 'cep_invalido'
+            ? 'CEP inválido. Confira os números.'
+            : 'Não foi possível salvar o cadastro. Tente de novo.',
       );
       setEnviando(false);
     }
@@ -75,6 +97,11 @@ function Formulario() {
         <Rotulo style={{ marginTop: 16 }}>Falta pouco</Rotulo>
         <h1 className="titulo">Quem está pedindo?</h1>
         <p className="apoio">Só o essencial para chamar o guincho. O resto fica para depois.</p>
+        {telefone && (
+          <p className="apoio" style={{ margin: 0 }}>
+            Celular do seu login: <strong>{celularDoLogin(telefone)}</strong>
+          </p>
+        )}
         <label style={rotuloCampo}>
           Nome completo
           <input
@@ -95,6 +122,21 @@ function Formulario() {
               setErro(null);
             }}
             aria-invalid={erro?.startsWith('CPF') || undefined}
+            style={campo}
+          />
+        </label>
+        <label style={rotuloCampo}>
+          CEP
+          <input
+            inputMode="numeric"
+            autoComplete="postal-code"
+            placeholder="00000-000"
+            value={mascararCep(cep)}
+            onChange={(e) => {
+              setCep(e.target.value.replace(/\D/g, '').slice(0, 8));
+              setErro(null);
+            }}
+            aria-invalid={erro?.startsWith('CEP') || undefined}
             style={campo}
           />
         </label>
