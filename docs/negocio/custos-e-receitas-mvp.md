@@ -42,7 +42,7 @@ Definida no [ADR-0008](../adr/0008-stack-tecnica-do-skeleton.md). Preços ⚠️
 | Domínio | .com.br (Registro.br) | ~R$ 40 por ano |
 | Pagamento | PSP com split (Pagar.me, Asaas, Iugu ou Mercado Pago) | sem mensalidade; ~3% por Corrida |
 
-Total de ferramentas: **R$ 300–500/mês** (≈ R$ 2,5 mil em 6 meses). A verba de R$ 7.000 cobre isso com folga para uso de mapas e mensagens.
+Total de ferramentas: **R$ 250–500/mês** (≈ R$ 1,5–3 mil em 6 meses; ver `Guinchei-Custos-MVP.xlsx`). A verba de R$ 7.000 cobre isso com folga para uso de mapas e mensagens.
 
 ---
 
