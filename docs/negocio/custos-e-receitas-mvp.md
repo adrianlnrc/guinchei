@@ -36,13 +36,24 @@ Definida no [ADR-0008](../adr/0008-stack-tecnica-do-skeleton.md). Preços ⚠️
 | Hospedagem | Vercel | R$ 0 (Hobby) a ~R$ 110 (Pro) |
 | Back-end | Supabase: Postgres + PostGIS, Auth, Storage, Realtime, Edge Functions | R$ 0 (Free) a ~R$ 140 (Pro) |
 | Mapas, geocoding e rotas | Mapbox | R$ 0 na cota gratuita; paga por uso acima |
-| Login por telefone ([ADR-0010](../adr/0010-login-por-telefone-e-cadastro-em-duas-etapas.md)) | WhatsApp/SMS | ~R$ 0,30 por código |
+| Login por telefone ([ADR-0010](../adr/0010-login-por-telefone-e-cadastro-em-duas-etapas.md)) | Enxuto: número dedicado + bot de WhatsApp. Escala: API oficial | Enxuto: ~R$ 40 (chip). Escala: ~R$ 0,30 por código |
 | Testes | Vitest, Playwright | R$ 0 |
 | Repositório e CI | GitHub | R$ 0 |
 | Domínio | .com.br (Registro.br) | ~R$ 40 por ano |
 | Pagamento | PSP com split (Pagar.me, Asaas, Iugu ou Mercado Pago) | sem mensalidade; ~3% por Corrida |
 
-Total de ferramentas: **R$ 250–500/mês** (≈ R$ 1,5–3 mil em 6 meses; ver `Guinchei-Custos-MVP.xlsx`). A verba de R$ 7.000 cobre isso com folga para uso de mapas e mensagens.
+Dois cenários de ferramentas (detalhe em `Guinchei-Custos-MVP.xlsx`):
+
+| Cenário | Premissas | Por mês | 6 meses |
+|---|---|---:|---:|
+| **Enxuto** | Vercel Hobby, Supabase Free, Mapbox na cota gratuita, número dedicado com bot de WhatsApp | **≈ R$ 45** | **≈ R$ 260** |
+| **Escala** | Vercel Pro, Supabase Pro, API oficial do WhatsApp (800 códigos/mês) | **≈ R$ 490** | **≈ R$ 2.950** |
+
+No cenário enxuto, a linha de infraestrutura cai de R$ 7.000 para ≈ R$ 260 e o investimento total do MVP vai de R$ 65.000 para **≈ R$ 58.300**. Os R$ 7.000 do documento original ficam como margem.
+
+**Cuidados com o cenário enxuto:**
+- Vercel Hobby é para uso não comercial; Supabase Free pausa o projeto por inatividade e não tem backup. Servem para desenvolvimento e piloto fechado, mas devem migrar para planos pagos antes da operação comercial com pagamentos.
+- Bot de WhatsApp em número comum (não oficial) pode ser bloqueado pelo WhatsApp, e o login depende dele. Vale ter SMS ou a API oficial como contingência.
 
 ---
 
