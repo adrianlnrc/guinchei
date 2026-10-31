@@ -9,6 +9,7 @@ import { NovoVeiculo } from './telas/NovoVeiculo';
 import { Veiculos } from './telas/Veiculos';
 import { MinhaFrota } from './telas/MinhaFrota';
 import { Convites } from './telas/Convites';
+import { Vinculos } from './telas/Vinculos';
 import { DadosPessoais } from './telas/DadosPessoais';
 import { Documentos } from './telas/documentos/Documentos';
 import { EtapaAntecedentes } from './telas/documentos/EtapaAntecedentes';
@@ -23,6 +24,7 @@ import {
   ROTA_DOCUMENTOS_ANTECEDENTES,
   ROTA_DOCUMENTOS_CNH,
   ROTA_DOCUMENTOS_SELFIE,
+  ROTA_VINCULOS,
 } from './rotas';
 import { Celular, Codigo } from './telas/Entrada';
 import { Plantao } from './telas/Plantao';
@@ -49,6 +51,7 @@ export function App({ api }: { api: ApiGuincheiro }) {
               <Route path="/frota" element={<MinhaFrota />} />
               <Route path={ROTA_APOLICE} element={<ReenviarApolice />} />
               <Route path={ROTA_CONVITES} element={<Convites />} />
+              <Route path={ROTA_VINCULOS} element={<Vinculos />} />
               <Route path={ROTA_DADOS_PESSOAIS} element={<DadosPessoais />} />
               <Route path={ROTA_DOCUMENTOS} element={<Documentos />} />
               <Route path={ROTA_DOCUMENTOS_CNH} element={<EtapaCnh />} />

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@guinchei/api": "workspace:*",
+    "@guinchei/cnh": "workspace:*",
     "@guinchei/estados": "workspace:*",
     "@guinchei/mock": "workspace:*",
     "@guinchei/preco": "workspace:*",

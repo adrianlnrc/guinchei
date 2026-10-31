@@ -2711,6 +2711,329 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     });
   });
 
+  describe('Vínculo Guincheiro × veículo (#48): bloqueio CNH × PBT no banco', () => {
+    // Usuários e Frota criados pela service_role; as chamadas do teste vão pela API, como o app.
+    const SENHA = 'senha-de-teste-48';
+
+    const motivoDe = async (promessa: Promise<unknown>) =>
+      ((await promessa.catch((e: unknown) => e)) as ErroApi).motivo;
+    const jpg = () => new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' });
+    /** AAAA-MM-DD de hoje em Brasília (UTC-3) mais `dias`. */
+    const emDias = (dias: number) => {
+      const data = new Date(Date.now() - 3 * 3600 * 1000);
+      data.setUTCDate(data.getUTCDate() + dias);
+      return data.toISOString().slice(0, 10);
+    };
+    function digitoDoCpf(digitos: number[]) {
+      const soma = digitos.reduce((s, d, i) => s + d * (digitos.length + 1 - i), 0);
+      return ((soma * 10) % 11) % 10;
+    }
+    function cpfNovo(): string {
+      const base = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+      const d1 = digitoDoCpf(base);
+      const cpf = [...base, d1, digitoDoCpf([...base, d1])].join('');
+      return /^(\d)\1{10}$/.test(cpf) ? cpfNovo() : cpf;
+    }
+    /** CNPJ válido novo a cada chamada: o teste cria a Frota própria e roda de novo sem reset. */
+    function cnpjNovo() {
+      const base = Array.from({ length: 12 }, () => Math.floor(Math.random() * 10));
+      const digito = (digitos: number[], pesos: number[]) => {
+        const resto = digitos.reduce((soma, d, i) => soma + d * pesos[i]!, 0) % 11;
+        return resto < 2 ? 0 : 11 - resto;
+      };
+      const d1 = digito(base, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+      const d2 = digito([...base, d1], [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
+      return [...base, d1, d2].join('');
+    }
+    /** RENAVAM de 11 dígitos com o dígito verificador certo (pesos 3 2 9 8 7 6 5 4 3 2). */
+    function renavamNovo(): string {
+      const base = Array.from({ length: 10 }, () => Math.floor(Math.random() * 10));
+      const pesos = [3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+      const soma = base.reduce((s, d, i) => s + d * pesos[i]!, 0);
+      const renavam = [...base, ((soma * 10) % 11) % 10].join('');
+      return /^(\d)\1{10}$/.test(renavam) ? renavamNovo() : renavam;
+    }
+    const letras = () =>
+      Array.from({ length: 3 }, () =>
+        String.fromCharCode(65 + Math.floor(Math.random() * 26)),
+      ).join('');
+    const placaNova = () => `${letras()}${Math.floor(Math.random() * 9000 + 1000)}`;
+    const telefoneNovo = () => `55619${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+    const cnhNova = () => String(Math.floor(Math.random() * 1e11)).padStart(11, '0');
+
+    async function usuario(papel: 'representante' | 'guincheiro', nome: string) {
+      const telefone = telefoneNovo();
+      const email = `vinculo-${telefone}@teste.guinchei`;
+      const servidor = admin();
+      const { data: criado, error } = await servidor.auth.admin.createUser({
+        phone: telefone,
+        phone_confirm: true,
+        email,
+        email_confirm: true,
+        password: SENHA,
+      });
+      if (error) throw error;
+      const id = criado.user.id;
+      const cpf = cpfNovo();
+      const perfil = await servidor.from('perfis').insert({
+        id,
+        papel,
+        nome,
+        telefone,
+        cpf,
+        aceite_termos_versao: 'prestadores-teste',
+      });
+      expect(perfil.error).toBeNull();
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      const { error: erroLogin } = await supabase.auth.signInWithPassword({
+        email,
+        password: SENHA,
+      });
+      if (erroLogin) throw erroLogin;
+      return { supabase, api: criarApiGuincheiro(supabase), id, cpf, nome };
+    }
+
+    async function operacao() {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      const api = criarApiPainel(supabase);
+      await api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      return api;
+    }
+
+    let rep: Awaited<ReturnType<typeof usuario>>;
+    let gil: Awaited<ReturnType<typeof usuario>>;
+    let gabi: Awaited<ReturnType<typeof usuario>>;
+    let frotaId: string;
+    let leve: { id: string; placa: string };
+    let pesado: { id: string; placa: string };
+
+    /** O Guincheiro envia a CNH e a operação a aprova, como no fluxo real. */
+    async function enviarEAprovarCnh(
+      g: Awaited<ReturnType<typeof usuario>>,
+      categoria: string,
+    ): Promise<void> {
+      await g.api.enviarCnh({
+        numero: cnhNova(),
+        categoria,
+        validade: emDias(400),
+        ear: true,
+        arquivo: await g.api.enviarArquivoDoGuincheiro(jpg()),
+      });
+      const docs = await g.api.buscarMeusDocumentos();
+      await (await operacao()).aprovarItem(docs.cnh!.id);
+    }
+
+    beforeAll(async () => {
+      const servidor = admin();
+      rep = await usuario('representante', 'Rita Vínculos');
+      gil = await usuario('guincheiro', 'Gil Vínculos');
+      gabi = await usuario('guincheiro', 'Gabi Vínculos');
+      const frota = await servidor
+        .from('frotas')
+        .insert({
+          tipo: 'empresa',
+          documento: cnpjNovo(),
+          nome: 'Frota dos Vínculos',
+          representante_id: rep.id,
+          base_cep: '70000000',
+          base_endereco: 'SQS 10',
+          base_bairro: 'Asa Sul',
+          chave_pix: 'teste@exemplo.com',
+          termos_prestador_versao: 'prestadores-teste',
+        })
+        .select('id')
+        .single();
+      expect(frota.error).toBeNull();
+      frotaId = frota.data!.id;
+      for (const g of [gil, gabi]) {
+        const linha = await servidor.from('guincheiros').insert({
+          id: g.id,
+          frota_id: frotaId,
+          posicao: 'SRID=4326;POINT(-47.88 -15.79)',
+          disponivel: false,
+        });
+        expect(linha.error).toBeNull();
+      }
+      const veiculos = await servidor
+        .from('veiculos')
+        .insert([
+          {
+            frota_id: frotaId,
+            placa: placaNova(),
+            renavam: renavamNovo(),
+            tipo: 'lanca',
+            pbt_kg: 3000,
+          },
+          {
+            frota_id: frotaId,
+            placa: placaNova(),
+            renavam: renavamNovo(),
+            tipo: 'plataforma',
+            pbt_kg: 4200,
+          },
+        ])
+        .select('id, placa, pbt_kg');
+      expect(veiculos.error).toBeNull();
+      leve = veiculos.data!.find((v) => v.pbt_kg === 3000)!;
+      pesado = veiculos.data!.find((v) => v.pbt_kg === 4200)!;
+    });
+
+    it('CNH ainda não enviada: o vínculo é permitido como pendente e o Guincheiro o vê', async () => {
+      expect(await rep.api.vincularGuincheiro(gil.id, pesado.id)).toBe('pendente');
+      // Repetir não muda nada.
+      expect(await rep.api.vincularGuincheiro(gil.id, pesado.id)).toBe('pendente');
+      expect(await rep.api.listarVinculos()).toEqual([
+        expect.objectContaining({
+          guincheiroId: gil.id,
+          veiculoId: pesado.id,
+          situacao: 'pendente',
+        }),
+      ]);
+      expect(await gil.api.buscarMeuVeiculo()).toMatchObject({
+        placa: pesado.placa,
+        pbtKg: 4200,
+        tipo: 'plataforma',
+        situacao: 'pendente',
+      });
+      expect(await rep.api.listarCnhDosGuincheiros()).toEqual(
+        expect.arrayContaining([{ guincheiroId: gil.id, categoria: null, estado: null }]),
+      );
+    });
+
+    it('um Guincheiro dirige um veículo só, e só o representante da Frota vincula', async () => {
+      expect(await motivoDe(rep.api.vincularGuincheiro(gil.id, leve.id))).toBe(
+        'guincheiro_ja_vinculado',
+      );
+      expect(await motivoDe(gil.api.vincularGuincheiro(gil.id, leve.id))).toBe('sem_permissao');
+      expect(await motivoDe(rep.api.vincularGuincheiro(gabi.id, crypto.randomUUID()))).toBe(
+        'sem_permissao',
+      );
+    });
+
+    it('a escrita direta nas tabelas de vínculo é recusada pela API', async () => {
+      const insercao = await rep.supabase.from('vinculos_veiculo').insert({
+        frota_id: frotaId,
+        veiculo_id: leve.id,
+        guincheiro_id: gabi.id,
+      });
+      expect(insercao.error).not.toBeNull();
+      const apagar = await rep.supabase
+        .from('vinculos_veiculo')
+        .delete()
+        .eq('guincheiro_id', gil.id);
+      expect(apagar.error).not.toBeNull();
+      expect(await rep.api.listarVinculos()).toHaveLength(1);
+    });
+
+    it('aprovar a CNH B revalida o vínculo pendente: 4.200 kg cai, com o motivo no histórico', async () => {
+      await enviarEAprovarCnh(gil, 'B');
+      expect(await rep.api.listarVinculos()).toEqual([]);
+      expect(await gil.api.buscarMeuVeiculo()).toBeNull();
+
+      const [encerrado] = await rep.api.listarVinculosEncerrados();
+      expect(encerrado).toMatchObject({
+        guincheiroId: gil.id,
+        placa: pesado.placa,
+        motivo: 'cnh_nao_cobre',
+        detalhe: 'CNH B não cobre o PBT de 4200 kg',
+      });
+      // O Guincheiro lê o histórico dos próprios vínculos.
+      expect((await gil.api.listarVinculosEncerrados())[0]).toMatchObject({
+        motivo: 'cnh_nao_cobre',
+      });
+      expect(await rep.api.listarCnhDosGuincheiros()).toEqual(
+        expect.arrayContaining([{ guincheiroId: gil.id, categoria: 'B', estado: 'aprovado' }]),
+      );
+    });
+
+    it('CNH B aprovada em 4.200 kg é recusada pelo banco mesmo por chamada direta à API', async () => {
+      expect(await motivoDe(rep.api.vincularGuincheiro(gil.id, pesado.id))).toBe(
+        'vinculo_bloqueado',
+      );
+      // Chamada crua à função, sem o ApiGuincheiro: o código do banco é o do bloqueio.
+      const crua = await rep.supabase.rpc('vincular_guincheiro_veiculo', {
+        guincheiro_id: gil.id,
+        veiculo_id: pesado.id,
+      });
+      expect(crua.error?.code).toBe('GVL03');
+      expect(await rep.api.listarVinculos()).toEqual([]);
+    });
+
+    it('a mesma CNH B em veículo de 3.000 kg é aceita e fica ativa; o representante desfaz', async () => {
+      expect(await rep.api.vincularGuincheiro(gil.id, leve.id)).toBe('ativo');
+      expect(await gil.api.buscarMeuVeiculo()).toMatchObject({
+        placa: leve.placa,
+        pbtKg: 3000,
+        situacao: 'ativo',
+      });
+      const [vinculo] = await rep.api.listarVinculos();
+      await rep.api.desfazerVinculo(vinculo!.id);
+      expect(await motivoDe(rep.api.desfazerVinculo(vinculo!.id))).toBe('vinculo_indisponivel');
+      expect(await gil.api.buscarMeuVeiculo()).toBeNull();
+      expect((await rep.api.listarVinculosEncerrados())[0]).toMatchObject({
+        motivo: 'desfeito_pelo_representante',
+        placa: leve.placa,
+      });
+    });
+
+    it('CNH C no veículo de 4.200 kg é aceita', async () => {
+      await enviarEAprovarCnh(gabi, 'C');
+      expect(await rep.api.vincularGuincheiro(gabi.id, pesado.id)).toBe('ativo');
+    });
+
+    it('mudar o PBT do veículo revalida e derruba o vínculo que deixou de ser coberto', async () => {
+      expect(await rep.api.vincularGuincheiro(gil.id, leve.id)).toBe('ativo');
+      // 3.500 kg ainda é da categoria B; 3.501 kg não.
+      const servidor = admin();
+      const ate3500 = await servidor.from('veiculos').update({ pbt_kg: 3500 }).eq('id', leve.id);
+      expect(ate3500.error).toBeNull();
+      expect(await gil.api.buscarMeuVeiculo()).toMatchObject({ situacao: 'ativo', pbtKg: 3500 });
+      const acima = await servidor.from('veiculos').update({ pbt_kg: 3501 }).eq('id', leve.id);
+      expect(acima.error).toBeNull();
+      expect(await gil.api.buscarMeuVeiculo()).toBeNull();
+      expect((await gil.api.listarVinculosEncerrados())[0]).toMatchObject({
+        motivo: 'cnh_nao_cobre',
+        detalhe: 'CNH B não cobre o PBT de 3501 kg',
+      });
+      // A Gabi (C) segue no veículo de 4.200 kg.
+      expect(await rep.api.listarVinculos()).toEqual([
+        expect.objectContaining({ guincheiroId: gabi.id, situacao: 'ativo' }),
+      ]);
+    });
+
+    it('mudar a categoria da CNH revalida os vínculos do Guincheiro', async () => {
+      const servidor = admin();
+      const baixa = await servidor
+        .from('documentos_guincheiro')
+        .update({ cnh_categoria: 'B' })
+        .eq('guincheiro_id', gabi.id);
+      expect(baixa.error).toBeNull();
+      expect(await rep.api.listarVinculos()).toEqual([]);
+      expect((await gabi.api.listarVinculosEncerrados())[0]).toMatchObject({
+        placa: pesado.placa,
+        detalhe: 'CNH B não cobre o PBT de 4200 kg',
+      });
+    });
+
+    it('o Painel lê os vínculos da Frota para o aviso CNH × PBT na aprovação', async () => {
+      // O veículo leve está em 3.501 kg e a Gabi agora é B: volta o PBT para 3.000 kg e vincula.
+      await admin().from('veiculos').update({ pbt_kg: 3000 }).eq('id', leve.id);
+      expect(await rep.api.vincularGuincheiro(gabi.id, leve.id)).toBe('ativo');
+      const painel = await operacao();
+      const frota = await painel.buscarFrotaHomologacao(frotaId);
+      expect(frota!.vinculos).toEqual([
+        expect.objectContaining({ guincheiroId: gabi.id, veiculoId: leve.id, situacao: 'ativo' }),
+      ]);
+      expect(frota!.veiculos.map((v) => v.pbtKg).sort()).toEqual([3000, 4200]);
+    });
+  });
+
   describe('Cliente novo (sem perfil)', () => {
     beforeAll(async () => {
       if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('defina SUPABASE_SERVICE_ROLE_KEY');

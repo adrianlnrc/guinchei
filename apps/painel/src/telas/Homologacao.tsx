@@ -8,6 +8,7 @@ import {
   type ItemHomologacao,
   type TipoItemHomologacao,
 } from '@guinchei/api';
+import { resumoDaAprovacaoDaCnh } from '@guinchei/cnh';
 import { useApi } from '../api';
 import { useOperacao } from '../operacao';
 
@@ -411,6 +412,7 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
                 <ItemLinha
                   key={item.id}
                   item={item}
+                  frota={frota}
                   nome={nome}
                   detalhe={detalheDoItem(item, frota)}
                   vencimento={vencimentos?.itens.find((a) => a.itemId === item.id) ?? null}
@@ -472,8 +474,70 @@ function DadosDoDocumento({ item }: { item: ItemHomologacao }) {
   return null;
 }
 
+/**
+ * Ao aprovar uma CNH, a operação vê quais veículos da Frota a categoria cobre (CNH × PBT, CTB
+ * art. 143) e quais vínculos do Guincheiro a aprovação derrubaria. Só aparece na CNH pendente.
+ */
+function AvisoCnhPbt({ item, frota }: { item: ItemHomologacao; frota: FrotaEmHomologacao }) {
+  if (item.tipo !== 'cnh' || item.alvo !== 'guincheiro' || item.estado !== 'pendente') return null;
+  const cnh = item.cnh;
+  if (!cnh) return null;
+  if (frota.veiculos.length === 0) {
+    return (
+      <div className="aviso-cnh" role="note" aria-label="Aviso CNH × PBT">
+        <span className="aviso-cnh__titulo">CNH × PBT · categoria {cnh.categoria}</span>
+        <span>A Frota ainda não tem veículos cadastrados: não há o que conferir por enquanto.</span>
+      </div>
+    );
+  }
+  const vinculados = frota.vinculos
+    .filter((v) => v.guincheiroId === item.alvoId)
+    .map((v) => v.veiculoId);
+  const resumo = resumoDaAprovacaoDaCnh(cnh.categoria, frota.veiculos, vinculados);
+  const placaDe = (id: string) => {
+    const v = frota.veiculos.find((x) => x.id === id);
+    return v ? placaComHifen(v.placa) : 'veículo';
+  };
+  const derruba = resumo.derrubaria.length > 0;
+  return (
+    <div
+      className={`aviso-cnh${derruba ? ' aviso-cnh--alerta' : ''}`}
+      role="note"
+      aria-label="Aviso CNH × PBT"
+    >
+      <span className="aviso-cnh__titulo">CNH × PBT · categoria {cnh.categoria}</span>
+      <ul className="aviso-cnh__lista" aria-label="Veículos da Frota e a categoria da CNH">
+        {frota.veiculos.map((v) => {
+          const cobre = resumo.cobertos.includes(v.id);
+          return (
+            <li key={v.id} className={cobre ? 'aviso-cnh__cobre' : 'aviso-cnh__nao-cobre'}>
+              {placaComHifen(v.placa)} (PBT {new Intl.NumberFormat('pt-BR').format(v.pbtKg)} kg):{' '}
+              {cobre ? 'a categoria cobre' : 'a categoria não cobre'}
+              {vinculados.includes(v.id) ? ' · vinculado a este Guincheiro' : ''}
+            </li>
+          );
+        })}
+      </ul>
+      {derruba ? (
+        <strong role="alert">
+          Aprovar derruba {resumo.derrubaria.length === 1 ? 'o vínculo' : 'os vínculos'} deste
+          Guincheiro com {resumo.derrubaria.map(placaDe).join(', ')}: a categoria {cnh.categoria}{' '}
+          não cobre o PBT. O representante é avisado e precisa vinculá-lo a outro veículo.
+        </strong>
+      ) : (
+        <span>
+          {vinculados.length > 0
+            ? 'Aprovar mantém os vínculos existentes deste Guincheiro.'
+            : 'Este Guincheiro ainda não está vinculado a nenhum veículo.'}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function ItemLinha({
   item,
+  frota,
   nome,
   detalhe,
   vencimento,
@@ -483,6 +547,7 @@ function ItemLinha({
   aoRecusar,
 }: {
   item: ItemHomologacao;
+  frota: FrotaEmHomologacao;
   nome: string;
   detalhe: string;
   /** O alerta deste item, quando ele está vencendo ou vencido. */
@@ -514,6 +579,7 @@ function ItemLinha({
         <span className={`etiqueta${estado.classe}`}>{estado.texto}</span>
       </div>
       <DadosDoDocumento item={item} />
+      <AvisoCnhPbt item={item} frota={frota} />
       {item.tipo === 'crlv' && item.estado === 'pendente' && (
         <p style={{ margin: 0, font: '400 13px/1.5 var(--fonte-texto)' }}>
           Conferir o registro do veículo como reboque no DETRAN.

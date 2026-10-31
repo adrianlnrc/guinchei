@@ -20,6 +20,10 @@ import {
   type MeuConvite,
   type DadosVeiculo,
   type VeiculoDaFrota,
+  type CnhDoGuincheiro,
+  type MeuVeiculo,
+  type VinculoDaFrota,
+  type VinculoEncerrado,
   type FotoEstado,
   type OpcoesFotoEstado,
   type CorridaDoGuincheiro,
@@ -30,6 +34,7 @@ import {
   type Perfil,
   type RascunhoFrota,
 } from '@guinchei/api';
+import { avaliarVinculo } from '@guinchei/cnh';
 import { validadeDosAntecedentes } from '@guinchei/documentos';
 import { podeTransitar } from '@guinchei/estados';
 import {
@@ -223,6 +228,10 @@ export function apiFalsa({
   guincheirosDaFrota = [],
   documentos = { cnh: null, antecedentes: null, selfie: null },
   guincheiroDaPropriaFrota = false,
+  vinculos = [],
+  cnhs = [],
+  encerrados = [],
+  meuVeiculo = null,
   vencimentos = { prazoDias: 30, itens: [] },
 }: {
   sessao?: boolean;
@@ -250,6 +259,14 @@ export function apiFalsa({
   documentos?: MeusDocumentos;
   /** O autônomo que já tem a linha de Guincheiro na própria Frota. */
   guincheiroDaPropriaFrota?: boolean;
+  /** Vínculos Guincheiro × veículo que a Frota do representante já tem. */
+  vinculos?: VinculoDaFrota[];
+  /** Categoria e estado da CNH de cada Guincheiro da Frota, como o representante os lê. */
+  cnhs?: CnhDoGuincheiro[];
+  /** Vínculos que já acabaram (derrubados pela CNH ou desfeitos). */
+  encerrados?: VinculoEncerrado[];
+  /** O veículo em que o Guincheiro logado está vinculado. */
+  meuVeiculo?: MeuVeiculo | null;
   /** Os documentos vencendo ou vencidos que o servidor devolve a quem está logado. */
   vencimentos?: AlertaDeVencimento;
 } = {}) {
@@ -268,6 +285,9 @@ export function apiFalsa({
   };
   let linhaDeGuincheiro = guincheiroDaPropriaFrota;
   const veiculosAtuais = structuredClone(veiculos);
+  let vinculosAtuais = structuredClone(vinculos);
+  const cnhsAtuais = structuredClone(cnhs);
+  const encerradosAtuais = structuredClone(encerrados);
   const arquivosEnviados: string[] = [];
   let estaDisponivel = disponivel;
   let abertas = [...ofertas];
@@ -529,6 +549,45 @@ export function apiFalsa({
       }
       throw new ErroApi('item_indisponivel', 'Este item não existe mais');
     }),
+    listarVinculos: vi.fn(async () => structuredClone(vinculosAtuais)),
+    listarCnhDosGuincheiros: vi.fn(async () => structuredClone(cnhsAtuais)),
+    // Como o banco: só o representante, na mesma Frota, um veículo por Guincheiro, e CNH aprovada
+    // que não cobre o PBT é recusada (a CNH não aprovada deixa o vínculo pendente).
+    vincularGuincheiro: vi.fn(async (guincheiroId: string, veiculoId: string) => {
+      const veiculo = veiculosAtuais.find((v) => v.id === veiculoId);
+      const guincheiro = guincheirosDaFrota.find((g) => g.id === guincheiroId);
+      if (!veiculo || !guincheiro) {
+        throw new ErroApi('sem_permissao', 'Só o representante da Frota vincula Guincheiros');
+      }
+      const existente = vinculosAtuais.find((v) => v.guincheiroId === guincheiroId);
+      if (existente) {
+        if (existente.veiculoId === veiculoId) return existente.situacao;
+        throw new ErroApi('guincheiro_ja_vinculado', 'Este Guincheiro já está vinculado.');
+      }
+      const cnh = cnhsAtuais.find((c) => c.guincheiroId === guincheiroId);
+      const avaliacao = avaliarVinculo(
+        { categoria: cnh?.categoria ?? null, aprovada: cnh?.estado === 'aprovado' },
+        veiculo.pbtKg,
+      );
+      if (avaliacao.situacao === 'bloqueado') {
+        throw new ErroApi('vinculo_bloqueado', 'A CNH do Guincheiro não cobre o PBT.');
+      }
+      vinculosAtuais.push({
+        id: `vinculo-${vinculosAtuais.length + 1}-novo`,
+        veiculoId,
+        guincheiroId,
+        situacao: avaliacao.situacao,
+      });
+      return avaliacao.situacao;
+    }),
+    desfazerVinculo: vi.fn(async (vinculoId: string) => {
+      if (!vinculosAtuais.some((v) => v.id === vinculoId)) {
+        throw new ErroApi('vinculo_indisponivel', 'Este vínculo não existe mais');
+      }
+      vinculosAtuais = vinculosAtuais.filter((v) => v.id !== vinculoId);
+    }),
+    listarVinculosEncerrados: vi.fn(async () => structuredClone(encerradosAtuais)),
+    buscarMeuVeiculo: vi.fn(async () => structuredClone(meuVeiculo)),
     listarAvisosDeVencimento: vi.fn(async () => structuredClone(alertas)),
     // Como o banco: só se reenvia item vencido (ou recusado), e a validade não pode ter passado.
     reenviarItemDaFrota: vi.fn(async (itemId: string, arquivo: string, validade: string) => {
@@ -628,6 +687,13 @@ export function apiFalsa({
     ofertar(oferta: OfertaAberta) {
       abertas = [...abertas, oferta];
       ouvintes.forEach((avisar) => avisar());
+    },
+    /** A operação aprova (ou muda) a CNH de um Guincheiro com a tela já aberta. */
+    mudarCnh(guincheiroId: string, cnh: Omit<CnhDoGuincheiro, 'guincheiroId'>) {
+      const i = cnhsAtuais.findIndex((c) => c.guincheiroId === guincheiroId);
+      const nova = { guincheiroId, ...cnh };
+      if (i >= 0) cnhsAtuais[i] = nova;
+      else cnhsAtuais.push(nova);
     },
     /** A Corrida muda fora do app (outra aba): o próximo avanço vê o estado novo. */
     mudarCorrida(estado: EstadoCorrida) {

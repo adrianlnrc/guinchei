@@ -21,3 +21,6 @@ export const rotaDaApolice = (itemId: string) => `/frota/apolice/${encodeURIComp
 
 /** Gestão de convites e Guincheiros da Frota, para o representante (#46). */
 export const ROTA_CONVITES = '/frota/convites';
+
+/** Quem dirige cada veículo: vínculos Guincheiro × veículo, para o representante (#48). */
+export const ROTA_VINCULOS = '/frota/vinculos';

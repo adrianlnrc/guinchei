@@ -135,3 +135,87 @@ export function cnhHabilitaConduzir(cnh: Cnh, pbtKg: number): ResultadoHabilitac
   }
   return { apto: pendencias.length === 0, pendencias };
 }
+
+/**
+ * Situação de um vínculo Guincheiro × veículo (issue #48): `ativo` (CNH aprovada que cobre o
+ * PBT), `pendente` (CNH ainda não aprovada: o vínculo é permitido e revalidado na aprovação) ou
+ * `bloqueado` (CNH aprovada que não cobre o PBT: o vínculo é recusado). É o espelho da função
+ * SQL `avaliar_vinculo`; o banco é a barreira real, e este módulo só serve para avisar antes.
+ */
+export type SituacaoDoVinculo = 'ativo' | 'pendente' | 'bloqueado';
+
+export interface CnhParaVinculo {
+  /** Categoria enviada pelo Guincheiro; `null` se ainda não enviou a CNH. */
+  categoria: string | null;
+  /** A operação já aprovou o item de CNH (e ele não venceu). */
+  aprovada: boolean;
+}
+
+export interface AvaliacaoDoVinculo {
+  situacao: SituacaoDoVinculo;
+  /** Em linguagem do domínio, para a UI explicar o que acontece e por quê. */
+  motivo: string;
+  /** Só em `bloqueado` por categoria que não cobre: a menor categoria que cobriria o PBT. */
+  categoriaMinima?: CategoriaCnh;
+}
+
+/**
+ * O vínculo deste Guincheiro (pela CNH dele) a um veículo com este PBT é possível? CNH não
+ * aprovada nunca bloqueia: fica pendente. CNH aprovada sem categoria legível bloqueia, como no
+ * banco (só a cobertura confirmada libera).
+ */
+export function avaliarVinculo(cnh: CnhParaVinculo, pbtKg: number): AvaliacaoDoVinculo {
+  if (!cnh.aprovada) {
+    return {
+      situacao: 'pendente',
+      motivo: cnh.categoria
+        ? 'A CNH ainda não foi aprovada pela operação. O vínculo fica pendente e é conferido quando ela for aprovada.'
+        : 'O Guincheiro ainda não enviou a CNH. O vínculo fica pendente e é conferido quando a CNH for aprovada.',
+    };
+  }
+  if (!cnh.categoria) {
+    return { situacao: 'bloqueado', motivo: 'A CNH aprovada não informa a categoria' };
+  }
+  const cobertura = categoriaCobrePbt(cnh.categoria, pbtKg);
+  if (cobertura.situacao === 'coberto') return { situacao: 'ativo', motivo: cobertura.motivo };
+  if (cobertura.situacao === 'nao_coberto') {
+    return {
+      situacao: 'bloqueado',
+      motivo: cobertura.motivo,
+      categoriaMinima: cobertura.categoriaMinima,
+    };
+  }
+  return { situacao: 'bloqueado', motivo: cobertura.motivo };
+}
+
+export interface ResumoDaAprovacaoDaCnh {
+  /** Ids dos veículos que a categoria cobre. */
+  cobertos: string[];
+  /** Ids dos veículos que a categoria não cobre. */
+  naoCobertos: string[];
+  /** Ids dos veículos com vínculo existente que a aprovação derrubaria (⊂ `naoCobertos`). */
+  derrubaria: string[];
+}
+
+/**
+ * O que a operação precisa ver ao aprovar uma CNH: quais veículos da Frota a categoria cobre e
+ * quais vínculos existentes do Guincheiro ela derrubaria. Categoria ilegível não cobre nada.
+ */
+export function resumoDaAprovacaoDaCnh(
+  categoria: string,
+  veiculos: readonly { id: string; pbtKg: number }[],
+  veiculosVinculados: readonly string[],
+): ResumoDaAprovacaoDaCnh {
+  const cobertos: string[] = [];
+  const naoCobertos: string[] = [];
+  for (const v of veiculos) {
+    (categoriaCobrePbt(categoria, v.pbtKg).situacao === 'coberto' ? cobertos : naoCobertos).push(
+      v.id,
+    );
+  }
+  return {
+    cobertos,
+    naoCobertos,
+    derrubaria: naoCobertos.filter((id) => veiculosVinculados.includes(id)),
+  };
+}
