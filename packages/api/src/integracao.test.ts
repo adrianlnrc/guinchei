@@ -2639,15 +2639,22 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     });
 
     it('o Guincheiro lê só os próprios documentos', async () => {
+      // O Marcos do seed tem os três documentos aprovados (#50); o Paulo, os dele pendentes.
+      // Cada um lê apenas os seus, e os da Ana (de outra Frota) não aparecem para nenhum.
+      const MARCOS_ID = '22222222-2222-4222-8222-222222222201';
       const { api, supabase } = novaApiGuincheiro();
       await api.confirmarCodigo(MARCOS, CODIGO_DE_TESTE);
-      expect(await api.buscarMeusDocumentos()).toEqual({
-        cnh: null,
-        antecedentes: null,
-        selfie: null,
-      });
+      const docs = await api.buscarMeusDocumentos();
+      for (const doc of [docs.cnh, docs.antecedentes, docs.selfie]) {
+        expect(doc).not.toBeNull();
+        expect(doc!.alvoId).toBe(MARCOS_ID);
+        expect(doc!.estado).toBe('aprovado');
+      }
       const { data } = await supabase.from('documentos_guincheiro').select('guincheiro_id');
-      expect(data).toEqual([]);
+      expect(data).toEqual([{ guincheiro_id: MARCOS_ID }]);
+      const itens = await supabase.from('itens_homologacao').select('alvo_id, dono_id');
+      expect(itens.data!.length).toBeGreaterThan(0);
+      expect(itens.data!.every((i) => i.dono_id === MARCOS_ID)).toBe(true);
       const escrita = await supabase
         .from('documentos_guincheiro')
         .insert({ guincheiro_id: ana.id });
