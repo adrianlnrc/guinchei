@@ -5,6 +5,8 @@ import { ApiContexto } from './api';
 import { PlantaoProvider, usePlantao } from './plantao';
 import { ExigeGuincheiro } from './sessao';
 import { Cadastro } from './telas/Cadastro';
+import { NovoVeiculo } from './telas/NovoVeiculo';
+import { Veiculos } from './telas/Veiculos';
 import { MinhaFrota } from './telas/MinhaFrota';
 import { Celular, Codigo } from './telas/Entrada';
 import { Plantao } from './telas/Plantao';
@@ -29,6 +31,8 @@ export function App({ api }: { api: ApiGuincheiro }) {
               <Route path="/codigo" element={<Codigo />} />
               <Route path="/cadastro" element={<Cadastro />} />
               <Route path="/frota" element={<MinhaFrota />} />
+              <Route path="/veiculos" element={<Veiculos />} />
+              <Route path="/veiculos/novo" element={<NovoVeiculo />} />
               <Route
                 path="/"
                 element={
