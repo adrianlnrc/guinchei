@@ -75,17 +75,45 @@ export function useSessao(): EstadoSessao {
 }
 
 /**
- * Telas do representante da Frota (quem cadastrou a Frota e ainda não é Guincheiro), como os
- * veículos. Quem não tem sessão ou perfil vai à entrada ou ao cadastro; o Guincheiro, ao plantão.
+ * Se quem entrou como Guincheiro (`pronto`) também é o representante de uma Frota. É o autônomo
+ * (Frota de uma pessoa só, ADR-0012): ele dirige e responde pela Frota, então vê as telas dela.
+ * O Guincheiro de empresa não representa nada e segue ao plantão. `undefined`: ainda lendo.
+ */
+export function useEhDonoDaFrota(ligado: boolean): boolean | undefined {
+  const api = useApi();
+  const [dono, setDono] = useState<boolean | undefined>(undefined);
+  useEffect(() => {
+    if (!ligado) return;
+    let vigente = true;
+    api
+      .buscarMinhaFrota()
+      .then((frota) => vigente && setDono(frota !== null))
+      .catch(() => vigente && setDono(false));
+    return () => {
+      vigente = false;
+    };
+  }, [api, ligado]);
+  return dono;
+}
+
+/**
+ * Telas do representante da Frota, como os veículos. Quem não tem sessão ou perfil vai à entrada
+ * ou ao cadastro. O Guincheiro de empresa vai ao plantão; o autônomo, que também é Guincheiro mas
+ * responde pela própria Frota, fica na tela.
  */
 export function ExigeRepresentante({ children }: { children: ReactNode }) {
   const estado = useSessao();
+  const dono = useEhDonoDaFrota(estado === 'pronto');
   if (estado === 'sem_sessao') return <Navigate to="/entrar" replace />;
   if (estado === 'nao_e_guincheiro') {
     return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_GUINCHEIRO }} />;
   }
+  if (estado === 'convidado') return <Navigate to={ROTA_DADOS_PESSOAIS} replace />;
   if (estado === 'sem_perfil') return <Navigate to="/cadastro" replace />;
-  if (estado === 'pronto') return <Navigate to="/" replace />;
+  if (estado === 'pronto') {
+    if (dono === undefined) return <Tela rotulo="Carregando">{null}</Tela>;
+    return dono ? children : <Navigate to="/" replace />;
+  }
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
   return children;
 }

@@ -8,11 +8,14 @@ select plan(66);
 
 -- Preparação (#50): o seed agora traz os veículos e vínculos das Frotas homologadas (Reboque
 -- Planalto e Rita Campos). Este teste conta os veículos que ele mesmo cria mais o da demo
--- (Guincho Capital), então tira do cenário os veículos dessas duas Frotas.
+-- (Guincho Capital), então tira do cenário os veículos dessas duas Frotas e os da Frota "Cerrado
+-- Guinchos" (05_demonstracao.sql).
 delete from public.vinculos_veiculo
-where frota_id in ('f0000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000002');
+where frota_id in ('f0000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000002',
+                   'f0000000-0000-4000-8000-000000000004');
 delete from public.veiculos
-where frota_id in ('f0000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000002');
+where frota_id in ('f0000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000002',
+                   'f0000000-0000-4000-8000-000000000004');
 
 insert into auth.users (id, aud, role, phone) values
   ('55555555-5555-4555-8555-555555555555', 'authenticated', 'authenticated', '5561900000008'),

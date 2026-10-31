@@ -153,6 +153,24 @@ describe('Quem pode abrir os veículos', () => {
     expect(cliente.sair).toHaveBeenCalled();
   });
 
+  it('o autônomo (Guincheiro da própria Frota) vê os veículos em vez de cair no plantão', async () => {
+    renderEm(
+      '/veiculos',
+      apiFalsa({ sessao: true, perfil: PERFIL_MARCOS, frota: FROTA, veiculos: [VEICULO_APROVADO] }),
+    );
+    expect(await screen.findByRole('main', { name: 'Meus veículos' })).toBeTruthy();
+    expect(await screen.findByRole('listitem', { name: 'Veículo ABC-1D23' })).toBeTruthy();
+    cleanup();
+
+    renderEm('/veiculos/novo', apiFalsa({ sessao: true, perfil: PERFIL_MARCOS, frota: FROTA }));
+    expect(await screen.findByRole('main', { name: 'Veículo: dados' })).toBeTruthy();
+  });
+
+  it('o Guincheiro de empresa (sem Frota para gerir) continua indo ao plantão em /veiculos', async () => {
+    renderEm('/veiculos', apiFalsa({ sessao: true, perfil: PERFIL_MARCOS }));
+    expect(await screen.findByRole('main', { name: /plantão/i })).toBeTruthy();
+  });
+
   it('quem ainda não tem perfil vai ao cadastro da Frota', async () => {
     renderEm('/veiculos', apiFalsa({ sessao: true, perfil: null }));
     expect(await screen.findByRole('button', { name: 'Cadastrar minha Frota' })).toBeTruthy();

@@ -280,6 +280,9 @@ max_frequency = "5s"
 5561900000008 = "123456" # Pessoa nova, sem usuário nem perfil no seed (testa o cadastro de Frota autônoma, #43)
 5561900000046 = "123456" # Convidado da Reboque Planalto no seed, sem usuário nem perfil (primeiro acesso do Guincheiro, #46)
 5561900000047 = "123456" # Pessoa nova, sem convite no seed (o e2e a convida pelo representante, #46)
+5561900000060 = "123456" # Demo: Helena Duarte, representante da Cerrado Guinchos (05_demonstracao.sql)
+5561900000061 = "123456" # Demo: Cláudia Brito, Guincheira da Cerrado Guinchos (CNH C)
+5561900000062 = "123456" # Demo: Diego Ferraz, Guincheiro da Cerrado Guinchos (CNH B)
 5561900000051 = "123456" # Autônomo do e2e de cadastro e homologação (caminho feliz, #51); o e2e liberta o número no fim de cada cenário
 5561900000052 = "123456" # Autônomo do e2e de cadastro e homologação (cenário negativo, #51)
 

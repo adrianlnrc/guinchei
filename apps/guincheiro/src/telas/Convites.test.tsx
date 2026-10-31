@@ -170,6 +170,11 @@ describe('Convites da Frota', () => {
     );
   });
 
+  it('o autônomo (Guincheiro da própria Frota) abre os convites em vez de cair no plantão', async () => {
+    renderEm('/frota/convites', apiFalsa({ sessao: true, frota: FROTA }));
+    expect(await tela('Convites')).toBeTruthy();
+  });
+
   it('só o representante gerencia convites: sem sessão, entra; Guincheiro, volta ao plantão', async () => {
     renderEm('/frota/convites', apiFalsa());
     expect(await screen.findByLabelText('Celular com DDD')).toBeTruthy();
