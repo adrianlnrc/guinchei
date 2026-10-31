@@ -4,7 +4,7 @@
 -- e a operação é a do seed. O seed traz um veículo (PBX1D23) da Frota pendente "Guincho
 -- Capital", que nenhum dos dois representantes enxerga.
 begin;
-select plan(67);
+select plan(66);
 
 insert into auth.users (id, aud, role, phone) values
   ('55555555-5555-4555-8555-555555555555', 'authenticated', 'authenticated', '5561900000008'),
@@ -135,12 +135,12 @@ select throws_ok(
   'GVE06', null, 'placa de veículo de outra Frota (que ele não enxerga) também é duplicada'
 );
 select throws_ok(
-  $$ select public.cadastrar_veiculo('XYZ1A23', '63936443047', 'lanca', 3000,
+  $$ select public.cadastrar_veiculo('XYZ1A23', '12345678900', 'lanca', 3000,
        '55555555-5555-4555-8555-555555555555/nao-existe.pdf', array['55555555-5555-4555-8555-555555555555/f3.jpg']) $$,
   'GHM06', null, 'o CRLV precisa estar no bucket'
 );
 select throws_ok(
-  $$ select public.cadastrar_veiculo('XYZ1A23', '63936443047', 'lanca', 3000,
+  $$ select public.cadastrar_veiculo('XYZ1A23', '12345678900', 'lanca', 3000,
        '55555555-5555-4555-8555-555555555555/crlv.pdf', array['66666666-6666-4666-8666-666666666666/f1.jpg']) $$,
   'GHM06', null, 'a foto precisa estar na pasta de quem cadastra'
 );
