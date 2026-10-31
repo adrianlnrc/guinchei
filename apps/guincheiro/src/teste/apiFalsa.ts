@@ -7,6 +7,7 @@ import {
   PBT_MINIMO_KG,
   TAMANHO_MAXIMO_DOCUMENTO_BYTES,
   estadoDoVeiculo,
+  type AlertaDeVencimento,
   type ApiGuincheiro,
   type ArquivoDeMidia,
   type CadastroGuincheiroConvidado,
@@ -222,6 +223,7 @@ export function apiFalsa({
   guincheirosDaFrota = [],
   documentos = { cnh: null, antecedentes: null, selfie: null },
   guincheiroDaPropriaFrota = false,
+  vencimentos = { prazoDias: 30, itens: [] },
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
@@ -248,6 +250,8 @@ export function apiFalsa({
   documentos?: MeusDocumentos;
   /** O autônomo que já tem a linha de Guincheiro na própria Frota. */
   guincheiroDaPropriaFrota?: boolean;
+  /** Os documentos vencendo ou vencidos que o servidor devolve a quem está logado. */
+  vencimentos?: AlertaDeVencimento;
 } = {}) {
   let logado = sessao;
   let perfilAtual = perfil;
@@ -257,6 +261,11 @@ export function apiFalsa({
   let rascunhoAtual = rascunho;
   let frotaAtual = frota;
   const docs = structuredClone(documentos);
+  let alertas = structuredClone(vencimentos);
+  // Reenviado o documento, ele volta a pendente e sai do alerta (como no banco).
+  const resolverAlerta = (donde: (a: AlertaDeVencimento['itens'][number]) => boolean) => {
+    alertas = { ...alertas, itens: alertas.itens.filter((a) => !donde(a)) };
+  };
   let linhaDeGuincheiro = guincheiroDaPropriaFrota;
   const veiculosAtuais = structuredClone(veiculos);
   const arquivosEnviados: string[] = [];
@@ -431,6 +440,7 @@ export function apiFalsa({
         ...enviarItem('cnh', docs.cnh, validade),
         dados: { numero, categoria, validade, ear },
       };
+      resolverAlerta((a) => a.tipo === 'cnh');
     }),
     enviarAntecedentes: vi.fn(async ({ emissao }: EnvioDeAntecedentes) => {
       const validade = validadeDosAntecedentes(emissao);
@@ -441,6 +451,7 @@ export function apiFalsa({
         throw new ErroApi('antecedentes_vencidos', 'A certidão foi emitida há mais de 12 meses.');
       }
       docs.antecedentes = { ...enviarItem('antecedentes', docs.antecedentes, validade), emissao };
+      resolverAlerta((a) => a.tipo === 'antecedentes');
     }),
     enviarSelfie: vi.fn(async (arquivo: string) => {
       if (!arquivo) throw new ErroApi('documento_ausente', 'O arquivo não chegou ao servidor');
@@ -517,6 +528,27 @@ export function apiFalsa({
         return;
       }
       throw new ErroApi('item_indisponivel', 'Este item não existe mais');
+    }),
+    listarAvisosDeVencimento: vi.fn(async () => structuredClone(alertas)),
+    // Como o banco: só se reenvia item vencido (ou recusado), e a validade não pode ter passado.
+    reenviarItemDaFrota: vi.fn(async (itemId: string, arquivo: string, validade: string) => {
+      const item = frotaAtual?.itens.find((i) => i.id === itemId);
+      if (!item) throw new ErroApi('item_indisponivel', 'Este item não existe mais');
+      if (item.estado !== 'recusado' && item.estado !== 'vencido') {
+        throw new ErroApi('transicao_invalida', 'Só se reenvia item recusado ou vencido');
+      }
+      if (!arquivo) throw new ErroApi('documento_ausente', 'Um arquivo não chegou ao servidor.');
+      if (validade < hojeIso()) {
+        throw new ErroApi('documento_vencido', 'A validade informada já passou.');
+      }
+      // Troca o item em vez de mudá-lo: os itens de exemplo são constantes dos testes.
+      frotaAtual = {
+        ...frotaAtual!,
+        itens: frotaAtual!.itens.map((i) =>
+          i.id === itemId ? { ...i, estado: 'pendente', motivo: null, validade } : i,
+        ),
+      };
+      resolverAlerta((a) => a.itemId === itemId);
     }),
     definirDisponibilidade: vi.fn(async (valor: boolean) => {
       estaDisponivel = valor;

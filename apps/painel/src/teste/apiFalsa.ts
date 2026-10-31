@@ -1,6 +1,7 @@
 import { vi } from 'vitest';
 import {
   ErroApi,
+  type AlertaDeVencimento,
   type ApiPainel,
   type FrotaEmHomologacao,
   type ItemHomologacao,
@@ -143,11 +144,13 @@ export function apiFalsa({
   sessao = false,
   perfil = PERFIL_OPERACAO,
   frotas = frotasDeHomologacao(),
+  vencimentos = { prazoDias: 30, itens: [] },
   aguardandoAprovacao = [],
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
   frotas?: FrotaEmHomologacao[];
+  vencimentos?: AlertaDeVencimento;
   aguardandoAprovacao?: PedidoAguardandoAprovacao[];
 } = {}) {
   let logado = sessao;
@@ -205,6 +208,7 @@ export function apiFalsa({
       achado.motivo = motivo.trim();
     }),
     urlDoDocumento: vi.fn(async (itemId: string) => `https://documentos.exemplo/${itemId}?token=x`),
+    listarVencimentos: vi.fn(async (): Promise<AlertaDeVencimento> => vencimentos),
   } satisfies ApiPainel;
 
   return api;
