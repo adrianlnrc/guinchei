@@ -1,7 +1,7 @@
 import { DIAS_MINIMOS_VALIDADE_APOLICE } from '@guinchei/api';
 
 /** AAAA-MM-DD, pelo calendário do aparelho (o servidor confere de novo, em Brasília). */
-function dataIso(data: Date): string {
+export function dataIso(data: Date): string {
   const mes = String(data.getMonth() + 1).padStart(2, '0');
   const dia = String(data.getDate()).padStart(2, '0');
   return `${data.getFullYear()}-${mes}-${dia}`;
