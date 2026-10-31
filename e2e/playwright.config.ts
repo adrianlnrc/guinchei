@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 const noCI = Boolean(process.env.CI);
 
-// Os dois apps rodam em `vite preview` (build de produção), nas portas de sempre. Quem monta o
+// Os três apps rodam em `vite preview` (build de produção), nas portas de sempre. Quem monta o
 // build e as variáveis é `executar.mjs` (`pnpm e2e`); aqui só se serve o que já está em dist/.
 export default defineConfig({
   testDir: '.',
@@ -49,6 +49,12 @@ export default defineConfig({
     {
       command: 'pnpm --filter @guinchei/guincheiro preview --strictPort',
       url: 'http://localhost:5174',
+      reuseExistingServer: !noCI,
+      cwd: '..',
+    },
+    {
+      command: 'pnpm --filter @guinchei/painel preview --strictPort',
+      url: 'http://localhost:5175',
       reuseExistingServer: !noCI,
       cwd: '..',
     },

@@ -57,7 +57,7 @@ jobs:
         run: pnpm --filter @guinchei/api test
       - name: Instalar o Chromium do Playwright
         run: pnpm --filter @guinchei/e2e exec playwright install --with-deps chromium
-      - name: E2E (Cliente e Guincheiro, build de produção)
+      - name: E2E (Cliente, Guincheiro e Painel, build de produção)
         run: pnpm e2e
       - name: Publicar relatório e trace do Playwright
         if: failure()

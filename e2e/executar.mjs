@@ -1,7 +1,7 @@
 // `pnpm e2e`: monta o ambiente do e2e e roda o Playwright.
 //
 //   1. lê as chaves do Supabase local (`supabase status`, que precisa estar de pé);
-//   2. builda o Cliente e o Guincheiro com elas e com um token de Mapbox falso: o e2e responde
+//   2. builda o Cliente, o Guincheiro e o Painel com elas e com um token de Mapbox falso: o e2e responde
 //      o Mapbox com fixtures (veja suporte/mapbox.ts), então nenhum token real é usado;
 //   3. roda `playwright test`; argumentos extras (`pnpm e2e --grep Estorno`) vão junto.
 //
@@ -52,7 +52,15 @@ const env = {
 if (process.env.E2E_SEM_BUILD !== '1') {
   rodar(
     'pnpm',
-    ['--filter', '@guinchei/cliente', '--filter', '@guinchei/guincheiro', 'build'],
+    [
+      '--filter',
+      '@guinchei/cliente',
+      '--filter',
+      '@guinchei/guincheiro',
+      '--filter',
+      '@guinchei/painel',
+      'build',
+    ],
     env,
   );
 }
