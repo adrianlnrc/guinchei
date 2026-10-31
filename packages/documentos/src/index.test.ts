@@ -6,7 +6,46 @@ import {
   mascararCep,
   mascararCnpj,
   mascararCpf,
+  mascararPlaca,
+  normalizarPlaca,
+  normalizarRenavam,
+  placaValida,
+  renavamValido,
 } from './index';
+
+describe('placa', () => {
+  it('normaliza e valida os dois padrões', () => {
+    expect(normalizarPlaca('abc-1d23')).toBe('ABC1D23');
+    expect(placaValida('ABC1234')).toBe(true);
+    expect(placaValida('ABC1D23')).toBe(true);
+    expect(placaValida('AB12345')).toBe(false);
+    expect(placaValida('ABC12D3')).toBe(false);
+    expect(placaValida('abc1234')).toBe(false);
+    expect(placaValida('ABC-1234')).toBe(false);
+  });
+
+  it('mascara com hífen depois da terceira letra', () => {
+    expect(mascararPlaca('abc1d23')).toBe('ABC-1D23');
+    expect(mascararPlaca('ab')).toBe('AB');
+    expect(mascararPlaca('abc1d2345')).toBe('ABC-1D23');
+  });
+});
+
+describe('RENAVAM', () => {
+  it('valida o dígito verificador', () => {
+    expect(renavamValido('63936443047')).toBe(true);
+    expect(renavamValido('12345678900')).toBe(true);
+    expect(renavamValido('63936443048')).toBe(false);
+    expect(renavamValido('00000000000')).toBe(false);
+    expect(renavamValido('6393644304')).toBe(false);
+  });
+
+  it('preenche com zeros os números de 9 e 10 dígitos', () => {
+    expect(normalizarRenavam('9876543216')).toBe('09876543216');
+    expect(renavamValido(normalizarRenavam('9876543216'))).toBe(true);
+    expect(normalizarRenavam('6393.6443-047')).toBe('63936443047');
+  });
+});
 
 // Mesmos casos de supabase/tests/documentos.test.sql: a regra é a de public.cpf_valido.
 describe('cpfValido', () => {

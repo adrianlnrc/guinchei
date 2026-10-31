@@ -64,6 +64,22 @@ export function useSessao(): EstadoSessao {
 }
 
 /**
+ * Telas do representante da Frota (quem cadastrou a Frota e ainda não é Guincheiro), como os
+ * veículos. Quem não tem sessão ou perfil vai à entrada ou ao cadastro; o Guincheiro, ao plantão.
+ */
+export function ExigeRepresentante({ children }: { children: ReactNode }) {
+  const estado = useSessao();
+  if (estado === 'sem_sessao') return <Navigate to="/entrar" replace />;
+  if (estado === 'nao_e_guincheiro') {
+    return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_GUINCHEIRO }} />;
+  }
+  if (estado === 'sem_perfil') return <Navigate to="/cadastro" replace />;
+  if (estado === 'pronto') return <Navigate to="/" replace />;
+  if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
+  return children;
+}
+
+/**
  * Telas do Guincheiro logado: sem sessão (ou com perfil de outro papel), manda entrar; quem
  * ainda não tem Frota vai ao cadastro, e quem já a cadastrou, à própria Frota.
  */
