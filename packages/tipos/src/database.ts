@@ -174,6 +174,48 @@ export type Database = {
           },
         ];
       };
+      documentos_guincheiro: {
+        Row: {
+          antecedentes_emissao: string | null;
+          atualizado_em: string;
+          cnh_categoria: string | null;
+          cnh_ear: boolean | null;
+          cnh_numero: string | null;
+          cnh_validade: string | null;
+          criado_em: string;
+          guincheiro_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          antecedentes_emissao?: string | null;
+          atualizado_em?: string;
+          cnh_categoria?: string | null;
+          cnh_ear?: boolean | null;
+          cnh_numero?: string | null;
+          cnh_validade?: string | null;
+          criado_em?: string;
+          guincheiro_id: string;
+        };
+        Update: {
+          antecedentes_emissao?: string | null;
+          atualizado_em?: string;
+          cnh_categoria?: string | null;
+          cnh_ear?: boolean | null;
+          cnh_numero?: string | null;
+          cnh_validade?: string | null;
+          criado_em?: string;
+          guincheiro_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'documentos_guincheiro_guincheiro_id_fkey';
+            columns: ['guincheiro_id'];
+            isOneToOne: true;
+            referencedRelation: 'guincheiros';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       feriados: {
         Row: {
           abrangencia: Database['public']['Enums']['abrangencia_feriado'];
@@ -1016,6 +1058,7 @@ export type Database = {
       convidar_guincheiro: { Args: { telefone: string }; Returns: string };
       corrida_da_pasta: { Args: { nome_objeto: string }; Returns: string };
       cpf_valido: { Args: { cpf: string }; Returns: boolean };
+      criar_meu_guincheiro: { Args: Record<PropertyKey, never>; Returns: string };
       dados_da_cotacao: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       dados_do_match: { Args: { pedido_id: string }; Returns: Json };
       decidir_item_homologacao: {
@@ -1045,7 +1088,18 @@ export type Database = {
         Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
         Returns: undefined;
       };
+      enviar_antecedentes: { Args: { arquivo: string; emissao: string }; Returns: string };
       enviar_cadastro_frota: { Args: Record<PropertyKey, never>; Returns: string };
+      enviar_cnh: {
+        Args: {
+          arquivo: string;
+          categoria: string;
+          ear: boolean;
+          numero: string;
+          validade: string;
+        };
+        Returns: string;
+      };
       enviar_item_homologacao: {
         Args: {
           alvo: Database['public']['Enums']['alvo_homologacao'];
@@ -1058,6 +1112,7 @@ export type Database = {
       };
       desistir_do_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
       encerrar_por_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
+      enviar_selfie: { Args: { arquivo: string }; Returns: string };
       feriados_perto_de: { Args: { dia: string }; Returns: Json };
       gravar_cotacao: {
         Args: {
@@ -1265,6 +1320,7 @@ export type Database = {
       };
       valer_recotacao: { Args: { recotacao_id: number }; Returns: undefined };
       varrer_aprovacoes_de_preco: { Args: Record<PropertyKey, never>; Returns: string[] };
+      validade_antecedentes: { Args: { emissao: string }; Returns: string };
       varrer_match: { Args: Record<PropertyKey, never>; Returns: string[] };
     };
     Enums: {

@@ -1,4 +1,4 @@
-import type { CSSProperties, InputHTMLAttributes, ReactNode } from 'react';
+import type { CSSProperties, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
 import type { DadosCadastroFrota, EtapaCadastroFrota } from '@guinchei/api';
 import { Botao, Link, Progresso, Rotulo } from '@guinchei/ui';
 import { MensagemDeErro } from '../../MensagemDeErro';
@@ -46,6 +46,22 @@ export function Campo({
     <label style={estiloRotulo}>
       {rotulo}
       <input style={estiloCampo} {...resto} />
+    </label>
+  );
+}
+
+/** Lista de escolha com o rótulo por cima, no mesmo desenho do `Campo`. */
+export function CampoDeSelecao({
+  rotulo,
+  children,
+  ...resto
+}: { rotulo: string; children: ReactNode } & SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <label style={estiloRotulo}>
+      {rotulo}
+      <select style={estiloCampo} {...resto}>
+        {children}
+      </select>
     </label>
   );
 }

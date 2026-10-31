@@ -6,6 +6,7 @@ import { Avatar, Corpo, Heroi, Link, Ponto, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { usePlantao } from '../plantao';
 import { AbasGuincheiro, somaRepasses } from './comum';
+import { AvisoDeHomologacao } from './documentos/AvisoDeHomologacao';
 
 function Interruptor({ ligado, onChange }: { ligado: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -138,6 +139,7 @@ export function Plantao() {
               : 'Você não recebe chamados enquanto estiver indisponível.'}
           </div>
         </div>
+        {!disponivel && guincheiro && <AvisoDeHomologacao />}
         <Rotulo style={{ marginTop: 8 }}>Hoje</Rotulo>
         <Heroi centavos={ganho} tamanho={56} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

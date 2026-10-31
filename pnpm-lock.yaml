@@ -105,6 +105,9 @@ importers:
       '@guinchei/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@guinchei/cnh':
+        specifier: workspace:*
+        version: link:../../packages/cnh
       '@guinchei/documentos':
         specifier: workspace:*
         version: link:../../packages/documentos

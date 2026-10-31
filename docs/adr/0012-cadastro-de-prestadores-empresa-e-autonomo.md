@@ -49,6 +49,16 @@ Nada abaixo muda a decisão; só a precisa no banco e no app.
 - **Convite por telefone:** o representante convida um número (`convites_guincheiro`: telefone, Frota, estado `pendente`/`aceito`/`cancelado`, validade de 7 dias). Um número tem no máximo um convite pendente, então duas Frotas nunca disputam o mesmo número; número que já tem conta (Guincheiro, Cliente, representante ou operação) não é convidado.
 - **Conta própria no primeiro login:** o convidado entra por telefone + código (ADR-0010) e, no primeiro acesso, informa nome e CPF e aceita os termos de uso; `aceitar_convite_guincheiro()` cria o perfil de Guincheiro e a linha em `guincheiros` na Frota que convidou, e marca o convite como aceito. O número convidado vale mais do que o cadastro da própria Frota autônoma.
 - **Fora do Match até a homologação:** o Guincheiro nasce `disponivel = false`; CNH, antecedentes e selfie vêm na etapa de documentos (#47), e a operação homologa antes de qualquer chamado.
+
+## Detalhamento dos documentos do Guincheiro (issue #47)
+
+- **Dados em colunas:** `documentos_guincheiro` guarda número, categoria, validade e EAR da CNH e a emissão da certidão, para a regra CNH × PBT e o alerta de vencimento não dependerem da foto. A mesma CNH não vale em duas contas. O arquivo, a validade e o estado ficam no item de homologação.
+- **Certidão:** vale 12 meses a partir da emissão (último dia: o mesmo dia, 12 meses depois). Emissão futura ou com mais de 12 meses é recusada no formulário e no servidor.
+- **EAR obrigatória:** o formulário e o servidor recusam CNH sem a observação EAR (`EXIGE_EAR` em `@guinchei/cnh`); por isso a coluna `cnh_ear` é sempre verdadeira nas CNH enviadas.
+- **Foto do Guincheiro:** é a selfie, tirada com a câmera do aparelho; não há outra foto de perfil nesta fatia.
+- **Autônomo é Guincheiro:** o representante de Frota autônoma cria a própria linha em `guincheiros` (`criar_meu_guincheiro()`) ao começar a etapa de documentos; `guincheiros.id` passa a aceitar os papéis `guincheiro` e `representante`, como previsto no detalhamento do #43. Nasce indisponível; a trava de homologação antes do Match é do ticket de elegibilidade.
+- **Reenvio:** o item recusado ou vencido volta a `pendente` pelo mesmo envio (um item por documento); pendente ou aprovado não se substitui.
+
 ## Detalhamento do modelo (issue #45, veículos)
 
 - **Entidade `veiculos`:** pertence a uma Frota e é cadastrada pelo representante. Placa (padrão antigo ou Mercosul, guardada sem hífen) e RENAVAM (11 dígitos, dígito verificador conferido) são únicos; o PBT é numérico, em kg, porque a regra CNH × PBT depende dele; o tipo é `plataforma`, `asa_delta` ou `lanca`.

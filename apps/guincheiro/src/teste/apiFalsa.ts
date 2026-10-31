@@ -10,7 +10,11 @@ import {
   type ApiGuincheiro,
   type ArquivoDeMidia,
   type CadastroGuincheiroConvidado,
+  type EnvioDeAntecedentes,
+  type EnvioDeCnh,
   type ConviteGuincheiro,
+  type ItemHomologacao,
+  type MeusDocumentos,
   type GuincheiroDaFrota,
   type MeuConvite,
   type DadosVeiculo,
@@ -25,6 +29,7 @@ import {
   type Perfil,
   type RascunhoFrota,
 } from '@guinchei/api';
+import { validadeDosAntecedentes } from '@guinchei/documentos';
 import { podeTransitar } from '@guinchei/estados';
 import {
   normalizarPlaca,
@@ -215,6 +220,8 @@ export function apiFalsa({
   convite = null,
   convites = [],
   guincheirosDaFrota = [],
+  documentos = { cnh: null, antecedentes: null, selfie: null },
+  guincheiroDaPropriaFrota = false,
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
@@ -237,6 +244,10 @@ export function apiFalsa({
   convites?: ConviteGuincheiro[];
   /** Guincheiros já vinculados à Frota do representante logado. */
   guincheirosDaFrota?: GuincheiroDaFrota[];
+  /** Os documentos que o Guincheiro logado já enviou. */
+  documentos?: MeusDocumentos;
+  /** O autônomo que já tem a linha de Guincheiro na própria Frota. */
+  guincheiroDaPropriaFrota?: boolean;
 } = {}) {
   let logado = sessao;
   let perfilAtual = perfil;
@@ -245,6 +256,8 @@ export function apiFalsa({
   let frotaDoGuincheiro = 'Reboque Planalto';
   let rascunhoAtual = rascunho;
   let frotaAtual = frota;
+  const docs = structuredClone(documentos);
+  let linhaDeGuincheiro = guincheiroDaPropriaFrota;
   const veiculosAtuais = structuredClone(veiculos);
   const arquivosEnviados: string[] = [];
   let estaDisponivel = disponivel;
@@ -253,6 +266,28 @@ export function apiFalsa({
   const entregues = new Map<string, CorridaDoGuincheiro>();
   const ouvintes = new Set<() => void>();
   const registradas = [...fotos];
+
+  const hojeIso = () => new Date().toISOString().slice(0, 10);
+  // Como o servidor: item novo nasce pendente; só recusado ou vencido reenvia.
+  function enviarItem(
+    tipo: ItemHomologacao['tipo'],
+    atual: ItemHomologacao | null,
+    validade: string | null,
+  ): ItemHomologacao {
+    if (atual && (atual.estado === 'pendente' || atual.estado === 'aprovado')) {
+      throw new ErroApi('documento_ja_enviado', 'Este documento já foi enviado');
+    }
+    return {
+      id: `item-${tipo}`,
+      alvo: 'guincheiro',
+      alvoId: perfilAtual?.id ?? PERFIL_AURORA.id,
+      tipo,
+      estado: 'pendente',
+      motivo: null,
+      validade,
+      enviadoEm: new Date().toISOString(),
+    };
+  }
 
   const api = {
     enviarCodigo: vi.fn<(telefone: string) => Promise<void>>(async () => {}),
@@ -266,8 +301,12 @@ export function apiFalsa({
       logado = false;
     }),
     buscarMeuGuincheiro: vi.fn(async (): Promise<MeuGuincheiro | null> =>
-      logado && perfilAtual?.papel === 'guincheiro'
-        ? { nome: perfilAtual.nome, frota: frotaDoGuincheiro, disponivel: estaDisponivel }
+      logado && (perfilAtual?.papel === 'guincheiro' || (perfilAtual && linhaDeGuincheiro))
+        ? {
+            nome: perfilAtual.nome,
+            frota: linhaDeGuincheiro && frotaAtual ? frotaAtual.nome : frotaDoGuincheiro,
+            disponivel: estaDisponivel,
+          }
         : null,
     ),
     // Como o servidor: só quem ainda não tem perfil vê o convite do telefone.
@@ -362,6 +401,51 @@ export function apiFalsa({
       return frotaAtual.id;
     }),
     buscarMinhaFrota: vi.fn(async () => (logado ? frotaAtual : null)),
+    // Como o servidor: só o representante de Frota autônoma ganha a linha, indisponível.
+    criarMeuGuincheiro: vi.fn(async () => {
+      if (!frotaAtual || frotaAtual.tipo !== 'autonomo') {
+        throw new ErroApi('frota_nao_autonoma', 'Só o autônomo é Guincheiro da própria Frota.');
+      }
+      if (!linhaDeGuincheiro) estaDisponivel = false;
+      linhaDeGuincheiro = true;
+    }),
+    buscarMeusDocumentos: vi.fn(async () => structuredClone(docs)),
+    enviarArquivoDoGuincheiro: vi.fn(async (arquivo: ArquivoDeMidia) => {
+      if (arquivo.type !== 'application/pdf' && !arquivo.type.startsWith('image/')) {
+        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+      }
+      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+      }
+      const caminho = `${perfilAtual?.id ?? 'sem-perfil'}/documento-${arquivosEnviados.length + 1}.jpg`;
+      arquivosEnviados.push(caminho);
+      return caminho;
+    }),
+    enviarCnh: vi.fn(async ({ numero, categoria, validade, ear }: EnvioDeCnh) => {
+      if (!/^\d{11}$/.test(numero)) throw new ErroApi('cnh_invalida', 'Confira o número da CNH');
+      if (!validade || validade < hojeIso()) {
+        throw new ErroApi('cnh_vencida', 'A CNH está vencida. Renove a CNH antes de enviar.');
+      }
+      if (!ear) throw new ErroApi('cnh_sem_ear', 'A CNH precisa da observação EAR');
+      docs.cnh = {
+        ...enviarItem('cnh', docs.cnh, validade),
+        dados: { numero, categoria, validade, ear },
+      };
+    }),
+    enviarAntecedentes: vi.fn(async ({ emissao }: EnvioDeAntecedentes) => {
+      const validade = validadeDosAntecedentes(emissao);
+      if (!validade || emissao > hojeIso()) {
+        throw new ErroApi('emissao_invalida', 'Informe a data de emissão da certidão');
+      }
+      if (validade < hojeIso()) {
+        throw new ErroApi('antecedentes_vencidos', 'A certidão foi emitida há mais de 12 meses.');
+      }
+      docs.antecedentes = { ...enviarItem('antecedentes', docs.antecedentes, validade), emissao };
+    }),
+    enviarSelfie: vi.fn(async (arquivo: string) => {
+      if (!arquivo) throw new ErroApi('documento_ausente', 'O arquivo não chegou ao servidor');
+      docs.selfie = enviarItem('selfie', docs.selfie, null);
+    }),
     // Como o servidor: PDF só no CRLV, imagem nas fotos, até 10 MiB.
     enviarArquivoDoVeiculo: vi.fn(async (arquivo: ArquivoDeMidia, finalidade: 'crlv' | 'foto') => {
       const imagem = arquivo.type.startsWith('image/');

@@ -2,10 +2,15 @@
 export const ROTA_DADOS_PESSOAIS = '/guincheiro/dados';
 
 /**
- * Etapa de documentos do Guincheiro (CNH, antecedentes, selfie). É a que vem depois dos dados
- * pessoais; a tela é do #47 e a rota entra no `App` junto com ela.
+ * Etapa de documentos do Guincheiro (#47): o resumo do que falta, o que a operação está
+ * conferindo e o que foi recusado. É a que vem depois dos dados pessoais.
  */
 export const ROTA_DOCUMENTOS = '/guincheiro/documentos';
+
+/** Uma tela por documento: CNH, certidão de antecedentes e selfie. */
+export const ROTA_DOCUMENTOS_CNH = '/guincheiro/documentos/cnh';
+export const ROTA_DOCUMENTOS_ANTECEDENTES = '/guincheiro/documentos/antecedentes';
+export const ROTA_DOCUMENTOS_SELFIE = '/guincheiro/documentos/selfie';
 
 /** Gestão de convites e Guincheiros da Frota, para o representante (#46). */
 export const ROTA_CONVITES = '/frota/convites';
