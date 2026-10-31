@@ -11,7 +11,7 @@ import { Disputa } from './telas/Disputa';
 import { TabelaDePrecos } from './telas/TabelaDePrecos';
 
 function Lateral() {
-  const { homologacoesPendentes, disputasAbertas, avisar } = useOperacao();
+  const { homologacoesEmAtencao, disputasAbertas, avisar } = useOperacao();
   const { operador, setOperador } = useSessao();
   const api = useApi();
   const navigate = useNavigate();
@@ -34,8 +34,13 @@ function Lateral() {
       <NavLink to="/monitor">Monitor de Corridas</NavLink>
       <NavLink to="/homologacao">
         Homologação
-        {homologacoesPendentes > 0 && (
-          <span className="lateral__contagem">{homologacoesPendentes}</span>
+        {homologacoesEmAtencao > 0 && (
+          <span
+            className="lateral__contagem"
+            title="Frotas com item pendente mais Frotas com documento vencendo ou vencido"
+          >
+            {homologacoesEmAtencao}
+          </span>
         )}
       </NavLink>
       <NavLink to="/disputas">

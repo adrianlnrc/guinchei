@@ -245,6 +245,57 @@ button.linha-tabela:hover {
   color: var(--alerta-texto);
 }
 
+.etiqueta--atencao {
+  background: #fff4d6;
+  color: #7a5200;
+}
+.homologacao__abas {
+  height: 72px;
+  flex: none;
+  padding: 0 16px;
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  border-bottom: 1px solid var(--linha-suave);
+}
+.homologacao__aba {
+  padding: 14px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 600 15px var(--fonte-texto);
+  color: var(--tinta-2);
+  border-bottom: 3px solid transparent;
+}
+.homologacao__aba[aria-selected='true'] {
+  color: var(--tinta);
+  border-bottom-color: var(--tinta);
+}
+.homologacao__aba-contagem {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--linha-fina);
+  font: 600 12px var(--fonte-texto);
+  text-align: center;
+}
+.homologacao__aba-contagem--alerta {
+  background: var(--alerta-fundo);
+  color: var(--alerta-texto);
+}
+.homologacao__vencendo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font: 400 13px var(--fonte-texto);
+  color: var(--tinta);
+}
+.homologacao__vencendo-item .etiqueta {
+  padding: 3px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
 .homologacao__fila-item {
   padding: 18px 24px;
   border-bottom: 1px solid var(--linha-fina);

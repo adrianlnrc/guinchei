@@ -512,6 +512,25 @@ export type Database = {
           },
         ];
       };
+      parametros_homologacao: {
+        Row: {
+          alerta_vencimento_dias: number;
+          atualizado_em: string;
+          id: boolean;
+        };
+        ComputedFields: never;
+        Insert: {
+          alerta_vencimento_dias?: number;
+          atualizado_em?: string;
+          id?: boolean;
+        };
+        Update: {
+          alerta_vencimento_dias?: number;
+          atualizado_em?: string;
+          id?: boolean;
+        };
+        Relationships: [];
+      };
       parametros_match: {
         Row: {
           atualizado_em: string;
@@ -1030,6 +1049,26 @@ export type Database = {
       };
       hoje_em_brasilia: { Args: Record<PropertyKey, never>; Returns: string };
       hora_do_servidor: { Args: Record<PropertyKey, never>; Returns: string };
+      item_vigente: {
+        Args: { estado: Database['public']['Enums']['estado_homologacao']; validade: string };
+        Returns: boolean;
+      };
+      itens_em_alerta_de_vencimento: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          alvo: Database['public']['Enums']['alvo_homologacao'];
+          alvo_id: string;
+          dias_restantes: number;
+          estado: Database['public']['Enums']['estado_homologacao'];
+          frota_id: string;
+          frota_nome: string;
+          guincheiro_nome: string;
+          item_id: string;
+          posso_reenviar: boolean;
+          tipo: Database['public']['Enums']['tipo_item_homologacao'];
+          validade: string;
+        }[];
+      };
       limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
       marcar_itens_vencidos: { Args: Record<PropertyKey, never>; Returns: number };
       meu_convite_guincheiro: {
@@ -1047,6 +1086,7 @@ export type Database = {
         Returns: boolean;
       };
       placa_valida: { Args: { placa: string }; Returns: boolean };
+      prazo_alerta_vencimento_dias: { Args: Record<PropertyKey, never>; Returns: number };
       pode_cadastrar_frota: { Args: Record<PropertyKey, never>; Returns: boolean };
       pode_enviar_documento_de_prestador: { Args: Record<PropertyKey, never>; Returns: boolean };
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };

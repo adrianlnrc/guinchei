@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import type { ItemHomologacao, MinhaFrota as Frota } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS, ROTA_DOCUMENTOS } from '../rotas';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
 import { formatarData } from './cadastro/regras';
+import { AvisosDeVencimento } from './vencimentos/AvisosDeVencimento';
 
 const NOME_DO_ITEM: Record<ItemHomologacao['tipo'], string> = {
   alvara: 'Alvará de funcionamento',
@@ -31,8 +32,16 @@ const COR_DO_ESTADO: Record<ItemHomologacao['estado'], string> = {
   vencido: 'var(--alerta)',
 };
 
-/** A Frota de quem a cadastrou: o andamento da homologação, item por item. */
-export function MinhaFrota() {
+/**
+ * Telas da Frota: quem não tem sessão ou conta vai à entrada ou ao cadastro; o convidado, aos
+ * dados pessoais. O representante e o autônomo (que também é Guincheiro) seguem, e `children`
+ * diz se a pessoa também é Guincheiro.
+ */
+export function ExigeSessaoDeFrota({
+  children,
+}: {
+  children: (comoGuincheiro: boolean) => ReactNode;
+}) {
   const estado = useSessao();
   if (estado === 'sem_sessao') return <Navigate to="/entrar" replace />;
   if (estado === 'nao_e_guincheiro') {
@@ -42,12 +51,22 @@ export function MinhaFrota() {
   if (estado === 'sem_perfil') return <Navigate to="/cadastro" replace />;
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
   // O autônomo vira Guincheiro da própria Frota (#47) e continua vendo a Frota dele aqui.
-  return <Andamento comoGuincheiro={estado === 'pronto'} />;
+  return children(estado === 'pronto');
+}
+
+/** A Frota de quem a cadastrou: o andamento da homologação, item por item. */
+export function MinhaFrota() {
+  return (
+    <ExigeSessaoDeFrota>
+      {(comoGuincheiro) => <Andamento comoGuincheiro={comoGuincheiro} />}
+    </ExigeSessaoDeFrota>
+  );
 }
 
 function Andamento({ comoGuincheiro }: { comoGuincheiro: boolean }) {
   const api = useApi();
   const ir = useNavigate();
+  const { state } = useLocation() as { state: { apoliceReenviada?: boolean } | null };
   // undefined: lendo; null: ainda não enviou o cadastro.
   const [frota, setFrota] = useState<Frota | null | undefined>(undefined);
   const [erro, setErro] = useState(false);
@@ -91,6 +110,15 @@ function Andamento({ comoGuincheiro }: { comoGuincheiro: boolean }) {
                 ? 'Frota ativa.'
                 : 'Em análise pela operação. Você começa a receber chamados quando a Frota for ativada e os documentos de Guincheiro forem aprovados.'}
             </p>
+            {state?.apoliceReenviada && (
+              <p
+                role="status"
+                style={{ margin: 0, font: '600 15px var(--fonte-texto)', color: 'var(--sucesso)' }}
+              >
+                Apólice enviada. A operação vai conferir.
+              </p>
+            )}
+            <AvisosDeVencimento />
             <ul
               style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 10 }}
               aria-label="Documentos da Frota"

@@ -670,6 +670,17 @@ export interface ApiGuincheiro extends Pick<
    * a `pendente`. Erros `item_indisponivel`, `transicao_invalida`, `documento_ausente`.
    */
   reenviarItemDeVeiculo(itemId: string, arquivo: string): Promise<void>;
+  /**
+   * Os documentos aprovados do próprio Guincheiro (ou, para o representante, da Frota) que
+   * vencem em até `prazoDias` e os já vencidos, do mais urgente ao menos.
+   */
+  listarAvisosDeVencimento(): Promise<AlertaDeVencimento>;
+  /**
+   * Representante: reenvia o documento da Frota (apólice) vencido ou vencendo, com o arquivo
+   * novo (já no bucket, veja `enviarDocumentoDaFrota`) e a nova validade. Volta a `pendente`.
+   * Erros `documento_vencido`, `item_indisponivel`, `transicao_invalida`, `documento_ausente`.
+   */
+  reenviarItemDaFrota(itemId: string, arquivo: string, validade: string): Promise<void>;
   /** O interruptor do plantão: grava `guincheiros.disponivel`. */
   definirDisponibilidade(disponivel: boolean): Promise<void>;
   /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
@@ -1306,6 +1317,12 @@ function erroDoVeiculo(
       return new ErroApi('item_indisponivel', 'Este item não existe mais', causa);
     case 'GHM03':
       return new ErroApi('transicao_invalida', 'Só se reenvia item recusado ou vencido', causa);
+    case 'GHM05':
+      return new ErroApi(
+        'documento_vencido',
+        'A validade informada já passou. Confira a data do documento novo.',
+        causa,
+      );
     default:
       return new ErroApi('falha', mensagemDeFalha, causa);
   }
@@ -1673,6 +1690,19 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
       if (error) throw erroDoVeiculo(error, 'Não foi possível reenviar o item');
     },
 
+    listarAvisosDeVencimento() {
+      return lerAlertaDeVencimento(supabase);
+    },
+
+    async reenviarItemDaFrota(itemId, arquivo, validade) {
+      const { error } = await supabase.rpc('reenviar_item_homologacao', {
+        item_id: itemId,
+        arquivo,
+        validade,
+      });
+      if (error) throw erroDoVeiculo(error, 'Não foi possível reenviar o documento');
+    },
+
     async enviarCadastroFrota() {
       const { data, error } = await supabase.rpc('enviar_cadastro_frota');
       if (error) throw erroDoCadastroDeFrota(error, 'Não foi possível enviar o cadastro');
@@ -2019,6 +2049,90 @@ export interface FrotaEmHomologacao {
   veiculos: { id: string; placa: string; tipo: TipoVeiculoGuincho; pbtKg: number }[];
 }
 
+/**
+ * Item de homologação aprovado que vence em breve, ou já vencido (apólice, certidão, CNH). O
+ * `estado` é `aprovado` (a vencer) ou `vencido`.
+ */
+export interface ItemEmAlerta {
+  itemId: string;
+  frotaId: string;
+  frotaNome: string;
+  alvo: AlvoHomologacao;
+  alvoId: string;
+  tipo: TipoItemHomologacao;
+  estado: EstadoHomologacao;
+  /** Último dia de validade (AAAA-MM-DD). */
+  validade: string;
+  /** Dias até o fim da validade: 0 no último dia, negativo nos vencidos. */
+  diasRestantes: number;
+  /** Nos itens de Guincheiro, de quem é o documento. */
+  guincheiro: string | null;
+  /** Quem lê pode reenviar o documento (o dono, ou o representante nos itens da Frota). */
+  podeReenviar: boolean;
+}
+
+/** Os itens em alerta, do mais urgente, e o prazo configurado (dias antes do vencimento). */
+export interface AlertaDeVencimento {
+  prazoDias: number;
+  itens: ItemEmAlerta[];
+}
+
+/** Uma Frota com itens em alerta; `itens` do mais urgente ao menos. */
+export interface FrotaComVencimentos {
+  id: string;
+  nome: string;
+  itens: ItemEmAlerta[];
+}
+
+/**
+ * Agrupa por Frota. As Frotas saem pela urgência do item mais urgente de cada uma, e os itens
+ * de cada Frota também (menos dias restantes primeiro: vencidos antes dos a vencer).
+ */
+export function agruparVencimentosPorFrota(itens: readonly ItemEmAlerta[]): FrotaComVencimentos[] {
+  const porUrgencia = [...itens].sort(
+    (a, b) =>
+      a.diasRestantes - b.diasRestantes ||
+      a.frotaNome.localeCompare(b.frotaNome, 'pt-BR') ||
+      a.itemId.localeCompare(b.itemId),
+  );
+  const frotas = new Map<string, FrotaComVencimentos>();
+  for (const item of porUrgencia) {
+    const frota = frotas.get(item.frotaId);
+    if (frota) frota.itens.push(item);
+    else frotas.set(item.frotaId, { id: item.frotaId, nome: item.frotaNome, itens: [item] });
+  }
+  return [...frotas.values()];
+}
+
+/** Lê o alerta de vencimento de quem está logado (a operação vê todos; os demais, os seus). */
+async function lerAlertaDeVencimento(supabase: ClienteSupabase): Promise<AlertaDeVencimento> {
+  const [itens, prazo] = await Promise.all([
+    supabase.rpc('itens_em_alerta_de_vencimento'),
+    supabase.rpc('prazo_alerta_vencimento_dias'),
+  ]);
+  if (itens.error || prazo.error) {
+    throw new ErroApi('falha', 'Não foi possível ler os vencimentos', {
+      cause: itens.error ?? prazo.error,
+    });
+  }
+  return {
+    prazoDias: prazo.data,
+    itens: itens.data.map((i): ItemEmAlerta => ({
+      itemId: i.item_id,
+      frotaId: i.frota_id,
+      frotaNome: i.frota_nome,
+      alvo: i.alvo,
+      alvoId: i.alvo_id,
+      tipo: i.tipo,
+      estado: i.estado,
+      validade: i.validade,
+      diasRestantes: i.dias_restantes,
+      guincheiro: i.guincheiro_nome ?? null,
+      podeReenviar: i.posso_reenviar,
+    })),
+  };
+}
+
 /** Erros das funções de homologação (migração `homologacao`). */
 function erroDaHomologacao(error: { code?: string }, mensagemDeFalha: string): ErroApi {
   switch (error.code) {
@@ -2067,6 +2181,11 @@ export interface ApiPainel extends Pick<
   recusarItem(itemId: string, motivo: string): Promise<void>;
   /** URL assinada de curta duração (`VALIDADE_URL_DOCUMENTO_SEGUNDOS`) do documento do item. */
   urlDoDocumento(itemId: string): Promise<string>;
+  /**
+   * Itens aprovados que vencem em até `prazoDias` (parâmetro do banco, 30 por padrão) e os já
+   * vencidos, de todas as Frotas, do mais urgente ao menos.
+   */
+  listarVencimentos(): Promise<AlertaDeVencimento>;
 }
 
 export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
@@ -2216,6 +2335,10 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
         throw new ErroApi('falha', 'Documento indisponível', { cause: erroUrl });
       }
       return data.signedUrl;
+    },
+
+    listarVencimentos() {
+      return lerAlertaDeVencimento(supabase);
     },
   };
 }
