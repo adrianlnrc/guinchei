@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ErroApi } from '@guinchei/api';
+import { ErroApi, type FrotaEmHomologacao, type ItemHomologacao } from '@guinchei/api';
 import { apiFalsa, frotasDeHomologacao } from './teste/apiFalsa';
 import { renderEm as renderizar } from './teste/renderizar';
 
@@ -213,5 +213,121 @@ describe('Homologação: documento', () => {
 
     expect((await screen.findByRole('status')).textContent).toContain('Documento indisponível');
     expect(janela.close).toHaveBeenCalled();
+  });
+});
+
+describe('Homologação: documentos do Guincheiro (#47)', () => {
+  const FROTA = 'f0000000-0000-4000-8000-000000000010';
+  const doGuincheiro = (
+    id: string,
+    tipo: ItemHomologacao['tipo'],
+    extra: Partial<ItemHomologacao> = {},
+  ): ItemHomologacao => ({
+    id,
+    alvo: 'guincheiro',
+    tipo,
+    estado: 'pendente',
+    motivo: null,
+    validade: null,
+    enviadoEm: '2026-10-23T12:00:00Z',
+    guincheiro: 'Carla Dias',
+    ...extra,
+  });
+  const frotaComGuincheiro = (): FrotaEmHomologacao => ({
+    id: FROTA,
+    nome: 'Reboque Planalto',
+    tipo: 'empresa',
+    documento: '11222333000181',
+    itens: [
+      doGuincheiro('g-cnh', 'cnh', {
+        validade: '2030-05-20',
+        cnh: { numero: '04512398765', categoria: 'C', validade: '2030-05-20', ear: true },
+      }),
+      doGuincheiro('g-ant', 'antecedentes', {
+        validade: '2027-03-10',
+        antecedentesEmissao: '2026-03-10',
+      }),
+      doGuincheiro('g-selfie', 'selfie'),
+      doGuincheiro('o-cnh', 'cnh', {
+        guincheiro: 'Otávio Reis',
+        validade: '2029-01-02',
+        cnh: null,
+      }),
+    ],
+  });
+
+  it('a Frota com documento de Guincheiro pendente aparece na fila com a contagem', async () => {
+    await abrir(apiFalsa({ sessao: true, frotas: [frotaComGuincheiro()] }));
+    const botao = await within(fila()).findByRole('button', { name: /Reboque Planalto/ });
+    expect(botao.textContent).toContain('4 itens pendentes');
+  });
+
+  it('a CNH mostra número, categoria, validade e EAR; a certidão, a emissão e os 12 meses', async () => {
+    await abrir(apiFalsa({ sessao: true, frotas: [frotaComGuincheiro()] }));
+    await screen.findByRole('heading', { name: 'Reboque Planalto' });
+
+    const cnh = itemDe('CNH do Guincheiro · Carla Dias');
+    expect(within(cnh).getByText(/Guincheiro Carla Dias/)).toBeTruthy();
+    expect(within(cnh).getByLabelText('Dados da CNH').textContent).toBe(
+      'Número04512398765CategoriaCValidade20/05/2030Observação EARSim',
+    );
+
+    const ant = itemDe('Certidão de antecedentes · Carla Dias');
+    expect(within(ant).getByLabelText('Dados da certidão').textContent).toBe(
+      'Emissão10/03/2026Vale 12 meses, até10/03/2027',
+    );
+  });
+
+  it('CNH sem dados em colunas (item de fora do app) manda conferir na foto', async () => {
+    await abrir(apiFalsa({ sessao: true, frotas: [frotaComGuincheiro()] }));
+    await screen.findByRole('heading', { name: 'Reboque Planalto' });
+    expect(
+      within(itemDe('CNH do Guincheiro · Otávio Reis')).getByText(
+        'Dados da CNH não informados: confira na foto.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('aprova a CNH e recusa a selfie com motivo, cada um do seu Guincheiro', async () => {
+    const api = apiFalsa({ sessao: true, frotas: [frotaComGuincheiro()] });
+    await abrir(api);
+    await screen.findByRole('heading', { name: 'Reboque Planalto' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovar CNH do Guincheiro · Carla Dias' }));
+    await waitFor(() =>
+      expect(within(itemDe('CNH do Guincheiro · Carla Dias')).getByText('Aprovado')).toBeTruthy(),
+    );
+    expect(api.aprovarItem).toHaveBeenCalledWith('g-cnh');
+    expect(within(itemDe('CNH do Guincheiro · Otávio Reis')).getByText('Pendente')).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Recusar Selfie do Guincheiro · Carla Dias' }),
+    );
+    fireEvent.change(screen.getByLabelText('Motivo da recusa'), {
+      target: { value: 'Rosto de boné' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar recusa' }));
+    await waitFor(() =>
+      expect(
+        within(itemDe('Selfie do Guincheiro · Carla Dias')).getByText('Recusado'),
+      ).toBeTruthy(),
+    );
+    expect(api.recusarItem).toHaveBeenCalledWith('g-selfie', 'Rosto de boné');
+  });
+
+  it('a certidão recusa com motivo como os outros itens', async () => {
+    const api = apiFalsa({ sessao: true, frotas: [frotaComGuincheiro()] });
+    await abrir(api);
+    await screen.findByRole('heading', { name: 'Reboque Planalto' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Recusar Certidão de antecedentes · Carla Dias' }),
+    );
+    fireEvent.change(screen.getByLabelText('Motivo da recusa'), {
+      target: { value: 'Falta a certidão da PF' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar recusa' }));
+    await waitFor(() =>
+      expect(api.recusarItem).toHaveBeenCalledWith('g-ant', 'Falta a certidão da PF'),
+    );
   });
 });

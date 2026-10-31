@@ -286,6 +286,45 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
   );
 }
 
+/**
+ * O que a operação confere ao lado da foto: na CNH, número, categoria, validade e EAR; na
+ * certidão, a emissão e a validade de 12 meses. Vem das colunas, não da imagem.
+ */
+function DadosDoDocumento({ item }: { item: ItemHomologacao }) {
+  if (item.tipo === 'cnh' && item.alvo === 'guincheiro') {
+    const cnh = item.cnh;
+    return (
+      <dl aria-label="Dados da CNH" className="homologacao__dados">
+        {cnh ? (
+          <>
+            <dt>Número</dt>
+            <dd className="mono">{cnh.numero}</dd>
+            <dt>Categoria</dt>
+            <dd>{cnh.categoria}</dd>
+            <dt>Validade</dt>
+            <dd>{dia(cnh.validade)}</dd>
+            <dt>Observação EAR</dt>
+            <dd>{cnh.ear ? 'Sim' : 'Não'}</dd>
+          </>
+        ) : (
+          <dd>Dados da CNH não informados: confira na foto.</dd>
+        )}
+      </dl>
+    );
+  }
+  if (item.tipo === 'antecedentes' && item.alvo === 'guincheiro') {
+    return (
+      <dl aria-label="Dados da certidão" className="homologacao__dados">
+        <dt>Emissão</dt>
+        <dd>{item.antecedentesEmissao ? dia(item.antecedentesEmissao) : 'Não informada'}</dd>
+        <dt>Vale 12 meses, até</dt>
+        <dd>{item.validade ? dia(item.validade) : 'Não informada'}</dd>
+      </dl>
+    );
+  }
+  return null;
+}
+
 function ItemLinha({
   item,
   ocupado,
@@ -303,22 +342,26 @@ function ItemLinha({
   const [motivo, setMotivo] = useState('');
   const campo = useId();
   const nome = TIPO[item.tipo];
+  // Vários Guincheiros na Frota têm CNH, certidão e selfie cada um: o nome desfaz a ambiguidade.
+  const rotulo = item.guincheiro ? `${nome} · ${item.guincheiro}` : nome;
   const estado = ESTADO[item.estado];
 
   return (
     <li
-      aria-label={nome}
+      aria-label={rotulo}
       className={`homologacao__item${item.estado === 'vencido' ? ' homologacao__item--vencido' : ''}`}
     >
       <div className="homologacao__item-linha">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ font: '600 15px var(--fonte-texto)' }}>{nome}</span>
           <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-            {ALVO[item.alvo]} · {item.validade ? `Validade ${dia(item.validade)}` : 'Sem validade'}
+            {item.guincheiro ? `Guincheiro ${item.guincheiro}` : ALVO[item.alvo]} ·{' '}
+            {item.validade ? `Validade ${dia(item.validade)}` : 'Sem validade'}
           </span>
         </div>
         <span className={`etiqueta${estado.classe}`}>{estado.texto}</span>
       </div>
+      <DadosDoDocumento item={item} />
       {item.estado === 'recusado' && item.motivo && (
         <p style={{ margin: 0, font: '400 13px/1.5 var(--fonte-texto)' }}>Motivo: {item.motivo}</p>
       )}
@@ -364,7 +407,7 @@ function ItemLinha({
           <button
             type="button"
             className="acao acao--contorno"
-            aria-label={`Ver documento: ${nome}`}
+            aria-label={`Ver documento: ${rotulo}`}
             onClick={aoVerDocumento}
           >
             Ver documento
@@ -374,7 +417,7 @@ function ItemLinha({
               <button
                 type="button"
                 className="acao acao--tinta"
-                aria-label={`Aprovar ${nome}`}
+                aria-label={`Aprovar ${rotulo}`}
                 disabled={ocupado}
                 onClick={() => void aoAprovar()}
               >
@@ -383,7 +426,7 @@ function ItemLinha({
               <button
                 type="button"
                 className="acao acao--contorno"
-                aria-label={`Recusar ${nome}`}
+                aria-label={`Recusar ${rotulo}`}
                 disabled={ocupado}
                 onClick={() => setRecusando(true)}
               >

@@ -2037,6 +2037,314 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     });
   });
 
+  describe('Documentos do Guincheiro (#47): CNH, antecedentes e selfie', () => {
+    // Usuários criados pela service_role (telefone aleatório e senha), como no bloco do convite.
+    const SENHA = 'senha-de-teste-47';
+    const MARCOS = '+5561900000002';
+
+    const motivoDe = async (promessa: Promise<unknown>) =>
+      ((await promessa.catch((e: unknown) => e)) as ErroApi).motivo;
+    const pdf = () => new Blob([new Uint8Array([37, 80, 68, 70, 45])], { type: 'application/pdf' });
+    const jpg = () => new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' });
+    const texto = () => new Blob([new Uint8Array([104, 105])], { type: 'text/plain' });
+    /** AAAA-MM-DD de hoje em Brasília (UTC-3) mais `dias`. */
+    const emDias = (dias: number) => {
+      const data = new Date(Date.now() - 3 * 3600 * 1000);
+      data.setUTCDate(data.getUTCDate() + dias);
+      return data.toISOString().slice(0, 10);
+    };
+    function digitoVerificador(digitos: number[]) {
+      const soma = digitos.reduce((s, d, i) => s + d * (digitos.length + 1 - i), 0);
+      return ((soma * 10) % 11) % 10;
+    }
+    function cpfNovo(): string {
+      const base = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+      const d1 = digitoVerificador(base);
+      const cpf = [...base, d1, digitoVerificador([...base, d1])].join('');
+      return /^(\d)\1{10}$/.test(cpf) ? cpfNovo() : cpf;
+    }
+    const telefoneNovo = () => `55619${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+    /** CNH de 11 dígitos nova a cada rodada: o número é único entre as contas. */
+    const cnhNova = () => String(Math.floor(Math.random() * 1e11)).padStart(11, '0');
+
+    /** Um autônomo (representante + Frota de CPF), como depois do cadastro do #43. */
+    async function autonomo(nome: string) {
+      const telefone = telefoneNovo();
+      const email = `docs-${telefone}@teste.guinchei`;
+      const servidor = admin();
+      const { data: criado, error } = await servidor.auth.admin.createUser({
+        phone: telefone,
+        phone_confirm: true,
+        email,
+        email_confirm: true,
+        password: SENHA,
+      });
+      if (error) throw error;
+      const id = criado.user.id;
+      const cpf = cpfNovo();
+      const perfil = await servidor.from('perfis').insert({
+        id,
+        papel: 'representante',
+        nome,
+        telefone,
+        cpf,
+        aceite_termos_versao: 'prestadores-teste',
+      });
+      expect(perfil.error).toBeNull();
+      const frota = await servidor
+        .from('frotas')
+        .insert({
+          tipo: 'autonomo',
+          documento: cpf,
+          nome: `Frota ${nome}`,
+          representante_id: id,
+          base_cep: '70000000',
+          base_endereco: 'SQN 308 Bloco A',
+          base_bairro: 'Asa Norte',
+          chave_pix: 'teste@exemplo.com',
+          termos_prestador_versao: 'prestadores-teste',
+        })
+        .select('id')
+        .single();
+      expect(frota.error).toBeNull();
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      const { error: erroLogin } = await supabase.auth.signInWithPassword({
+        email,
+        password: SENHA,
+      });
+      if (erroLogin) throw erroLogin;
+      return { supabase, api: criarApiGuincheiro(supabase), id, nome, frotaId: frota.data!.id };
+    }
+
+    function novoPainel() {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      return { supabase, api: criarApiPainel(supabase) };
+    }
+
+    let ana: Awaited<ReturnType<typeof autonomo>>;
+    let bruno: Awaited<ReturnType<typeof autonomo>>;
+    const numeroDaAna = cnhNova();
+
+    beforeAll(async () => {
+      ana = await autonomo('Ana Documentos');
+      bruno = await autonomo('Bruno Documentos');
+    });
+
+    it('antes de ter a linha de Guincheiro, o autônomo não envia documento', async () => {
+      const arquivo = await ana.api.enviarArquivoDoGuincheiro(pdf());
+      expect(arquivo.startsWith(`${ana.id}/`)).toBe(true);
+      expect(await motivoDe(ana.api.enviarSelfie(arquivo))).toBe('sem_permissao');
+      expect(await ana.api.buscarMeuGuincheiro()).toBeNull();
+    });
+
+    it('o autônomo cria a própria linha de Guincheiro: indisponível e fora do Match', async () => {
+      await ana.api.criarMeuGuincheiro();
+      await ana.api.criarMeuGuincheiro();
+      expect(await ana.api.buscarMeuGuincheiro()).toEqual({
+        nome: 'Ana Documentos',
+        frota: 'Frota Ana Documentos',
+        disponivel: false,
+      });
+      const { data } = await admin().rpc('guincheiros_elegiveis_proximos', {
+        latitude: -15.79,
+        longitude: -47.88,
+        limite: 100,
+      });
+      expect((data as { frota_id: string }[]).map((g) => g.frota_id)).not.toContain(ana.frotaId);
+      expect(await ana.api.buscarMeusDocumentos()).toEqual({
+        cnh: null,
+        antecedentes: null,
+        selfie: null,
+      });
+    });
+
+    it('Guincheiro de empresa não cria linha própria, e quem não é Guincheiro não envia', async () => {
+      const { api } = novaApiGuincheiro();
+      await api.confirmarCodigo(MARCOS, CODIGO_DE_TESTE);
+      expect(await motivoDe(api.criarMeuGuincheiro())).toBe('frota_nao_autonoma');
+      const cliente = novaApiGuincheiro();
+      await cliente.api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+      expect(await motivoDe(cliente.api.enviarSelfie(`${RAFAEL.id}/x.jpg`))).toBe('sem_permissao');
+    });
+
+    it('arquivo que não é PDF nem imagem é recusado antes de subir', async () => {
+      expect(await motivoDe(ana.api.enviarArquivoDoGuincheiro(texto()))).toBe('arquivo_invalido');
+    });
+
+    it('a CNH recusa número, validade e EAR ruins, e arquivo que não está no bucket', async () => {
+      const arquivo = await ana.api.enviarArquivoDoGuincheiro(pdf());
+      const base = {
+        numero: numeroDaAna,
+        categoria: 'C',
+        validade: emDias(400),
+        ear: true,
+        arquivo,
+      };
+      expect(await motivoDe(ana.api.enviarCnh({ ...base, numero: '123' }))).toBe('cnh_invalida');
+      expect(await motivoDe(ana.api.enviarCnh({ ...base, categoria: 'Z' }))).toBe('cnh_invalida');
+      expect(await motivoDe(ana.api.enviarCnh({ ...base, validade: emDias(-1) }))).toBe(
+        'cnh_vencida',
+      );
+      expect(await motivoDe(ana.api.enviarCnh({ ...base, ear: false }))).toBe('cnh_sem_ear');
+      expect(await motivoDe(ana.api.enviarCnh({ ...base, arquivo: `${ana.id}/falta.pdf` }))).toBe(
+        'documento_ausente',
+      );
+      expect((await ana.api.buscarMeusDocumentos()).cnh).toBeNull();
+    });
+
+    it('envia a CNH: dados em colunas consultáveis e item pendente', async () => {
+      const arquivo = await ana.api.enviarArquivoDoGuincheiro(pdf());
+      const validade = emDias(400);
+      const envio = { numero: numeroDaAna, categoria: 'C', validade, ear: true, arquivo };
+      await ana.api.enviarCnh(envio);
+      const { cnh } = await ana.api.buscarMeusDocumentos();
+      expect(cnh).toMatchObject({
+        alvo: 'guincheiro',
+        tipo: 'cnh',
+        estado: 'pendente',
+        validade,
+        dados: { numero: numeroDaAna, categoria: 'C', validade, ear: true },
+      });
+      const { data } = await admin()
+        .from('documentos_guincheiro')
+        .select('cnh_numero, cnh_categoria, cnh_validade, cnh_ear')
+        .eq('guincheiro_id', ana.id)
+        .single();
+      expect(data).toEqual({
+        cnh_numero: numeroDaAna,
+        cnh_categoria: 'C',
+        cnh_validade: validade,
+        cnh_ear: true,
+      });
+      expect(await motivoDe(ana.api.enviarCnh(envio))).toBe('documento_ja_enviado');
+    });
+
+    it('a mesma CNH não vale em duas contas', async () => {
+      await bruno.api.criarMeuGuincheiro();
+      const arquivo = await bruno.api.enviarArquivoDoGuincheiro(pdf());
+      expect(
+        await motivoDe(
+          bruno.api.enviarCnh({
+            numero: numeroDaAna,
+            categoria: 'B',
+            validade: emDias(100),
+            ear: true,
+            arquivo,
+          }),
+        ),
+      ).toBe('cnh_ja_cadastrada');
+      expect((await bruno.api.buscarMeusDocumentos()).cnh).toBeNull();
+    });
+
+    it('antecedentes: emissão futura ou de mais de 12 meses é recusada; a válida vale 12 meses', async () => {
+      const arquivo = await ana.api.enviarArquivoDoGuincheiro(pdf());
+      expect(await motivoDe(ana.api.enviarAntecedentes({ emissao: emDias(2), arquivo }))).toBe(
+        'emissao_invalida',
+      );
+      const antiga = new Date(`${emDias(0)}T12:00:00Z`);
+      antiga.setUTCFullYear(antiga.getUTCFullYear() - 1);
+      antiga.setUTCDate(antiga.getUTCDate() - 1);
+      expect(
+        await motivoDe(
+          ana.api.enviarAntecedentes({ emissao: antiga.toISOString().slice(0, 10), arquivo }),
+        ),
+      ).toBe('antecedentes_vencidos');
+
+      const emissao = emDias(-20);
+      await ana.api.enviarAntecedentes({ emissao, arquivo });
+      const { antecedentes } = await ana.api.buscarMeusDocumentos();
+      const { data: validade } = await admin().rpc('validade_antecedentes', { emissao });
+      expect(antecedentes).toMatchObject({ estado: 'pendente', emissao, validade });
+    });
+
+    it('envia a selfie', async () => {
+      await ana.api.enviarSelfie(await ana.api.enviarArquivoDoGuincheiro(jpg()));
+      expect((await ana.api.buscarMeusDocumentos()).selfie).toMatchObject({
+        tipo: 'selfie',
+        estado: 'pendente',
+        validade: null,
+      });
+    });
+
+    it('o Guincheiro lê só os próprios documentos', async () => {
+      const { api, supabase } = novaApiGuincheiro();
+      await api.confirmarCodigo(MARCOS, CODIGO_DE_TESTE);
+      expect(await api.buscarMeusDocumentos()).toEqual({
+        cnh: null,
+        antecedentes: null,
+        selfie: null,
+      });
+      const { data } = await supabase.from('documentos_guincheiro').select('guincheiro_id');
+      expect(data).toEqual([]);
+      const escrita = await supabase
+        .from('documentos_guincheiro')
+        .insert({ guincheiro_id: ana.id });
+      expect(escrita.error).not.toBeNull();
+    });
+
+    describe('Painel de operação', () => {
+      async function operacao() {
+        const { supabase, api } = novoPainel();
+        await api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+        return { supabase, api };
+      }
+
+      it('a Frota entra na fila e a operação vê o dono, a CNH e a emissão da certidão', async () => {
+        const { api } = await operacao();
+        const fila = await api.listarFilaHomologacao();
+        expect(fila.find((f) => f.id === ana.frotaId)?.pendentes).toBe(3);
+
+        const frota = await api.buscarFrotaHomologacao(ana.frotaId);
+        const cnh = frota!.itens.find((i) => i.tipo === 'cnh')!;
+        expect(cnh).toMatchObject({
+          guincheiro: 'Ana Documentos',
+          cnh: { numero: numeroDaAna, categoria: 'C', ear: true },
+        });
+        const ant = frota!.itens.find((i) => i.tipo === 'antecedentes')!;
+        expect(ant.antecedentesEmissao).toBe(emDias(-20));
+        expect(ant.validade).not.toBeNull();
+      });
+
+      it('aprova a CNH, recusa a selfie com motivo, e o Guincheiro vê e reenvia', async () => {
+        const { api } = await operacao();
+        const frota = await api.buscarFrotaHomologacao(ana.frotaId);
+        const item = (tipo: string) => frota!.itens.find((i) => i.tipo === tipo)!;
+
+        await api.aprovarItem(item('cnh').id);
+        expect(await motivoDe(api.recusarItem(item('selfie').id, '  '))).toBe('motivo_obrigatorio');
+        await api.recusarItem(item('selfie').id, 'Foto desfocada');
+
+        const docs = await ana.api.buscarMeusDocumentos();
+        expect(docs.cnh?.estado).toBe('aprovado');
+        expect(docs.selfie).toMatchObject({ estado: 'recusado', motivo: 'Foto desfocada' });
+
+        await ana.api.enviarSelfie(await ana.api.enviarArquivoDoGuincheiro(jpg()));
+        const depois = await ana.api.buscarMeusDocumentos();
+        expect(depois.selfie).toMatchObject({ estado: 'pendente', motivo: null });
+        expect(depois.selfie?.id).toBe(docs.selfie?.id);
+
+        // CNH aprovada não é substituída.
+        expect(
+          await motivoDe(
+            ana.api.enviarCnh({
+              numero: numeroDaAna,
+              categoria: 'C',
+              validade: emDias(500),
+              ear: true,
+              arquivo: await ana.api.enviarArquivoDoGuincheiro(pdf()),
+            }),
+          ),
+        ).toBe('documento_ja_enviado');
+      });
+    });
+  });
+
   describe('Cliente novo (sem perfil)', () => {
     beforeAll(async () => {
       if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('defina SUPABASE_SERVICE_ROLE_KEY');

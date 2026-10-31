@@ -61,3 +61,39 @@ export function mascararCep(digitos: string): string {
   const d = digitos.replace(/\D/g, '').slice(0, 8);
   return d.replace(/^(\d{5})(\d)/, '$1-$2');
 }
+
+/** A certidão de antecedentes vale 12 meses a partir da emissão (ADR-0012). */
+export const MESES_DE_VALIDADE_DOS_ANTECEDENTES = 12;
+
+function ultimoDiaDoMes(ano: number, mes: number): number {
+  return new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+}
+
+/**
+ * Último dia de validade da certidão de antecedentes: o mesmo dia, 12 meses depois da emissão
+ * (29/02 vira 28/02). Datas em AAAA-MM-DD, sem fuso. Mesma regra de
+ * `public.validade_antecedentes` no banco. Devolve `null` se a entrada não é uma data válida.
+ */
+export function validadeDosAntecedentes(emissao: string): string | null {
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(emissao);
+  if (!partes) return null;
+  const [ano, mes, dia] = [Number(partes[1]), Number(partes[2]), Number(partes[3])];
+  if (mes < 1 || mes > 12 || dia < 1 || dia > ultimoDiaDoMes(ano, mes)) return null;
+  const novoAno = ano + MESES_DE_VALIDADE_DOS_ANTECEDENTES / 12;
+  const novoDia = Math.min(dia, ultimoDiaDoMes(novoAno, mes));
+  return [
+    String(novoAno).padStart(4, '0'),
+    String(mes).padStart(2, '0'),
+    String(novoDia).padStart(2, '0'),
+  ].join('-');
+}
+
+/** Só dígitos da CNH, no máximo 11. */
+export function mascararCnh(texto: string): string {
+  return texto.replace(/\D/g, '').slice(0, 11);
+}
+
+/** O número da CNH tem 11 dígitos. */
+export function cnhNumeroValido(numero: string): boolean {
+  return /^\d{11}$/.test(numero);
+}

@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import type { ItemHomologacao, MinhaFrota as Frota } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
-import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS } from '../rotas';
+import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS, ROTA_DOCUMENTOS } from '../rotas';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
 import { formatarData } from './cadastro/regras';
 
@@ -40,12 +40,12 @@ export function MinhaFrota() {
   }
   if (estado === 'convidado') return <Navigate to={ROTA_DADOS_PESSOAIS} replace />;
   if (estado === 'sem_perfil') return <Navigate to="/cadastro" replace />;
-  if (estado === 'pronto') return <Navigate to="/" replace />;
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
-  return <Andamento />;
+  // O autônomo vira Guincheiro da própria Frota (#47) e continua vendo a Frota dele aqui.
+  return <Andamento comoGuincheiro={estado === 'pronto'} />;
 }
 
-function Andamento() {
+function Andamento({ comoGuincheiro }: { comoGuincheiro: boolean }) {
   const api = useApi();
   const ir = useNavigate();
   // undefined: lendo; null: ainda não enviou o cadastro.
@@ -74,7 +74,8 @@ function Andamento() {
     }
   }
 
-  if (frota === null) return <Navigate to="/cadastro" replace />;
+  // Guincheiro de empresa não tem Frota para gerir: volta ao plantão.
+  if (frota === null) return <Navigate to={comoGuincheiro ? '/' : '/cadastro'} replace />;
   if (frota === undefined && !erro) return <Tela rotulo="Carregando">{null}</Tela>;
 
   return (
@@ -140,9 +141,19 @@ function Andamento() {
         <Botao variante="claro" grande disabled={saindo} onClick={sair}>
           Sair
         </Botao>
+        {frota?.tipo === 'autonomo' && (
+          <Link centro onClick={() => ir(ROTA_DOCUMENTOS)}>
+            Meus documentos de Guincheiro
+          </Link>
+        )}
         {frota && (
           <Link centro onClick={() => ir(ROTA_CONVITES)}>
             Convidar Guincheiros
+          </Link>
+        )}
+        {comoGuincheiro && (
+          <Link centro onClick={() => ir('/')}>
+            Voltar ao plantão
           </Link>
         )}
         <Link centro onClick={() => globalThis.location.reload()}>

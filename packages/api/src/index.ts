@@ -139,6 +139,40 @@ export interface CadastroGuincheiroConvidado {
   termosVersao: string;
 }
 
+/** Dados da CNH, em colunas consultáveis (a regra CNH × PBT e o alerta de vencimento leem daqui). */
+export interface DadosCnh {
+  /** 11 dígitos. */
+  numero: string;
+  /** ACC, A, B, C, D, E, AB, AC, AD ou AE. */
+  categoria: string;
+  /** Último dia de validade (AAAA-MM-DD). */
+  validade: string;
+  /** Observação EAR (exerce atividade remunerada). */
+  ear: boolean;
+}
+
+/** O que o Guincheiro envia na etapa da CNH. O arquivo é o caminho devolvido pelo envio. */
+export interface EnvioDeCnh extends DadosCnh {
+  arquivo: string;
+}
+
+/** O que o Guincheiro envia na etapa dos antecedentes. */
+export interface EnvioDeAntecedentes {
+  /** Dia da emissão da certidão (AAAA-MM-DD); vale 12 meses a partir dele. */
+  emissao: string;
+  arquivo: string;
+}
+
+/**
+ * Os documentos do Guincheiro logado, um item de homologação por tipo (`null` = ainda não
+ * enviado). Os dados da CNH e a emissão da certidão podem faltar em item criado fora do app.
+ */
+export interface MeusDocumentos {
+  cnh: (ItemHomologacao & { dados: DadosCnh | null }) | null;
+  antecedentes: (ItemHomologacao & { emissao: string | null }) | null;
+  selfie: ItemHomologacao | null;
+}
+
 /** Preço fechado calculado e gravado pelo servidor (Edge Function `cotar-pedido`). */
 export interface CotacaoPedido {
   /** Distância em linha reta do Guincheiro elegível mais próximo até a origem (provisório). */
@@ -337,6 +371,22 @@ export type MotivoErroApi =
   | 'convite_indisponivel'
   /** Primeiro acesso: o CPF não passa no dígito verificador. */
   | 'cpf_invalido'
+  /** Documentos do Guincheiro: número ou categoria da CNH inválidos. */
+  | 'cnh_invalida'
+  /** Documentos do Guincheiro: CNH sem validade ou vencida. */
+  | 'cnh_vencida'
+  /** Documentos do Guincheiro: a CNH não tem a observação EAR. */
+  | 'cnh_sem_ear'
+  /** Documentos do Guincheiro: esta CNH já está em outra conta. */
+  | 'cnh_ja_cadastrada'
+  /** Documentos do Guincheiro: o documento já foi enviado e está em análise ou aprovado. */
+  | 'documento_ja_enviado'
+  /** Documentos do Guincheiro: data de emissão da certidão ausente ou no futuro. */
+  | 'emissao_invalida'
+  /** Documentos do Guincheiro: certidão emitida há mais de 12 meses. */
+  | 'antecedentes_vencidos'
+  /** Só o representante de uma Frota autônoma vira Guincheiro da própria Frota. */
+  | 'frota_nao_autonoma'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -506,6 +556,32 @@ export interface ApiGuincheiro extends Pick<
    * `numero_ja_tem_conta`, `dados_incompletos`, `cpf_invalido`, `cpf_ja_cadastrado`.
    */
   aceitarConvite(dados: CadastroGuincheiroConvidado): Promise<void>;
+  /**
+   * O autônomo (representante de uma Frota autônoma) cria a própria linha de Guincheiro,
+   * indisponível, ao começar a etapa de documentos. Pode repetir. Erros: `frota_nao_autonoma`.
+   */
+  criarMeuGuincheiro(): Promise<void>;
+  /** Os documentos do Guincheiro logado e o estado de homologação de cada um. */
+  buscarMeusDocumentos(): Promise<MeusDocumentos>;
+  /**
+   * Envia a foto da CNH, a certidão ou a selfie ao bucket `documentos-prestadores`
+   * (`<usuario>/<uuid>.<ext>`) e devolve o caminho. PDF ou imagem de até 10 MiB; erros
+   * `arquivo_invalido` e `arquivo_grande`.
+   */
+  enviarArquivoDoGuincheiro(arquivo: ArquivoDeMidia): Promise<string>;
+  /**
+   * Envia a CNH (ou reenvia, se recusada ou vencida): grava os dados e cria o item pendente.
+   * Erros: `cnh_invalida`, `cnh_vencida`, `cnh_sem_ear`, `cnh_ja_cadastrada`,
+   * `documento_ja_enviado`, `documento_ausente`, `sem_permissao`.
+   */
+  enviarCnh(envio: EnvioDeCnh): Promise<void>;
+  /**
+   * Envia a certidão de antecedentes (ou reenvia). Erros: `emissao_invalida`,
+   * `antecedentes_vencidos`, `documento_ja_enviado`, `documento_ausente`, `sem_permissao`.
+   */
+  enviarAntecedentes(envio: EnvioDeAntecedentes): Promise<void>;
+  /** Envia a selfie (ou reenvia). Erros: `documento_ja_enviado`, `documento_ausente`, `sem_permissao`. */
+  enviarSelfie(arquivo: string): Promise<void>;
   /** O interruptor do plantão: grava `guincheiros.disponivel`. */
   definirDisponibilidade(disponivel: boolean): Promise<void>;
   /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
@@ -1042,6 +1118,7 @@ const nomeDoCanal = (prefixo: string) => `${prefixo}-${++canais}-${Date.now()}`;
 
 const BUCKET_DOCUMENTOS = 'documentos-prestadores';
 const FROTA_DOCUMENTO_UNICO = 'frotas_documento_key';
+const CNH_UNICA = 'documentos_guincheiro_cnh_numero_key';
 
 /** Tipos aceitos no bucket de documentos e a extensão de cada um no nome do objeto. */
 const EXTENSAO_DO_DOCUMENTO: Record<string, string> = {
@@ -1195,12 +1272,90 @@ function erroDoConvite(
   }
 }
 
+/** Erros das funções de documentos do Guincheiro (migração `documentos_do_guincheiro`). */
+function erroDosDocumentos(
+  error: { code?: string; message?: string },
+  mensagemDeFalha: string,
+): ErroApi {
+  const causa = { cause: error };
+  switch (error.code) {
+    case '42501':
+    case 'GDG01':
+      return new ErroApi('sem_permissao', 'Só o Guincheiro envia os próprios documentos', causa);
+    case 'GDG02':
+    case 'GDG03':
+      return new ErroApi('cnh_invalida', 'Confira o número e a categoria da CNH', causa);
+    case 'GDG04':
+      return new ErroApi('cnh_vencida', 'A CNH está vencida. Renove a CNH antes de enviar.', causa);
+    case 'GDG05':
+      return new ErroApi('cnh_sem_ear', 'A CNH precisa da observação EAR', causa);
+    case 'GDG06':
+      return new ErroApi(
+        'documento_ja_enviado',
+        'Este documento já foi enviado e está em análise ou aprovado',
+        causa,
+      );
+    case 'GDG07':
+      return new ErroApi('emissao_invalida', 'Informe a data de emissão da certidão', causa);
+    case 'GDG08':
+      return new ErroApi(
+        'antecedentes_vencidos',
+        'A certidão foi emitida há mais de 12 meses. Emita uma nova.',
+        causa,
+      );
+    case 'GDG09':
+      return new ErroApi(
+        'frota_nao_autonoma',
+        'Só o autônomo é Guincheiro da própria Frota. Convide os Guincheiros da empresa.',
+        causa,
+      );
+    case 'GHM06':
+      return new ErroApi(
+        'documento_ausente',
+        'O arquivo não chegou ao servidor. Envie de novo.',
+        causa,
+      );
+    case '23505':
+      if (error.message?.includes(CNH_UNICA)) {
+        return new ErroApi(
+          'cnh_ja_cadastrada',
+          'Esta CNH já está cadastrada em outra conta',
+          causa,
+        );
+      }
+      return new ErroApi('falha', mensagemDeFalha, causa);
+    default:
+      return new ErroApi('falha', mensagemDeFalha, causa);
+  }
+}
+
 export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
   const base = criarApi(supabase);
 
   async function meuId() {
     const { data } = await supabase.auth.getSession();
     return data.session?.user.id ?? null;
+  }
+
+  /** PDF ou imagem de até 10 MiB, em `<usuario>/<uuid>.<ext>` no bucket de documentos. */
+  async function enviarAoBucket(arquivo: ArquivoDeMidia): Promise<string> {
+    const id = await meuId();
+    if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+    const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
+    if (!extensao) {
+      throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+    }
+    if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+      throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+    }
+    const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
+    const envio = await supabase.storage
+      .from(BUCKET_DOCUMENTOS)
+      .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+    if (envio.error) {
+      throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
+    }
+    return caminho;
   }
 
   async function completarCorrida(
@@ -1299,25 +1454,8 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
       if (error) throw erroDoCadastroDeFrota(error, 'Não foi possível salvar o cadastro');
     },
 
-    async enviarDocumentoDaFrota(arquivo) {
-      const id = await meuId();
-      if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
-      const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
-      if (!extensao) {
-        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
-      }
-      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
-        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
-      }
-      const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
-      const envio = await supabase.storage
-        .from(BUCKET_DOCUMENTOS)
-        .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
-      if (envio.error) {
-        throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
-      }
-      return caminho;
-    },
+    enviarDocumentoDaFrota: enviarAoBucket,
+    enviarArquivoDoGuincheiro: enviarAoBucket,
 
     async enviarCadastroFrota() {
       const { data, error } = await supabase.rpc('enviar_cadastro_frota');
@@ -1418,6 +1556,87 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
         termos_versao: termosVersao,
       });
       if (error) throw erroDoConvite(error, 'Não foi possível concluir o primeiro acesso');
+    },
+
+    async criarMeuGuincheiro() {
+      const { error } = await supabase.rpc('criar_meu_guincheiro');
+      if (error) throw erroDosDocumentos(error, 'Não foi possível abrir a etapa de documentos');
+    },
+
+    async buscarMeusDocumentos() {
+      const id = await meuId();
+      if (!id) return { cnh: null, antecedentes: null, selfie: null };
+      const [itens, dados] = await Promise.all([
+        supabase
+          .from('itens_homologacao')
+          .select('id, alvo, tipo, estado, motivo, validade, enviado_em')
+          .eq('alvo', 'guincheiro')
+          .eq('alvo_id', id),
+        supabase
+          .from('documentos_guincheiro')
+          .select('cnh_numero, cnh_categoria, cnh_validade, cnh_ear, antecedentes_emissao')
+          .eq('guincheiro_id', id)
+          .maybeSingle(),
+      ]);
+      if (itens.error || dados.error) {
+        throw new ErroApi('falha', 'Não foi possível ler os documentos', {
+          cause: itens.error ?? dados.error,
+        });
+      }
+      const doTipo = (tipo: Enums<'tipo_item_homologacao'>) => {
+        const i = itens.data.find((linha) => linha.tipo === tipo);
+        return i
+          ? {
+              id: i.id,
+              alvo: i.alvo,
+              tipo: i.tipo,
+              estado: i.estado,
+              motivo: i.motivo,
+              validade: i.validade,
+              enviadoEm: i.enviado_em,
+            }
+          : null;
+      };
+      const d = dados.data;
+      const cnh = doTipo('cnh');
+      const antecedentes = doTipo('antecedentes');
+      return {
+        cnh: cnh && {
+          ...cnh,
+          dados:
+            d?.cnh_numero && d.cnh_categoria && d.cnh_validade && d.cnh_ear !== null
+              ? {
+                  numero: d.cnh_numero,
+                  categoria: d.cnh_categoria,
+                  validade: d.cnh_validade,
+                  ear: d.cnh_ear,
+                }
+              : null,
+        },
+        antecedentes: antecedentes && { ...antecedentes, emissao: d?.antecedentes_emissao ?? null },
+        selfie: doTipo('selfie'),
+      };
+    },
+
+    async enviarCnh({ numero, categoria, validade, ear, arquivo }) {
+      const { error } = await supabase.rpc('enviar_cnh', {
+        numero,
+        categoria,
+        validade,
+        ear,
+        arquivo,
+      });
+      if (error) throw erroDosDocumentos(error, 'Não foi possível enviar a CNH');
+    },
+
+    async enviarAntecedentes({ emissao, arquivo }) {
+      const { error } = await supabase.rpc('enviar_antecedentes', { emissao, arquivo });
+      if (error) throw erroDosDocumentos(error, 'Não foi possível enviar a certidão');
+    },
+
+    async enviarSelfie(arquivo) {
+      const { error } = await supabase.rpc('enviar_selfie', { arquivo });
+      if (error) throw erroDosDocumentos(error, 'Não foi possível enviar a selfie');
     },
 
     async definirDisponibilidade(disponivel) {
@@ -1546,6 +1765,12 @@ export interface ItemHomologacao {
   validade: string | null;
   /** ISO 8601: quando entrou (ou voltou) para a fila. */
   enviadoEm: string;
+  /** Só no Painel, nos itens de Guincheiro: de quem é o documento. */
+  guincheiro?: string | null;
+  /** Só no Painel, na CNH: os dados enviados. `null` se o item veio de fora do app. */
+  cnh?: DadosCnh | null;
+  /** Só no Painel, nos antecedentes: o dia da emissão (a validade de 12 meses é `validade`). */
+  antecedentesEmissao?: string | null;
 }
 
 /** Uma Frota com item `pendente`, na ordem de envio. */
@@ -1668,27 +1893,69 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
       const { data, error } = await supabase
         .from('frotas')
         .select(
-          'id, nome, tipo, documento, itens_homologacao (id, alvo, tipo, estado, motivo, validade, enviado_em)',
+          'id, nome, tipo, documento, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em)',
         )
         .eq('id', frotaId)
         .maybeSingle();
       if (error) throw new ErroApi('falha', 'Não foi possível ler a Frota', { cause: error });
       if (!data) return null;
+
+      // Itens de Guincheiro: o nome do dono e os dados da CNH e da certidão (a operação lê todos).
+      const donos = [
+        ...new Set(
+          data.itens_homologacao.filter((i) => i.alvo === 'guincheiro').map((i) => i.alvo_id),
+        ),
+      ];
+      const nomes = new Map<string, string>();
+      const documentos = new Map<string, Tables<'documentos_guincheiro'>>();
+      if (donos.length > 0) {
+        const [perfis, dados] = await Promise.all([
+          supabase.from('perfis').select('id, nome').in('id', donos),
+          supabase.from('documentos_guincheiro').select('*').in('guincheiro_id', donos),
+        ]);
+        if (perfis.error || dados.error) {
+          throw new ErroApi('falha', 'Não foi possível ler os Guincheiros', {
+            cause: perfis.error ?? dados.error,
+          });
+        }
+        for (const p of perfis.data) nomes.set(p.id, p.nome);
+        for (const d of dados.data) documentos.set(d.guincheiro_id, d);
+      }
+
       return {
         id: data.id,
         nome: data.nome,
         tipo: data.tipo,
         documento: data.documento,
         itens: data.itens_homologacao
-          .map((i) => ({
-            id: i.id,
-            alvo: i.alvo,
-            tipo: i.tipo,
-            estado: i.estado,
-            motivo: i.motivo,
-            validade: i.validade,
-            enviadoEm: i.enviado_em,
-          }))
+          .map((i): ItemHomologacao => {
+            const item: ItemHomologacao = {
+              id: i.id,
+              alvo: i.alvo,
+              tipo: i.tipo,
+              estado: i.estado,
+              motivo: i.motivo,
+              validade: i.validade,
+              enviadoEm: i.enviado_em,
+            };
+            if (i.alvo !== 'guincheiro') return item;
+            const d = documentos.get(i.alvo_id);
+            item.guincheiro = nomes.get(i.alvo_id) ?? null;
+            if (i.tipo === 'cnh') {
+              item.cnh =
+                d?.cnh_numero && d.cnh_categoria && d.cnh_validade && d.cnh_ear !== null
+                  ? {
+                      numero: d.cnh_numero,
+                      categoria: d.cnh_categoria,
+                      validade: d.cnh_validade,
+                      ear: d.cnh_ear,
+                    }
+                  : null;
+            }
+            if (i.tipo === 'antecedentes')
+              item.antecedentesEmissao = d?.antecedentes_emissao ?? null;
+            return item;
+          })
           .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.id.localeCompare(b.id)),
       };
     },

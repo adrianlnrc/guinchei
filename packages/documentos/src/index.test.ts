@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cnhNumeroValido,
   cnpjValido,
+  validadeDosAntecedentes,
   cpfValido,
   documentoValido,
   mascararCep,
@@ -81,5 +83,31 @@ describe('máscaras', () => {
     expect(mascararCep('70')).toBe('70');
     expect(mascararCep('70000000')).toBe('70000-000');
     expect(mascararCep('70.000-000999')).toBe('70000-000');
+  });
+});
+
+// Mesmos casos de supabase/tests/documentos_guincheiro.test.sql (public.validade_antecedentes).
+describe('validadeDosAntecedentes', () => {
+  it('vale até o mesmo dia, 12 meses depois da emissão', () => {
+    expect(validadeDosAntecedentes('2026-03-10')).toBe('2027-03-10');
+    expect(validadeDosAntecedentes('2026-12-31')).toBe('2027-12-31');
+  });
+
+  it('29 de fevereiro vira 28 de fevereiro', () => {
+    expect(validadeDosAntecedentes('2024-02-29')).toBe('2025-02-28');
+  });
+
+  it('recusa o que não é uma data', () => {
+    expect(validadeDosAntecedentes('10/03/2026')).toBeNull();
+    expect(validadeDosAntecedentes('2026-02-30')).toBeNull();
+    expect(validadeDosAntecedentes('')).toBeNull();
+  });
+});
+
+describe('cnhNumeroValido', () => {
+  it('exige 11 dígitos', () => {
+    expect(cnhNumeroValido('04512398765')).toBe(true);
+    expect(cnhNumeroValido('0451239876')).toBe(false);
+    expect(cnhNumeroValido('0451239876A')).toBe(false);
   });
 });

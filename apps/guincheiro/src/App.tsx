@@ -8,7 +8,18 @@ import { Cadastro } from './telas/Cadastro';
 import { MinhaFrota } from './telas/MinhaFrota';
 import { Convites } from './telas/Convites';
 import { DadosPessoais } from './telas/DadosPessoais';
-import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS } from './rotas';
+import { Documentos } from './telas/documentos/Documentos';
+import { EtapaAntecedentes } from './telas/documentos/EtapaAntecedentes';
+import { EtapaCnh } from './telas/documentos/EtapaCnh';
+import { EtapaSelfie } from './telas/documentos/EtapaSelfie';
+import {
+  ROTA_CONVITES,
+  ROTA_DADOS_PESSOAIS,
+  ROTA_DOCUMENTOS,
+  ROTA_DOCUMENTOS_ANTECEDENTES,
+  ROTA_DOCUMENTOS_CNH,
+  ROTA_DOCUMENTOS_SELFIE,
+} from './rotas';
 import { Celular, Codigo } from './telas/Entrada';
 import { Plantao } from './telas/Plantao';
 import { Chamado } from './telas/Chamado';
@@ -34,6 +45,10 @@ export function App({ api }: { api: ApiGuincheiro }) {
               <Route path="/frota" element={<MinhaFrota />} />
               <Route path={ROTA_CONVITES} element={<Convites />} />
               <Route path={ROTA_DADOS_PESSOAIS} element={<DadosPessoais />} />
+              <Route path={ROTA_DOCUMENTOS} element={<Documentos />} />
+              <Route path={ROTA_DOCUMENTOS_CNH} element={<EtapaCnh />} />
+              <Route path={ROTA_DOCUMENTOS_ANTECEDENTES} element={<EtapaAntecedentes />} />
+              <Route path={ROTA_DOCUMENTOS_SELFIE} element={<EtapaSelfie />} />
               <Route
                 path="/"
                 element={

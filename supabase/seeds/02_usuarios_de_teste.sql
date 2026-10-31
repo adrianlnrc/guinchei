@@ -99,3 +99,9 @@ update public.itens_homologacao
 set estado = 'aprovado', decidido_em = now() - interval '1 day',
     decidido_por = '33333333-3333-4333-8333-333333333333'
 where id = 'a1000000-0000-4000-8000-000000000001';
+
+-- Dados da CNH do Paulo (#47), os mesmos do item de homologação acima: o Painel mostra número,
+-- categoria, validade e EAR ao lado do documento.
+insert into public.documentos_guincheiro
+  (guincheiro_id, cnh_numero, cnh_categoria, cnh_validade, cnh_ear)
+values ('22222222-2222-4222-8222-222222222204', '04512398765', 'C', current_date + 730, true);

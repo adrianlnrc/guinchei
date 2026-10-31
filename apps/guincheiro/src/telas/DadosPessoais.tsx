@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { ErroApi } from '@guinchei/api';
 import { cpfValido, mascararCpf } from '@guinchei/documentos';
-import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
+import { Botao, Corpo, Link, Progresso, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { MensagemDeErro } from '../MensagemDeErro';
 import { ROTA_DOCUMENTOS } from '../rotas';
@@ -96,7 +96,10 @@ function Formulario() {
     <Tela escura rotulo="Dados pessoais">
       <Corpo style={{ padding: '28px 24px 32px', gap: 18 }}>
         <div className="marca">guinchei</div>
-        <Rotulo style={{ marginTop: 16, color: 'var(--cinza-medio)' }}>Primeiro acesso</Rotulo>
+        <Progresso total={4} feitos={1} />
+        <Rotulo style={{ marginTop: 8, color: 'var(--cinza-medio)' }}>
+          Etapa 1 de 4 · Primeiro acesso
+        </Rotulo>
         <h1 className="titulo">Quem é você?</h1>
         <p className="apoio">
           {frota ? `A Frota ${frota} convidou você. ` : ''}
