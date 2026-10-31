@@ -12,7 +12,7 @@
 -- Usuários do seed: Cliente A (Rafael), G1 Marcos (Cruzeiro, ~4,2 km do Eixo Monumental),
 -- G2 Wagner (Asa Norte, ~4,9 km), G3 Rita (Guará, ~9,6 km). Aqui se cria o Cliente B.
 begin;
-select plan(62);
+select plan(65);
 
 insert into auth.users (id, aud, role, phone)
 values ('44444444-4444-4444-8444-444444444444', 'authenticated', 'authenticated', '5561900000099');
@@ -280,7 +280,50 @@ insert into public.guincheiros (id, frota_id, posicao, disponivel)
 values ('55555555-5555-4555-8555-555555555555', 'f0000000-0000-4000-8000-000000000002',
         extensions.st_setsrid(extensions.st_makepoint(-47.95, -15.80), 4326), true);
 
+-- Sem homologação (#50), o Guincheiro de teste, mesmo disponível e de Frota ativa, não é
+-- candidato e não recebe oferta.
 set local role service_role;
+select is(
+  (select count(*)
+   from jsonb_array_elements(public.dados_do_match(current_setting('teste.pedido')::uuid) -> 'candidatos') c
+   where c ->> 'guincheiro_id' = '55555555-5555-4555-8555-555555555555'),
+  0::bigint,
+  'Guincheiro sem homologação não aparece nos candidatos de dados_do_match'
+);
+select throws_ok(
+  $$ select public.registrar_tentativa(current_setting('teste.pedido')::uuid, 1,
+       '55555555-5555-4555-8555-555555555555', 4, 'oferecida', 6.3, 26965, 21572) $$,
+  'GMT03', null, 'e a oferta a ele é recusada: o Guincheiro não está habilitado'
+);
+reset role;
+
+-- Preparação: homologa o Guincheiro de teste (CNH B, certidão e selfie aprovadas) e o vincula
+-- ao veículo de 3.000 kg da Rita, na mesma Frota (autônoma, ativa no seed).
+insert into public.documentos_guincheiro
+  (guincheiro_id, cnh_numero, cnh_categoria, cnh_validade, cnh_ear, antecedentes_emissao)
+values ('55555555-5555-4555-8555-555555555555', '60493827150', 'B',
+        public.hoje_em_brasilia() + 400, true, public.hoje_em_brasilia() - 10);
+insert into public.itens_homologacao (frota_id, alvo, alvo_id, tipo, dono_id, arquivo, validade)
+select 'f0000000-0000-4000-8000-000000000002', 'guincheiro', '55555555-5555-4555-8555-555555555555',
+       t.tipo::public.tipo_item_homologacao, '55555555-5555-4555-8555-555555555555',
+       '55555555-5555-4555-8555-555555555555/' || t.tipo || '.pdf', t.validade
+from (values ('cnh', public.hoje_em_brasilia() + 400),
+             ('antecedentes', public.hoje_em_brasilia() + 300),
+             ('selfie', null::date)) t (tipo, validade);
+update public.itens_homologacao set estado = 'aprovado'
+where alvo = 'guincheiro' and alvo_id = '55555555-5555-4555-8555-555555555555';
+insert into public.vinculos_veiculo (frota_id, veiculo_id, guincheiro_id)
+values ('f0000000-0000-4000-8000-000000000002', 'b1000000-0000-4000-8000-000000000003',
+        '55555555-5555-4555-8555-555555555555');
+
+set local role service_role;
+select is(
+  (select count(*)
+   from jsonb_array_elements(public.dados_do_match(current_setting('teste.pedido')::uuid) -> 'candidatos') c
+   where c ->> 'guincheiro_id' = '55555555-5555-4555-8555-555555555555'),
+  1::bigint,
+  'homologado e vinculado a veículo homologado, o Guincheiro vira candidato'
+);
 select set_config('teste.oferta_g4', public.registrar_tentativa(
   current_setting('teste.pedido')::uuid, 1, '55555555-5555-4555-8555-555555555555', 4,
   'oferecida', 6.3, 26965, 21572)::text, true);

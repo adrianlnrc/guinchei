@@ -11,6 +11,12 @@
 begin;
 select plan(82);
 
+-- Preparação (#50): o seed traz os vínculos dos Guincheiros das Frotas homologadas (Reboque
+-- Planalto e Rita Campos). Este teste conta os vínculos que ele mesmo cria, então tira esses
+-- do cenário.
+delete from public.vinculos_veiculo
+where frota_id in ('f0000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000002');
+
 insert into auth.users (id, aud, role, phone) values
   ('e4800000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', '5561900000481'),
   ('e4800000-0000-4000-8000-000000000002', 'authenticated', 'authenticated', '5561900000482'),

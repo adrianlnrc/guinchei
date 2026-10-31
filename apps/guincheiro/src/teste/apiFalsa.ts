@@ -29,6 +29,7 @@ import {
   type CorridaDoGuincheiro,
   type EstadoCorrida,
   type MeuGuincheiro,
+  type MinhaElegibilidade,
   type MinhaFrota,
   type OfertaAberta,
   type Perfil,
@@ -194,6 +195,30 @@ export const ITEM_APOLICE: MinhaFrota['itens'][number] = {
   enviadoEm: '2026-10-18T12:00:00Z',
 };
 
+/** O que falta numa Frota recém-cadastrada: os dois documentos em análise e o resto por fazer. */
+export const PENDENCIAS_DO_CADASTRO_NOVO: MinhaFrota['pendenciasDeAtivacao'] = [
+  {
+    categoria: 'frota',
+    descricao: 'Alvará: aguardando aprovação',
+    tipo: 'alvara',
+    alvoId: 'frota-nova',
+  },
+  {
+    categoria: 'frota',
+    descricao: 'Apólice de RC por avaria: aguardando aprovação',
+    tipo: 'apolice_rc',
+    alvoId: 'frota-nova',
+  },
+  { categoria: 'veiculo', descricao: 'Nenhum veículo cadastrado', tipo: null, alvoId: null },
+  { categoria: 'guincheiro', descricao: 'Nenhum Guincheiro na Frota', tipo: null, alvoId: null },
+  {
+    categoria: 'vinculo',
+    descricao: 'Nenhum Guincheiro homologado vinculado a um veículo homologado',
+    tipo: null,
+    alvoId: null,
+  },
+];
+
 function corridaDaOferta(oferta: OfertaAberta, estado: EstadoCorrida): CorridaDoGuincheiro {
   return {
     id: 'corrida-1',
@@ -233,6 +258,7 @@ export function apiFalsa({
   encerrados = [],
   meuVeiculo = null,
   vencimentos = { prazoDias: 30, itens: [] },
+  elegibilidade = { habilitado: true, motivos: [] },
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
@@ -269,6 +295,8 @@ export function apiFalsa({
   meuVeiculo?: MeuVeiculo | null;
   /** Os documentos vencendo ou vencidos que o servidor devolve a quem está logado. */
   vencimentos?: AlertaDeVencimento;
+  /** O que o banco diz sobre o Guincheiro logado poder receber chamados (padrão: pode). */
+  elegibilidade?: MinhaElegibilidade;
 } = {}) {
   let logado = sessao;
   let perfilAtual = perfil;
@@ -425,6 +453,7 @@ export function apiFalsa({
         apoliceValidade: d.apoliceValidade ?? null,
         termosPrestadorVersao: d.termosVersao ?? null,
         itens: [ITEM_ALVARA, { ...ITEM_APOLICE, validade: d.apoliceValidade ?? null }],
+        pendenciasDeAtivacao: PENDENCIAS_DO_CADASTRO_NOVO,
       };
       rascunhoAtual = null;
       return frotaAtual.id;
@@ -588,6 +617,7 @@ export function apiFalsa({
     }),
     listarVinculosEncerrados: vi.fn(async () => structuredClone(encerradosAtuais)),
     buscarMeuVeiculo: vi.fn(async () => structuredClone(meuVeiculo)),
+    buscarMinhaElegibilidade: vi.fn(async () => structuredClone(elegibilidade)),
     listarAvisosDeVencimento: vi.fn(async () => structuredClone(alertas)),
     // Como o banco: só se reenvia item vencido (ou recusado), e a validade não pode ter passado.
     reenviarItemDaFrota: vi.fn(async (itemId: string, arquivo: string, validade: string) => {

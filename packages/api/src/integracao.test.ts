@@ -2639,15 +2639,22 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     });
 
     it('o Guincheiro lê só os próprios documentos', async () => {
+      // O Marcos do seed tem os três documentos aprovados (#50); o Paulo, os dele pendentes.
+      // Cada um lê apenas os seus, e os da Ana (de outra Frota) não aparecem para nenhum.
+      const MARCOS_ID = '22222222-2222-4222-8222-222222222201';
       const { api, supabase } = novaApiGuincheiro();
       await api.confirmarCodigo(MARCOS, CODIGO_DE_TESTE);
-      expect(await api.buscarMeusDocumentos()).toEqual({
-        cnh: null,
-        antecedentes: null,
-        selfie: null,
-      });
+      const docs = await api.buscarMeusDocumentos();
+      for (const doc of [docs.cnh, docs.antecedentes, docs.selfie]) {
+        expect(doc).not.toBeNull();
+        expect(doc!.alvoId).toBe(MARCOS_ID);
+        expect(doc!.estado).toBe('aprovado');
+      }
       const { data } = await supabase.from('documentos_guincheiro').select('guincheiro_id');
-      expect(data).toEqual([]);
+      expect(data).toEqual([{ guincheiro_id: MARCOS_ID }]);
+      const itens = await supabase.from('itens_homologacao').select('alvo_id, dono_id');
+      expect(itens.data!.length).toBeGreaterThan(0);
+      expect(itens.data!.every((i) => i.dono_id === MARCOS_ID)).toBe(true);
       const escrita = await supabase
         .from('documentos_guincheiro')
         .insert({ guincheiro_id: ana.id });
@@ -3075,6 +3082,43 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       await expect(
         api.abrirPedido({ tipoVeiculo: 'carro', situacao: 'nao_liga', rodasGiram: 'nao' }),
       ).resolves.toMatch(/^[0-9a-f-]{36}$/);
+    });
+  });
+  describe('Ativação da Frota e elegibilidade (#50)', () => {
+    it('o Guincheiro do seed está habilitado; o da Frota pendente vê o que falta', async () => {
+      const marcos = novaApiGuincheiro();
+      await marcos.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+      expect(await marcos.api.buscarMinhaElegibilidade()).toEqual({
+        habilitado: true,
+        motivos: [],
+      });
+
+      const paulo = novaApiGuincheiro();
+      await paulo.api.confirmarCodigo(PAULO.telefone, CODIGO_DE_TESTE);
+      const eleg = await paulo.api.buscarMinhaElegibilidade();
+      expect(eleg.habilitado).toBe(false);
+      expect(eleg.motivos.map((m) => m.codigo)).toEqual(
+        expect.arrayContaining(['documento', 'sem_veiculo', 'frota_inativa']),
+      );
+    });
+
+    it('a operação lê o que falta na Frota pendente e não consegue ativá-la', async () => {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      const painel = criarApiPainel(supabase);
+      await painel.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      const capital = await painel.buscarFrotaHomologacao('f0000000-0000-4000-8000-000000000003');
+      expect(capital?.ativa).toBe(false);
+      expect(capital?.pendenciasDeAtivacao.length).toBeGreaterThan(0);
+      const erro = await painel
+        .ativarFrota('f0000000-0000-4000-8000-000000000003')
+        .catch((e: unknown) => e);
+      expect((erro as ErroApi).motivo).toBe('frota_incompleta');
+      expect((erro as ErroApi).message).toMatch(/^Faltam \d+ itens? para ativar a Frota$/);
+      const planalto = await painel.buscarFrotaHomologacao('f0000000-0000-4000-8000-000000000001');
+      expect(planalto).toMatchObject({ ativa: true, pendenciasDeAtivacao: [] });
     });
   });
 });

@@ -1,23 +1,38 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import type { MinhaElegibilidade } from '@guinchei/api';
 import { formatarReais } from '@guinchei/ui';
 import { GUINCHEIRO } from '@guinchei/mock';
 import { Avatar, Corpo, Heroi, Link, Ponto, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { usePlantao } from '../plantao';
+import { BloqueioDoPlantao, ID_DO_BLOQUEIO } from './BloqueioDoPlantao';
 import { AbasGuincheiro, somaRepasses } from './comum';
 import { AvisoDeHomologacao } from './documentos/AvisoDeHomologacao';
 import { MeuVeiculo } from './MeuVeiculo';
 import { AvisosDeVencimento } from './vencimentos/AvisosDeVencimento';
 
-function Interruptor({ ligado, onChange }: { ligado: boolean; onChange: (v: boolean) => void }) {
+function Interruptor({
+  ligado,
+  bloqueado,
+  onChange,
+  aoTocarBloqueado,
+}: {
+  ligado: boolean;
+  /** Sem homologação: o interruptor não liga, e tocar nele leva à explicação. */
+  bloqueado: boolean;
+  onChange: (v: boolean) => void;
+  aoTocarBloqueado: () => void;
+}) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={ligado}
       aria-label="Disponível para chamados"
-      onClick={() => onChange(!ligado)}
+      aria-disabled={bloqueado || undefined}
+      aria-describedby={bloqueado ? ID_DO_BLOQUEIO : undefined}
+      onClick={() => (bloqueado ? aoTocarBloqueado() : onChange(!ligado))}
       style={{
         width: 58,
         height: 34,
@@ -26,6 +41,8 @@ function Interruptor({ ligado, onChange }: { ligado: boolean; onChange: (v: bool
         position: 'relative',
         transition: 'background .15s',
         flex: 'none',
+        opacity: bloqueado ? 0.45 : 1,
+        cursor: bloqueado ? 'not-allowed' : 'pointer',
       }}
     >
       <span
@@ -55,9 +72,36 @@ const iniciais = (nome: string) =>
 export function Plantao() {
   const ir = useNavigate();
   const api = useApi();
-  const { guincheiro, setGuincheiro, definirDisponivel, atualizarOferta, historico } = usePlantao();
-  const disponivel = guincheiro?.disponivel ?? false;
+  const { guincheiro, setGuincheiro, definirDisponivel, atualizarOferta, historico, avisar } =
+    usePlantao();
+  const [elegibilidade, setElegibilidade] = useState<MinhaElegibilidade | null>(null);
+  const bloqueio = useRef<HTMLElement>(null);
+  // Sem homologação o banco não oferece chamado, mesmo com o plantão ligado: a tela mostra o
+  // plantão desligado e o interruptor travado, com o motivo.
+  const bloqueado = elegibilidade !== null && !elegibilidade.habilitado;
+  const disponivel = (guincheiro?.disponivel ?? false) && !bloqueado;
   const ganho = somaRepasses(historico);
+
+  // O que falta para o Guincheiro receber chamados (documentos, veículo, Frota): vem do banco.
+  const logado = guincheiro !== null;
+  useEffect(() => {
+    if (!logado) return;
+    let vigente = true;
+    api.buscarMinhaElegibilidade().then(
+      (lida) => vigente && setElegibilidade(lida),
+      () => {},
+    );
+    return () => {
+      vigente = false;
+    };
+  }, [api, logado]);
+
+  // Plantão que ficou ligado e perdeu a homologação (documento vencido, vínculo desfeito)
+  // é desligado, para o app e o banco dizerem a mesma coisa.
+  const ligadoSemDireito = bloqueado && (guincheiro?.disponivel ?? false);
+  useEffect(() => {
+    if (ligadoSemDireito) void definirDisponivel(false);
+  }, [ligadoSemDireito, definirDisponivel]);
 
   // Ao abrir (e ao voltar de uma Corrida), o banco é a fonte: disponibilidade e Corrida em curso.
   useEffect(() => {
@@ -132,17 +176,31 @@ export function Plantao() {
                 {guincheiro ? `${guincheiro.nome} · ${guincheiro.frota}` : ''}
               </span>
             </div>
-            <Interruptor ligado={disponivel} onChange={(v) => void definirDisponivel(v)} />
+            <Interruptor
+              ligado={disponivel}
+              bloqueado={bloqueado}
+              onChange={(v) => void definirDisponivel(v)}
+              aoTocarBloqueado={() => {
+                avisar('Plantão bloqueado: veja abaixo o que falta.');
+                bloqueio.current?.focus();
+                bloqueio.current?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+              }}
+            />
           </div>
           <div style={{ height: 1, background: 'var(--linha-escura)' }} />
           <div style={{ font: '400 14px/1.5 var(--fonte-texto)', color: 'var(--cinza-claro)' }}>
             {disponivel
               ? 'Mantenha o app aberto para receber chamados. Avisos com a tela bloqueada ainda não estão disponíveis.'
-              : 'Você não recebe chamados enquanto estiver indisponível.'}
+              : bloqueado
+                ? 'O plantão fica bloqueado até a operação homologar tudo. Veja o que falta abaixo.'
+                : 'Você não recebe chamados enquanto estiver indisponível.'}
           </div>
         </div>
         {guincheiro && <AvisosDeVencimento />}
-        {!disponivel && guincheiro && <AvisoDeHomologacao />}
+        {bloqueado && elegibilidade && (
+          <BloqueioDoPlantao ref={bloqueio} motivos={elegibilidade.motivos} />
+        )}
+        {!disponivel && !bloqueado && guincheiro && <AvisoDeHomologacao />}
         {guincheiro && <MeuVeiculo />}
         <Rotulo style={{ marginTop: 8 }}>Hoje</Rotulo>
         <Heroi centavos={ganho} tamanho={56} />

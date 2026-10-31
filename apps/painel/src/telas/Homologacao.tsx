@@ -176,11 +176,19 @@ export function Homologacao() {
               >
                 <span style={{ font: '600 16px var(--fonte-titulo)' }}>{f.nome}</span>
                 <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-                  {f.tipo === 'empresa' ? 'Empresa' : 'Autônomo'} · enviado {enviadoEm(f.enviadoEm)}
+                  {f.tipo === 'empresa' ? 'Empresa' : 'Autônomo'} ·{' '}
+                  {f.pendentes === 0 ? 'completa desde' : 'enviado'} {enviadoEm(f.enviadoEm)}
                 </span>
-                <span style={{ font: '500 13px var(--fonte-texto)' }}>
-                  {itensPendentes(f.pendentes)}
-                </span>
+                {f.pendentes > 0 && (
+                  <span style={{ font: '500 13px var(--fonte-texto)' }}>
+                    {itensPendentes(f.pendentes)}
+                  </span>
+                )}
+                {f.pronta && (
+                  <span className="etiqueta etiqueta--ok" style={{ alignSelf: 'flex-start' }}>
+                    Pronta para ativar
+                  </span>
+                )}
               </button>
             ))
           : frotasVencendo.map((f) => (
@@ -332,6 +340,20 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
     if (montado.current) setOcupado(false);
   }
 
+  /** "Ativar": o banco só aceita se a regra vale agora; senão, a mensagem diz quantos itens faltam. */
+  async function ativar() {
+    setOcupado(true);
+    try {
+      await api.ativarFrota(frotaId);
+      avisar(`${frota?.nome ?? 'Frota'} ativada.`);
+    } catch (e) {
+      avisar(mensagemDe(e, 'Não foi possível ativar a Frota'));
+    }
+    await recarregar();
+    await recarregarFila();
+    if (montado.current) setOcupado(false);
+  }
+
   // O documento abre numa aba aberta já no clique (senão o navegador bloqueia o pop-up) e
   // vai para a URL assinada quando ela chega.
   async function verDocumento(item: ItemHomologacao) {
@@ -392,12 +414,18 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
             {documentoDa(frota)}
           </span>
         </div>
-        <span className="etiqueta">
-          {aprovados} de {frota.itens.length} aprovados
-        </span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <span className={`etiqueta${frota.ativa ? ' etiqueta--ok' : ''}`}>
+            {frota.ativa ? 'Frota ativa' : 'Frota inativa'}
+          </span>
+          <span className="etiqueta">
+            {aprovados} de {frota.itens.length} aprovados
+          </span>
+        </div>
       </header>
       <div style={{ flex: 1, minHeight: 0, padding: '20px 32px', overflow: 'auto' }}>
         <div style={{ maxWidth: 760, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <AtivacaoDaFrota frota={frota} ocupado={ocupado} aoAtivar={() => void ativar()} />
           <span className="rotulo rotulo--12">
             Itens · {pendentes === 0 ? 'nenhum pendente' : itensPendentes(pendentes)}
           </span>
@@ -427,11 +455,93 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
             })}
           </ul>
           <p className="apoio" style={{ fontSize: 13 }}>
-            Esta tela só decide itens. Ativar a Frota é outro passo.
+            A Frota só entra no Match depois de ativada, e volta a inativa sozinha se um item
+            obrigatório vencer ou for recusado.
           </p>
         </div>
       </div>
     </>
+  );
+}
+
+const itensQueFaltam = (n: number) => (n === 1 ? 'Falta 1 item' : `Faltam ${n} itens`);
+
+/**
+ * A regra de ativação da Frota (issue #50): alvará e apólice aprovados e vigentes, um veículo
+ * aprovado e um Guincheiro aprovado vinculado a ele com a CNH cobrindo o PBT. A lista é a que o
+ * banco confere ao ativar, não uma estimativa da tela; "Ativar" só vale com a lista vazia.
+ */
+function AtivacaoDaFrota({
+  frota,
+  ocupado,
+  aoAtivar,
+}: {
+  frota: FrotaEmHomologacao;
+  ocupado: boolean;
+  aoAtivar: () => void;
+}) {
+  const falta = frota.pendenciasDeAtivacao;
+  const completa = falta.length === 0;
+  const dica = useId();
+  return (
+    <section
+      aria-label="Ativação da Frota"
+      className="cartao"
+      style={{ borderRadius: 14, padding: 18, display: 'grid', gap: 12 }}
+    >
+      {frota.ativa ? (
+        <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <strong style={{ font: '600 16px var(--fonte-titulo)' }}>Frota ativa</strong>
+            <span className="etiqueta etiqueta--ok">No Match</span>
+          </div>
+          <p className="apoio" style={{ margin: 0, fontSize: 13 }}>
+            Os Guincheiros disponíveis, homologados e vinculados a um veículo aprovado já recebem
+            chamados.
+          </p>
+        </>
+      ) : (
+        <>
+          <strong style={{ font: '600 16px var(--fonte-titulo)' }}>
+            {completa
+              ? 'Tudo aprovado: pode ativar'
+              : `${itensQueFaltam(falta.length)} para ativar`}
+          </strong>
+          {!completa && (
+            <ul
+              aria-label="O que falta para ativar a Frota"
+              style={{
+                margin: 0,
+                paddingLeft: 20,
+                display: 'grid',
+                gap: 4,
+                font: '400 14px/1.5 var(--fonte-texto)',
+              }}
+            >
+              {falta.map((p) => (
+                <li key={p.descricao}>{p.descricao}</li>
+              ))}
+            </ul>
+          )}
+          <div className="homologacao__acoes">
+            <button
+              type="button"
+              className="acao acao--tinta"
+              disabled={!completa || ocupado}
+              aria-describedby={completa ? undefined : dica}
+              onClick={aoAtivar}
+            >
+              Ativar Frota
+            </button>
+            {!completa && (
+              <span id={dica} className="apoio" style={{ fontSize: 13 }}>
+                Libera quando a lista acima estiver completa.
+              </span>
+            )}
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
