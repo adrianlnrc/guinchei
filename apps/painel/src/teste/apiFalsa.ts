@@ -73,6 +73,27 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
       nome: 'Guincho Capital',
       tipo: 'empresa',
       documento: '11444777000161',
+      ativa: false,
+      pendenciasDeAtivacao: [
+        {
+          categoria: 'frota',
+          descricao: 'Apólice de RC por avaria: aguardando aprovação',
+          tipo: 'apolice_rc',
+          alvoId: 'f0000000-0000-4000-8000-000000000003',
+        },
+        {
+          categoria: 'veiculo',
+          descricao: 'CRLV (PBX-1D23): aguardando aprovação',
+          tipo: 'crlv',
+          alvoId: VEICULO_CAPITAL,
+        },
+        {
+          categoria: 'guincheiro',
+          descricao: 'CNH de Paulo Mendes: vencido',
+          tipo: 'cnh',
+          alvoId: null,
+        },
+      ],
       itens: [
         item('i-alvara', { tipo: 'alvara', estado: 'aprovado', enviadoEm: '2026-10-15T10:00:00Z' }),
         item('i-apolice', {
@@ -117,6 +138,16 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
       nome: 'Rebocadora Sul',
       tipo: 'autonomo',
       documento: '45678912364',
+      ativa: false,
+      pendenciasDeAtivacao: [
+        {
+          categoria: 'frota',
+          descricao: 'Alvará: aguardando aprovação',
+          tipo: 'alvara',
+          alvoId: null,
+        },
+        { categoria: 'veiculo', descricao: 'Nenhum veículo cadastrado', tipo: null, alvoId: null },
+      ],
       itens: [item('i-sul-alvara', { tipo: 'alvara', enviadoEm: '2026-10-17T08:00:00Z' })],
       veiculos: [],
       vinculos: [],
@@ -126,6 +157,8 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
       nome: 'Reboque Planalto',
       tipo: 'empresa',
       documento: '11222333000181',
+      ativa: true,
+      pendenciasDeAtivacao: [],
       itens: [
         item('i-plan-alvara', {
           tipo: 'alvara',
@@ -137,6 +170,28 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
       vinculos: [],
     },
   ];
+}
+
+/** Uma Frota com tudo aprovado que ainda espera a operação ativar. */
+export function frotaPronta(): FrotaEmHomologacao {
+  return {
+    id: 'f0000000-0000-4000-8000-000000000009',
+    nome: 'Pátio Pronto',
+    tipo: 'empresa',
+    documento: '38472915000172',
+    ativa: false,
+    pendenciasDeAtivacao: [],
+    itens: [
+      item('i-pronto-alvara', {
+        tipo: 'alvara',
+        estado: 'aprovado',
+        alvoId: 'f0000000-0000-4000-8000-000000000009',
+        enviadoEm: '2026-10-10T08:00:00Z',
+      }),
+    ],
+    veiculos: [],
+    vinculos: [],
+  };
 }
 
 /**
@@ -185,21 +240,44 @@ export function apiFalsa({
     // Como o banco: a fila é das Frotas com item pendente, a de envio mais antigo primeiro.
     listarFilaHomologacao: vi.fn(async () =>
       frotas
-        .map((f) => ({ f, pendentes: f.itens.filter((i) => i.estado === 'pendente') }))
-        .filter(({ pendentes }) => pendentes.length > 0)
-        .map(({ f, pendentes }) => ({
+        .map((f) => ({
+          f,
+          pendentes: f.itens.filter((i) => i.estado === 'pendente'),
+          pronta: !f.ativa && f.pendenciasDeAtivacao.length === 0,
+        }))
+        .filter(({ pendentes, pronta }) => pendentes.length > 0 || pronta)
+        .map(({ f, pendentes, pronta }) => ({
           id: f.id,
           nome: f.nome,
           tipo: f.tipo,
           documento: f.documento,
           pendentes: pendentes.length,
-          enviadoEm: pendentes.map((i) => i.enviadoEm).sort()[0]!,
+          pronta,
+          enviadoEm:
+            pendentes.map((i) => i.enviadoEm).sort()[0] ??
+            f.itens
+              .map((i) => i.enviadoEm)
+              .sort()
+              .at(-1)!,
         }))
         .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm)),
     ),
     buscarFrotaHomologacao: vi.fn(async (frotaId: string) => {
       const achada = frotas.find((f) => f.id === frotaId);
       return achada ? { ...achada, itens: achada.itens.map((i) => ({ ...i })) } : null;
+    }),
+    // Como o banco: só ativa com a lista de pendências vazia; senão, "Faltam N itens".
+    ativarFrota: vi.fn(async (frotaId: string) => {
+      const achada = frotas.find((f) => f.id === frotaId);
+      if (!achada) throw new ErroApi('item_indisponivel', 'Esta Frota não existe mais');
+      const n = achada.pendenciasDeAtivacao.length;
+      if (n > 0) {
+        throw new ErroApi(
+          'frota_incompleta',
+          `Faltam ${n} ${n === 1 ? 'item' : 'itens'} para ativar a Frota`,
+        );
+      }
+      achada.ativa = true;
     }),
     aprovarItem: vi.fn(async (itemId: string) => {
       pendente(itemId).estado = 'aprovado';

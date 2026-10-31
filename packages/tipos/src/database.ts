@@ -1156,12 +1156,17 @@ export type Database = {
         Returns: string;
       };
       aceitar_oferta: { Args: { tentativa_id: number }; Returns: string };
+      alvo_homologado: {
+        Args: { alvo: Database['public']['Enums']['alvo_homologacao']; alvo_id: string };
+        Returns: boolean;
+      };
       aprovar_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
       apolice_validade_aceitavel: { Args: { validade: string }; Returns: boolean };
       assinatura_do_trajeto: {
         Args: { destino: unknown; km_rebocado: number; origem: unknown };
         Returns: string;
       };
+      ativar_frota: { Args: { frota_id: string }; Returns: undefined };
       atualizar_pedido_cotado: {
         Args: {
           pedido_id: string;
@@ -1266,6 +1271,27 @@ export type Database = {
       encerrar_por_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
       enviar_selfie: { Args: { arquivo: string }; Returns: string };
       feriados_perto_de: { Args: { dia: string }; Returns: Json };
+      frota_pendencias: {
+        Args: { frota: string };
+        Returns: {
+          alvo_id: string;
+          categoria: string;
+          descricao: string;
+          ordem: number;
+          tipo: Database['public']['Enums']['tipo_item_homologacao'];
+        }[];
+      };
+      frota_pronta: { Args: { frota: string }; Returns: boolean };
+      frotas_prontas_para_ativar: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          documento: string;
+          id: string;
+          nome: string;
+          pronta_desde: string;
+          tipo: Database['public']['Enums']['tipo_frota'];
+        }[];
+      };
       gravar_cotacao: {
         Args: {
           cliente_id: string;
@@ -1285,6 +1311,8 @@ export type Database = {
         };
         Returns: undefined;
       };
+      guincheiro_elegivel: { Args: { guincheiro: string }; Returns: boolean };
+      guincheiro_habilitado: { Args: { guincheiro: string }; Returns: boolean };
       guincheiros_da_minha_frota: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -1325,6 +1353,10 @@ export type Database = {
           validade: string;
         }[];
       };
+      itens_nao_vigentes: {
+        Args: { alvo: Database['public']['Enums']['alvo_homologacao']; alvo_id: string };
+        Returns: { situacao: string; tipo: Database['public']['Enums']['tipo_item_homologacao'] }[];
+      };
       limite_df: { Args: Record<PropertyKey, never>; Returns: unknown };
       marcar_itens_vencidos: { Args: Record<PropertyKey, never>; Returns: number };
       meu_convite_guincheiro: {
@@ -1345,9 +1377,27 @@ export type Database = {
           vinculo_id: string;
         }[];
       };
+      minha_elegibilidade: {
+        Args: Record<PropertyKey, never>;
+        Returns: { codigo: string; descricao: string }[];
+      };
+      nome_do_tipo: {
+        Args: { tipo: Database['public']['Enums']['tipo_item_homologacao'] };
+        Returns: string;
+      };
       pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };
       pedido_oferecido_a_mim: { Args: { pedido_id: string }; Returns: boolean };
+      pendencias_de_ativacao: {
+        Args: { frota_id: string };
+        Returns: {
+          alvo_id: string;
+          categoria: string;
+          descricao: string;
+          ordem: number;
+          tipo: Database['public']['Enums']['tipo_item_homologacao'];
+        }[];
+      };
       perfil_tem_papel: {
         Args: { esperado: Database['public']['Enums']['papel']; perfil_id: string };
         Returns: boolean;
@@ -1358,6 +1408,7 @@ export type Database = {
       pode_enviar_documento_de_prestador: { Args: Record<PropertyKey, never>; Returns: boolean };
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
       preco_para_confirmar: { Args: { cliente_id: string; pedido_id: string }; Returns: number };
+      reavaliar_frota: { Args: { frota: string }; Returns: undefined };
       recusar_oferta: { Args: { tentativa_id: number }; Returns: undefined };
       reenviar_item_homologacao: {
         Args: { arquivo: string; item_id: string; validade?: string };
@@ -1410,6 +1461,10 @@ export type Database = {
         };
         Returns: number;
       };
+      situacao_do_item: {
+        Args: { estado: Database['public']['Enums']['estado_homologacao']; validade: string };
+        Returns: string;
+      };
       sou_cliente_do_pedido: { Args: { pedido_id: string }; Returns: boolean };
       sou_representante_da_frota: { Args: { frota: string }; Returns: boolean };
       renavam_valido: { Args: { renavam: string }; Returns: boolean };
@@ -1437,6 +1492,10 @@ export type Database = {
         };
       };
       tentar_de_novo: { Args: { pedido_id: string }; Returns: number };
+      tipos_exigidos: {
+        Args: { alvo: Database['public']['Enums']['alvo_homologacao'] };
+        Returns: Database['public']['Enums']['tipo_item_homologacao'][];
+      };
       transicao_homologacao_valida: {
         Args: {
           de: Database['public']['Enums']['estado_homologacao'];

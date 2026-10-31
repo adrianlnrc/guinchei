@@ -359,8 +359,21 @@ select throws_ok(
 -- ---------------------------------------------------------------------------
 -- De fora: Guincheiro de outra Frota e Cliente
 -- ---------------------------------------------------------------------------
+-- Preparação (#50): os Guincheiros do seed (o Marcos inclusive) agora têm os próprios itens de
+-- homologação, então o "Guincheiro de outra Frota" que não lê nada é um Guincheiro novo, da
+-- Reboque Planalto e sem nenhum item.
+reset role;
+insert into auth.users (id, aud, role, phone)
+values ('e7000000-0000-4000-8000-000000000001', 'authenticated', 'authenticated', '5561900000711');
+insert into public.perfis (id, papel, nome, telefone, cpf, aceite_termos_versao)
+values ('e7000000-0000-4000-8000-000000000001', 'guincheiro', 'Guincheiro de Fora', '5561900000711',
+        '64720951325', 'teste');
+insert into public.guincheiros (id, frota_id, posicao, disponivel)
+values ('e7000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000001',
+        extensions.st_setsrid(extensions.st_makepoint(-47.88, -15.79), 4326), false);
+
 set local role authenticated;
-set local request.jwt.claims to '{"sub": "22222222-2222-4222-8222-222222222201", "role": "authenticated"}';
+set local request.jwt.claims to '{"sub": "e7000000-0000-4000-8000-000000000001", "role": "authenticated"}';
 
 select is_empty('select * from public.itens_homologacao', 'Guincheiro de outra Frota não lê os itens');
 select is_empty(
@@ -368,7 +381,7 @@ select is_empty(
   'Guincheiro de outra Frota não lê os documentos'
 );
 select throws_ok(
-  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000003', '22222222-2222-4222-8222-222222222201/x.jpg') $$,
+  $$ select public.reenviar_item_homologacao('a1000000-0000-4000-8000-000000000003', 'e7000000-0000-4000-8000-000000000001/x.jpg') $$,
   'P0002', null, 'só o dono reenvia o item'
 );
 

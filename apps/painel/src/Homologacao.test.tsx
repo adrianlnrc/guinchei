@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErroApi, type FrotaEmHomologacao, type ItemHomologacao } from '@guinchei/api';
-import { apiFalsa, frotasDeHomologacao } from './teste/apiFalsa';
+import { apiFalsa, frotaPronta, frotasDeHomologacao } from './teste/apiFalsa';
 import { renderEm as renderizar } from './teste/renderizar';
 
 afterEach(() => {
@@ -239,6 +239,8 @@ describe('Homologação: documentos do Guincheiro (#47)', () => {
     nome: 'Reboque Planalto',
     tipo: 'empresa',
     documento: '11222333000181',
+    ativa: false,
+    pendenciasDeAtivacao: [],
     veiculos: [],
     vinculos: [],
     itens: [
@@ -399,6 +401,8 @@ describe('Homologação: aviso CNH × PBT ao aprovar a CNH (#48)', () => {
     nome: 'Guinchos do Planalto',
     tipo: 'empresa',
     documento: '11222333000181',
+    ativa: false,
+    pendenciasDeAtivacao: [],
     veiculos,
     vinculos,
     itens: [
@@ -492,5 +496,59 @@ describe('Homologação: aviso CNH × PBT ao aprovar a CNH (#48)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Aprovar CNH do Guincheiro · Carla Dias' }));
     await waitFor(() => expect(screen.queryByRole('note', { name: 'Aviso CNH × PBT' })).toBeNull());
+  });
+});
+
+describe('Homologação: ativação da Frota (#50)', () => {
+  const ativacao = () => screen.getByRole('region', { name: 'Ativação da Frota' });
+
+  it('mostra a lista real do que falta e deixa o Ativar desabilitado', async () => {
+    await abrir();
+    const botoes = await within(fila()).findAllByRole('button');
+    fireEvent.click(botoes[0]!);
+    const painel = await screen.findByRole('region', { name: 'Ativação da Frota' });
+    expect(within(painel).getByText('Faltam 3 itens para ativar')).toBeTruthy();
+    const lista = within(painel).getByRole('list', { name: 'O que falta para ativar a Frota' });
+    expect(
+      within(lista)
+        .getAllByRole('listitem')
+        .map((l) => l.textContent),
+    ).toEqual([
+      'Apólice de RC por avaria: aguardando aprovação',
+      'CRLV (PBX-1D23): aguardando aprovação',
+      'CNH de Paulo Mendes: vencido',
+    ]);
+    expect(
+      (within(painel).getByRole('button', { name: 'Ativar Frota' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByText('Frota inativa')).toBeTruthy();
+  });
+
+  it('Frota completa aparece na fila como pronta e a operação a ativa', async () => {
+    const api = await abrir(
+      apiFalsa({ sessao: true, frotas: [...frotasDeHomologacao(), frotaPronta()] }),
+    );
+    const botao = await within(fila()).findByRole('button', { name: /Pátio Pronto/ });
+    expect(botao.textContent).toContain('Pronta para ativar');
+    fireEvent.click(botao);
+    await screen.findByText('Tudo aprovado: pode ativar');
+    fireEvent.click(within(ativacao()).getByRole('button', { name: 'Ativar Frota' }));
+    await waitFor(() =>
+      expect(api.ativarFrota).toHaveBeenCalledWith('f0000000-0000-4000-8000-000000000009'),
+    );
+    expect(await screen.findByText('Pátio Pronto ativada.')).toBeTruthy();
+    await waitFor(() => expect(within(fila()).queryByText(/Pátio Pronto/)).toBeNull());
+  });
+
+  it('se o banco recusar o Ativar, mostra a mensagem do banco', async () => {
+    const api = apiFalsa({ sessao: true, frotas: [...frotasDeHomologacao(), frotaPronta()] });
+    api.ativarFrota.mockRejectedValueOnce(
+      new ErroApi('frota_incompleta', 'Faltam 1 item para ativar a Frota'),
+    );
+    await abrir(api);
+    fireEvent.click(await within(fila()).findByRole('button', { name: /Pátio Pronto/ }));
+    await screen.findByText('Tudo aprovado: pode ativar');
+    fireEvent.click(within(ativacao()).getByRole('button', { name: 'Ativar Frota' }));
+    expect(await screen.findByText('Faltam 1 item para ativar a Frota')).toBeTruthy();
   });
 });

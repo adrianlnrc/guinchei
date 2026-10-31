@@ -42,6 +42,7 @@ const FROTA: MinhaFrota = {
   documento: '11444777000161',
   nome: 'Aurora Guinchos',
   ativa: true,
+  pendenciasDeAtivacao: [],
   baseCep: '70000000',
   baseEndereco: 'SQN 308',
   baseBairro: 'Asa Norte',

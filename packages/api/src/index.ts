@@ -87,12 +87,43 @@ export interface RascunhoFrota {
 }
 
 /** A Frota de quem a cadastrou (representante), com o estado de cada item de homologação. */
+/**
+ * Uma coisa que falta para a Frota poder ser ativada (regra de homologação, issue #50): um
+ * documento a aprovar, um veículo, um Guincheiro ou o vínculo entre os dois. É a lista do
+ * "faltam N itens" do Painel.
+ */
+export interface PendenciaDeAtivacao {
+  categoria: 'frota' | 'veiculo' | 'guincheiro' | 'vinculo';
+  /** Em português, pronta para a tela: "Apólice de RC por avaria: vencido em 12/10/2026". */
+  descricao: string;
+  /** O tipo do documento, quando a pendência é de um documento. */
+  tipo: Enums<'tipo_item_homologacao'> | null;
+  /** O veículo ou o Guincheiro a que a pendência se refere, quando há. */
+  alvoId: string | null;
+}
+
+interface LinhaDePendencia {
+  categoria: string;
+  descricao: string;
+  tipo: Enums<'tipo_item_homologacao'> | null;
+  alvo_id: string | null;
+}
+
+function pendenciaDeAtivacao(l: LinhaDePendencia): PendenciaDeAtivacao {
+  return {
+    categoria: l.categoria as PendenciaDeAtivacao['categoria'],
+    descricao: l.descricao,
+    tipo: l.tipo,
+    alvoId: l.alvo_id,
+  };
+}
+
 export interface MinhaFrota {
   id: string;
   tipo: Enums<'tipo_frota'>;
   documento: string;
   nome: string;
-  /** `false` até a operação ativar, depois da homologação. */
+  /** `false` até a operação ativar, depois da homologação (veja `PendenciaDeAtivacao`). */
   ativa: boolean;
   baseCep: string | null;
   baseEndereco: string | null;
@@ -102,6 +133,11 @@ export interface MinhaFrota {
   apoliceValidade: string | null;
   termosPrestadorVersao: string | null;
   itens: ItemHomologacao[];
+  /**
+   * O que falta para a operação poder ativar a Frota; vazio quando ela está ativa ou já cumpre a
+   * regra e espera a operação.
+   */
+  pendenciasDeAtivacao: PendenciaDeAtivacao[];
 }
 
 /** Convite pendente da Frota do representante: o número convidado e até quando vale. */
@@ -467,6 +503,8 @@ export type MotivoErroApi =
   | 'motivo_obrigatorio'
   /** A validade do documento já passou: aprovar exige um reenvio. */
   | 'documento_vencido'
+  /** A Frota ainda não cumpre a regra de ativação (a mensagem diz quantos itens faltam). */
+  | 'frota_incompleta'
   /** O arquivo não é uma imagem ou um vídeo dos formatos aceitos. */
   | 'arquivo_invalido'
   /** O arquivo passa do limite (50 MiB para foto e vídeo, 10 MiB para documento). */
@@ -640,6 +678,26 @@ export interface MeuGuincheiro {
   disponivel: boolean;
 }
 
+/** Por que o plantão do Guincheiro está bloqueado (issue #50). */
+export interface MotivoDeBloqueio {
+  /**
+   * `documento` (CNH, certidão ou selfie sem aprovação vigente), `sem_veiculo`,
+   * `veiculo_pendente` (o veículo dele ainda não foi aprovado) ou `frota_inativa`.
+   */
+  codigo: 'documento' | 'sem_veiculo' | 'veiculo_pendente' | 'frota_inativa';
+  /** Em português, pronta para a tela. */
+  descricao: string;
+}
+
+/**
+ * Se o Guincheiro logado pode receber chamados: `habilitado` quando não falta nada (então o
+ * interruptor do plantão vale); senão, os motivos.
+ */
+export interface MinhaElegibilidade {
+  habilitado: boolean;
+  motivos: MotivoDeBloqueio[];
+}
+
 export type EstadoCorrida = Enums<'estado_corrida'>;
 
 /** Corrida do Guincheiro logado, com o que ele precisa do Pedido. */
@@ -799,6 +857,12 @@ export interface ApiGuincheiro extends Pick<
    * Erros `documento_vencido`, `item_indisponivel`, `transicao_invalida`, `documento_ausente`.
    */
   reenviarItemDaFrota(itemId: string, arquivo: string, validade: string): Promise<void>;
+  /**
+   * Por que o Guincheiro logado não recebe chamados (documento sem aprovação, sem veículo,
+   * veículo ainda não aprovado, Frota inativa); `habilitado` quando não falta nada. O banco
+   * exclui do Match quem não está habilitado, mesmo com o plantão ligado.
+   */
+  buscarMinhaElegibilidade(): Promise<MinhaElegibilidade>;
   /** O interruptor do plantão: grava `guincheiros.disponivel`. */
   definirDisponibilidade(disponivel: boolean): Promise<void>;
   /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
@@ -2025,12 +2089,23 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
         .maybeSingle();
       if (error) throw new ErroApi('falha', 'Não foi possível ler a Frota', { cause: error });
       if (!data) return null;
+      let pendencias: PendenciaDeAtivacao[] = [];
+      if (!data.ativa) {
+        const lidas = await supabase.rpc('pendencias_de_ativacao', { frota_id: data.id });
+        if (lidas.error) {
+          throw new ErroApi('falha', 'Não foi possível ler o que falta para a Frota', {
+            cause: lidas.error,
+          });
+        }
+        pendencias = lidas.data.map(pendenciaDeAtivacao);
+      }
       return {
         id: data.id,
         tipo: data.tipo,
         documento: data.documento,
         nome: data.nome,
         ativa: data.ativa,
+        pendenciasDeAtivacao: pendencias,
         baseCep: data.base_cep,
         baseEndereco: data.base_endereco,
         baseBairro: data.base_bairro,
@@ -2169,6 +2244,18 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     async enviarSelfie(arquivo) {
       const { error } = await supabase.rpc('enviar_selfie', { arquivo });
       if (error) throw erroDosDocumentos(error, 'Não foi possível enviar a selfie');
+    },
+
+    async buscarMinhaElegibilidade() {
+      const { data, error } = await supabase.rpc('minha_elegibilidade');
+      if (error) {
+        throw new ErroApi('falha', 'Não foi possível conferir a sua homologação', { cause: error });
+      }
+      const motivos = data.map((m) => ({
+        codigo: m.codigo as MotivoDeBloqueio['codigo'],
+        descricao: m.descricao,
+      }));
+      return { habilitado: motivos.length === 0, motivos };
     },
 
     async definirDisponibilidade(disponivel) {
@@ -2338,6 +2425,12 @@ export interface FrotaNaFila {
   tipo: Enums<'tipo_frota'>;
   documento: string;
   pendentes: number;
+  /**
+   * A Frota, ainda inativa, já cumpre a regra de ativação: só falta a operação ativar. Pode ter
+   * itens pendentes que a regra não exige (de um segundo veículo, por exemplo). Sem itens
+   * pendentes, `enviadoEm` é a última decisão da operação.
+   */
+  pronta: boolean;
   /** ISO 8601: o envio do item pendente mais antigo. */
   enviadoEm: string;
 }
@@ -2347,6 +2440,10 @@ export interface FrotaEmHomologacao {
   nome: string;
   tipo: Enums<'tipo_frota'>;
   documento: string;
+  /** A Frota está ativa (no Match, se tiver Guincheiro habilitado e disponível). */
+  ativa: boolean;
+  /** O que falta para ativar a Frota: o "faltam N itens" do Painel. Vazio = pode ativar. */
+  pendenciasDeAtivacao: PendenciaDeAtivacao[];
   /** Todos os itens, em qualquer estado, do mais antigo ao mais novo. */
   itens: ItemHomologacao[];
   /** Os veículos cadastrados, para dar nome (placa) aos itens de veículo. */
@@ -2499,6 +2596,13 @@ export interface ApiPainel extends Pick<
   aprovarItem(itemId: string): Promise<void>;
   /** Recusa um item `pendente`; o motivo é obrigatório. */
   recusarItem(itemId: string, motivo: string): Promise<void>;
+  /**
+   * Ativa a Frota. O banco só aceita se a regra de homologação vale agora (alvará, apólice,
+   * veículo e Guincheiro vinculado aprovados e vigentes); senão, erro `frota_incompleta` com
+   * "Faltam N itens para ativar a Frota". A Frota volta a inativa sozinha quando um item
+   * obrigatório vence ou é recusado.
+   */
+  ativarFrota(frotaId: string): Promise<void>;
   /** URL assinada de curta duração (`VALIDADE_URL_DOCUMENTO_SEGUNDOS`) do documento do item. */
   urlDoDocumento(itemId: string): Promise<string>;
   /**
@@ -2559,6 +2663,13 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
       if (error) throw new ErroApi('falha', 'Não foi possível ler a fila', { cause: error });
       // Ordenados do mais antigo: o primeiro item de cada Frota marca a vez dela na fila.
       const fila = new Map<string, FrotaNaFila>();
+      const prontas = await supabase.rpc('frotas_prontas_para_ativar');
+      if (prontas.error) {
+        throw new ErroApi('falha', 'Não foi possível ler a fila de ativação', {
+          cause: prontas.error,
+        });
+      }
+      const idsProntas = new Set(prontas.data.map((f) => f.id));
       for (const item of data) {
         const frota = fila.get(item.frota_id);
         if (frota) {
@@ -2570,9 +2681,23 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
             tipo: item.frotas.tipo,
             documento: item.frotas.documento,
             pendentes: 1,
+            pronta: idsProntas.has(item.frota_id),
             enviadoEm: item.enviado_em,
           });
         }
+      }
+      // Frotas que cumprem a regra e não têm item pendente: só falta a operação ativar.
+      for (const f of prontas.data) {
+        if (fila.has(f.id)) continue;
+        fila.set(f.id, {
+          id: f.id,
+          nome: f.nome,
+          tipo: f.tipo,
+          documento: f.documento,
+          pendentes: 0,
+          pronta: true,
+          enviadoEm: f.pronta_desde,
+        });
       }
       return [...fila.values()];
     },
@@ -2581,12 +2706,18 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
       const { data, error } = await supabase
         .from('frotas')
         .select(
-          'id, nome, tipo, documento, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em), veiculos (id, placa, tipo, pbt_kg), vinculos_veiculo (id, veiculo_id, guincheiro_id, situacao)',
+          'id, nome, tipo, documento, ativa, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em), veiculos (id, placa, tipo, pbt_kg), vinculos_veiculo (id, veiculo_id, guincheiro_id, situacao)',
         )
         .eq('id', frotaId)
         .maybeSingle();
       if (error) throw new ErroApi('falha', 'Não foi possível ler a Frota', { cause: error });
       if (!data) return null;
+      const pendencias = await supabase.rpc('pendencias_de_ativacao', { frota_id: data.id });
+      if (pendencias.error) {
+        throw new ErroApi('falha', 'Não foi possível ler o que falta para a Frota', {
+          cause: pendencias.error,
+        });
+      }
 
       // Itens de Guincheiro: o nome do dono e os dados da CNH e da certidão (a operação lê todos).
       const donos = [
@@ -2615,6 +2746,8 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
         nome: data.nome,
         tipo: data.tipo,
         documento: data.documento,
+        ativa: data.ativa,
+        pendenciasDeAtivacao: pendencias.data.map(pendenciaDeAtivacao),
         itens: data.itens_homologacao
           .map((i): ItemHomologacao => {
             const item = itemDeHomologacao(i);
@@ -2667,6 +2800,21 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
         motivo,
       });
       if (error) throw erroDaHomologacao(error, 'Não foi possível recusar o item');
+    },
+
+    async ativarFrota(frotaId) {
+      const { error } = await supabase.rpc('ativar_frota', { frota_id: frotaId });
+      if (!error) return;
+      switch (error.code) {
+        case 'GAT01':
+          throw new ErroApi('frota_incompleta', error.message, { cause: error });
+        case '42501':
+          throw new ErroApi('sem_permissao', 'Só a operação ativa uma Frota', { cause: error });
+        case 'P0002':
+          throw new ErroApi('item_indisponivel', 'Esta Frota não existe mais', { cause: error });
+        default:
+          throw new ErroApi('falha', 'Não foi possível ativar a Frota', { cause: error });
+      }
     },
 
     async urlDoDocumento(itemId) {

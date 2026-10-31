@@ -54,6 +54,56 @@ export function ExigeSessaoDeFrota({
   return children(estado === 'pronto');
 }
 
+/**
+ * O que falta para a operação poder ativar a Frota: documentos da Frota, um veículo, um
+ * Guincheiro e o vínculo entre os dois (issue #50). Lista vazia = tudo aprovado, só falta a
+ * operação ativar.
+ */
+function PendenciasDeAtivacao({ pendencias }: { pendencias: Frota['pendenciasDeAtivacao'] }) {
+  if (pendencias.length === 0) {
+    return (
+      <p
+        role="status"
+        style={{ margin: 0, font: '600 15px var(--fonte-texto)', color: 'var(--sucesso)' }}
+      >
+        Tudo aprovado. Falta só a operação ativar a Frota.
+      </p>
+    );
+  }
+  return (
+    <section
+      aria-label="O que falta para ativar a Frota"
+      style={{
+        padding: 14,
+        borderRadius: 14,
+        background: 'var(--superficie-escura)',
+        border: '1px solid var(--ambar)',
+        display: 'grid',
+        gap: 8,
+      }}
+    >
+      <strong style={{ font: '600 16px var(--fonte-texto)' }}>
+        {pendencias.length === 1
+          ? 'Falta 1 item para ativar a Frota'
+          : `Faltam ${pendencias.length} itens para ativar a Frota`}
+      </strong>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: 20,
+          display: 'grid',
+          gap: 4,
+          font: '400 14px/1.5 var(--fonte-texto)',
+        }}
+      >
+        {pendencias.map((p) => (
+          <li key={p.descricao}>{p.descricao}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** A Frota de quem a cadastrou: o andamento da homologação, item por item. */
 export function MinhaFrota() {
   return (
@@ -110,6 +160,7 @@ function Andamento({ comoGuincheiro }: { comoGuincheiro: boolean }) {
                 ? 'Frota ativa.'
                 : 'Em análise pela operação. Você começa a receber chamados quando a Frota for ativada e os documentos de Guincheiro forem aprovados.'}
             </p>
+            {!frota.ativa && <PendenciasDeAtivacao pendencias={frota.pendenciasDeAtivacao} />}
             {state?.apoliceReenviada && (
               <p
                 role="status"

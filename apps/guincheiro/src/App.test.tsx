@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ErroApi, type FotoEstado } from '@guinchei/api';
 import {
@@ -109,6 +109,54 @@ describe('Plantão', () => {
       await screen.findByText('Termine a Corrida em andamento antes de ficar disponível'),
     ).toBeTruthy();
     expect(interruptor.getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('sem homologação, o interruptor fica travado e a tela explica o que falta', async () => {
+    const api = apiFalsa({
+      sessao: true,
+      disponivel: false,
+      elegibilidade: {
+        habilitado: false,
+        motivos: [
+          { codigo: 'documento', descricao: 'CNH: aguardando aprovação' },
+          {
+            codigo: 'sem_veiculo',
+            descricao: 'Você ainda não está vinculado a um veículo da Frota.',
+          },
+        ],
+      },
+    });
+    renderEm('/', api);
+    const bloqueio = await screen.findByRole('region', { name: 'Plantão bloqueado' });
+    expect(within(bloqueio).getByText('Plantão bloqueado até a homologação')).toBeTruthy();
+    expect(within(bloqueio).getByText(/Faltam 2 itens/)).toBeTruthy();
+    expect(within(bloqueio).getByText('CNH: aguardando aprovação')).toBeTruthy();
+    expect(within(bloqueio).getByRole('button', { name: 'Ver meus documentos' })).toBeTruthy();
+    const interruptor = screen.getByRole('switch', { name: 'Disponível para chamados' });
+    expect(interruptor.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(interruptor);
+    expect(interruptor.getAttribute('aria-checked')).toBe('false');
+    expect(api.definirDisponibilidade).not.toHaveBeenCalledWith(true);
+    expect(await screen.findByText('Plantão bloqueado: veja abaixo o que falta.')).toBeTruthy();
+  });
+
+  it('plantão que ficou ligado e perdeu a homologação é desligado', async () => {
+    const api = apiFalsa({
+      sessao: true,
+      disponivel: true,
+      elegibilidade: {
+        habilitado: false,
+        motivos: [
+          { codigo: 'frota_inativa', descricao: 'A Frota Reboque Planalto ainda não está ativa.' },
+        ],
+      },
+    });
+    renderEm('/', api);
+    await screen.findByRole('region', { name: 'Plantão bloqueado' });
+    await waitFor(() => expect(api.definirDisponibilidade).toHaveBeenCalledWith(false));
+    expect(
+      screen.getByRole('switch', { name: 'Disponível para chamados' }).getAttribute('aria-checked'),
+    ).toBe('false');
   });
 
   it('abre com a disponibilidade gravada no servidor', async () => {

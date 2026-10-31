@@ -6,6 +6,7 @@ import {
   ITEM_ALVARA,
   ITEM_APOLICE,
   PERFIL_AURORA,
+  PENDENCIAS_DO_CADASTRO_NOVO,
   PERFIL_RAFAEL,
   apiFalsa,
 } from '../teste/apiFalsa';
@@ -111,6 +112,7 @@ describe('Quem ainda não tem perfil de prestador', () => {
         documento: CPF,
         nome: 'Aurora Lima',
         ativa: false,
+        pendenciasDeAtivacao: [],
         baseCep: '70000000',
         baseEndereco: 'SQN 308',
         baseBairro: 'Asa Norte',
@@ -452,6 +454,7 @@ describe('Minha Frota (depois do envio)', () => {
         documento: CPF,
         nome: 'Aurora Guinchos',
         ativa: false,
+        pendenciasDeAtivacao: PENDENCIAS_DO_CADASTRO_NOVO,
         baseCep: '70000000',
         baseEndereco: 'SQN 308',
         baseBairro: 'Asa Norte',
@@ -468,6 +471,8 @@ describe('Minha Frota (depois do envio)', () => {
     const tela = await etapa('Minha Frota');
     expect(tela.textContent).toContain('Aurora Guinchos');
     expect(tela.textContent).toContain('Em análise pela operação');
+    expect(tela.textContent).toContain('Faltam 5 itens para ativar a Frota');
+    expect(tela.textContent).toContain('Nenhum veículo cadastrado');
     expect(tela.textContent).toContain('Alvará');
     expect(tela.textContent).toContain('Aprovado');
     expect(tela.textContent).toContain('Apólice de responsabilidade civil');

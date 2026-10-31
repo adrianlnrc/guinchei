@@ -3077,4 +3077,41 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       ).resolves.toMatch(/^[0-9a-f-]{36}$/);
     });
   });
+  describe('Ativação da Frota e elegibilidade (#50)', () => {
+    it('o Guincheiro do seed está habilitado; o da Frota pendente vê o que falta', async () => {
+      const marcos = novaApiGuincheiro();
+      await marcos.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+      expect(await marcos.api.buscarMinhaElegibilidade()).toEqual({
+        habilitado: true,
+        motivos: [],
+      });
+
+      const paulo = novaApiGuincheiro();
+      await paulo.api.confirmarCodigo(PAULO.telefone, CODIGO_DE_TESTE);
+      const eleg = await paulo.api.buscarMinhaElegibilidade();
+      expect(eleg.habilitado).toBe(false);
+      expect(eleg.motivos.map((m) => m.codigo)).toEqual(
+        expect.arrayContaining(['documento', 'sem_veiculo', 'frota_inativa']),
+      );
+    });
+
+    it('a operação lê o que falta na Frota pendente e não consegue ativá-la', async () => {
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      const painel = criarApiPainel(supabase);
+      await painel.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      const capital = await painel.buscarFrotaHomologacao('f0000000-0000-4000-8000-000000000003');
+      expect(capital?.ativa).toBe(false);
+      expect(capital?.pendenciasDeAtivacao.length).toBeGreaterThan(0);
+      const erro = await painel
+        .ativarFrota('f0000000-0000-4000-8000-000000000003')
+        .catch((e: unknown) => e);
+      expect((erro as ErroApi).motivo).toBe('frota_incompleta');
+      expect((erro as ErroApi).message).toMatch(/^Faltam \d+ itens? para ativar a Frota$/);
+      const planalto = await painel.buscarFrotaHomologacao('f0000000-0000-4000-8000-000000000001');
+      expect(planalto).toMatchObject({ ativa: true, pendenciasDeAtivacao: [] });
+    });
+  });
 });

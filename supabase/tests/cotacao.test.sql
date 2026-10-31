@@ -8,7 +8,7 @@
 -- Usuários do seed: Cliente A (Rafael), Guincheiro G1 (Marcos, Cruzeiro, ~4,2 km do Eixo
 -- Monumental). Aqui se cria o Cliente B.
 begin;
-select plan(17);
+select plan(19);
 
 insert into auth.users (id, aud, role, phone)
 values ('44444444-4444-4444-8444-444444444444', 'authenticated', 'authenticated', '5561900000099');
@@ -161,6 +161,33 @@ select throws_ok(
   'GCT03',
   null,
   'o trajeto mudou desde a leitura: a cotação antiga não é gravada'
+);
+
+-- ---------------------------------------------------------------------------
+-- Guincheiro inelegível não entra na cotação (#50)
+-- ---------------------------------------------------------------------------
+-- O Marcos (~4,2 km) perde o vínculo com o veículo: deixa de ser elegível, e o Preço fechado
+-- passa a contar a distância do Wagner (~4,9 km), o mais próximo que continua elegível.
+reset role;
+delete from public.vinculos_veiculo where guincheiro_id = '22222222-2222-4222-8222-222222222201';
+set local role service_role;
+select ok(
+  (select (public.dados_da_cotacao(current_setting('teste.pedido')::uuid,
+                                   '11111111-1111-4111-8111-111111111111') ->> 'km_ate_veiculo')::numeric
+   between 4.7 and 5.1),
+  'sem veículo vinculado, o Marcos sai da cotação: vale a distância do Wagner (~4,9 km)'
+);
+-- A CNH do Wagner ainda consta como aprovada, mas a validade passou ontem (o job ainda não
+-- rodou): documento vencido não conta, e a cotação cai para a Rita (~9,6 km).
+reset role;
+update public.itens_homologacao set validade = public.hoje_em_brasilia() - 1
+where alvo = 'guincheiro' and alvo_id = '22222222-2222-4222-8222-222222222202' and tipo = 'cnh';
+set local role service_role;
+select ok(
+  (select (public.dados_da_cotacao(current_setting('teste.pedido')::uuid,
+                                   '11111111-1111-4111-8111-111111111111') ->> 'km_ate_veiculo')::numeric
+   between 9.3 and 9.9),
+  'CNH com validade passada (ainda aprovada) também sai da cotação: vale a distância da Rita (~9,6 km)'
 );
 
 -- ---------------------------------------------------------------------------

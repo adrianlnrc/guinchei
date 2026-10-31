@@ -64,3 +64,10 @@ Nada abaixo muda a decisão; só a precisa no banco e no app.
 - **Entidade `veiculos`:** pertence a uma Frota e é cadastrada pelo representante. Placa (padrão antigo ou Mercosul, guardada sem hífen) e RENAVAM (11 dígitos, dígito verificador conferido) são únicos; o PBT é numérico, em kg, porque a regra CNH × PBT depende dele; o tipo é `plataforma`, `asa_delta` ou `lanca`.
 - **Homologação por item:** cada veículo gera um item `crlv` e um item `foto_veiculo` por foto (de 1 a 6) no `itens_homologacao` do #42, com `alvo = 'veiculo'` e `alvo_id` igual ao id do veículo. O estado do veículo é o resumo dos itens, não uma coluna: aprovado só com todos os itens aprovados. A operação confere o CRLV, inclusive o registro como reboque no DETRAN (invariante 3).
 - **Edição:** o representante edita placa, RENAVAM, tipo e PBT enquanto nenhum item foi aprovado; depois disso o banco recusa (`GVE07`), para a conferência da operação não perder o sentido.
+
+## Detalhamento da ativação e da elegibilidade (issue #50)
+
+- **Ativação por consequência da homologação:** a Frota só é ativada quando alvará e apólice, um veículo e um Guincheiro vinculado a ele (CNH × PBT satisfeita) estão aprovados e vigentes. A operação ativa pela ação "Ativar" do Painel, que o banco só aceita com a regra satisfeita; a API não escreve `frotas.ativa`. A Frota volta a inativa sozinha quando um item obrigatório vence, é recusado ou reenviado, ou o vínculo cai.
+- **Vigência:** "aprovado" para esta regra é `item_vigente` (aprovado e dentro da validade), não só o estado; fecha a janela entre a validade passar e o job diário marcar `vencido`. `avaliar_vinculo` segue a mesma regra.
+- **Match:** além de `disponivel` e Frota `ativa`, o Guincheiro precisa estar homologado e vinculado a veículo homologado, conferido ao vivo na lista de elegíveis, na cotação do Preço fechado e na gravação da oferta e da recotação.
+
