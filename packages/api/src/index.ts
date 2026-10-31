@@ -137,6 +137,8 @@ export interface CadastroGuincheiroConvidado {
   cpf: string;
   /** Versão dos termos de uso aceita (ADR-0010). */
   termosVersao: string;
+}
+
 export type TipoVeiculoGuincho = Enums<'tipo_veiculo_guincho'>;
 
 /** Quantas fotos o veículo leva (de 1 a este número), cada uma um item de homologação. */
@@ -573,6 +575,7 @@ export interface ApiGuincheiro extends Pick<
    * `numero_ja_tem_conta`, `dados_incompletos`, `cpf_invalido`, `cpf_ja_cadastrado`.
    */
   aceitarConvite(dados: CadastroGuincheiroConvidado): Promise<void>;
+  /**
    * Envia o CRLV (PDF ou imagem) ou uma foto (só imagem) do veículo ao bucket
    * `documentos-prestadores` e devolve o caminho, para `cadastrarVeiculo` ou
    * `reenviarItemDeVeiculo`. Até 10 MiB; erros `arquivo_invalido` e `arquivo_grande`.
