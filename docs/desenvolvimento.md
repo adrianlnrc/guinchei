@@ -141,6 +141,8 @@ Regras que o banco garante (e que os testes de banco cobrem):
 - `01_referencia.sql`: tabela de preços versão 1 (valores do ADR-0009) e feriados nacionais e do DF de 2026 e 2027. Carnaval e Corpus Christi ficam de fora por serem ponto facultativo. É o único seed que vale para staging.
 - `02_usuarios_de_teste.sql`: os usuários abaixo, a Frota empresa "Reboque Planalto" e a Frota autônoma "Rita Campos", ambas ativas, e os três Guincheiros disponíveis com posição fixa; mais a Frota pendente "Guincho Capital" (inativa, com o Guincheiro Paulo Mendes indisponível), quatro itens de homologação para a demo do Painel e o veículo `PBX-1D23` (plataforma, 4.500 kg) a que o item de CRLV se refere. Só local.
 - `03_match_local.sql`: os dois segredos do Vault que o Match usa para chamar a Edge Function `ofertar-proximo` pelo pg_net (URL `http://kong:8000/functions/v1` e a `service_role` padrão do Supabase CLI local). Só local; em staging, veja [Match](#match).
+- `04_convites.sql`: o convite pendente da Reboque Planalto para o +55 61 90000-0046 (veja [Convite de Guincheiro](#convite-de-guincheiro)). Só local.
+- `05_demonstracao.sql`: a Frota "Cerrado Guinchos" para a [demo](produto/roteiro-de-demo.md): a representante Helena Duarte, dois Guincheiros (Cláudia Brito, CNH C, e Diego Ferraz, CNH B), dois veículos (plataforma de 4.200 kg e lança de 3.500 kg) e todos os itens de homologação aprovados, mas **sem vínculo** e inativa. É puramente aditivo: não altera nenhuma linha dos arquivos anteriores. Os testes de banco que contam perfis, Guincheiros, veículos, dados de CNH ou Frotas com representante tiram a Frota do cenário na preparação (`rls`, `cadastro_frota`, `veiculos`, `documentos_guincheiro`). Só local.
 
 ### Usuários de teste
 
@@ -157,6 +159,9 @@ Login por telefone + código (ADR-0010). Os números são fictícios e estão em
 | Prestador novo, sem perfil | (nenhum) | +55 61 90000-0008 | só em `[auth.sms.test_otp]`, sem usuário nem perfil no seed: no app do Guincheiro cai no cadastro de Frota autônoma ([Cadastro de Frota autônoma](#cadastro-de-frota-autônoma)) |
 | Guincheiro convidado, sem perfil | (nenhum) | +55 61 90000-0046 | só em `[auth.sms.test_otp]`, sem usuário nem perfil, mas com **convite pendente da Reboque Planalto** no seed (`04_convites.sql`): no app do Guincheiro cai no primeiro acesso (nome, CPF, termos) e nasce Guincheiro da Reboque Planalto ([Convite de Guincheiro](#convite-de-guincheiro)) |
 | Pessoa nova, sem convite | (nenhum) | +55 61 90000-0047 | só em `[auth.sms.test_otp]`, sem convite no seed: o e2e a convida pelo representante de uma Frota e depois entra com ela |
+| Representante (demo) | Helena Duarte | +55 61 90000-0060 | representante da Cerrado Guinchos (`05_demonstracao.sql`): no app do Guincheiro cai na Frota, vincula Guincheiros a veículos e vê o bloqueio CNH × PBT |
+| Guincheiro (demo) | Cláudia Brito | +55 61 90000-0061 | Cerrado Guinchos · CNH C, fora do plantão; só entra no Match depois de vinculada a um veículo e de a operação ativar a Frota |
+| Guincheiro (demo) | Diego Ferraz | +55 61 90000-0062 | Cerrado Guinchos · CNH B (cobre até 3.500 kg), fora do plantão |
 | Cliente sem perfil | (nenhum) | +55 61 90000-0006 | só em `[auth.sms.test_otp]`, sem usuário nem perfil no seed: no primeiro login cai no cadastro urgente |
 
 No app do Cliente, digite o celular com DDD, sem o +55 (ex.: `(61) 90000-0001`); o app envia em E.164 (`+5561900000001`). Os ids fixos dos usuários estão no seed, e os testes de banco contam com eles: rode `pnpm supabase db reset` antes de `pnpm test:db` se tiver mexido nos dados locais.

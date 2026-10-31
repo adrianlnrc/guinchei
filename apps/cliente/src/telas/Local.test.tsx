@@ -160,7 +160,7 @@ describe('Origem e destino com o mapa', () => {
 });
 
 describe('Origem e destino sem VITE_MAPBOX_TOKEN', () => {
-  it('mostra o mapa do protótipo, a busca desligada e segue para o preço sem gravar trajeto', async () => {
+  it('mostra o mapa do protótipo, a busca desligada e segue para o preço gravando o trajeto de exemplo', async () => {
     const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
     renderEm('/pedido/1', api);
     fireEvent.click(await screen.findByRole('button', { name: 'Carro de passeio' }));
@@ -175,6 +175,26 @@ describe('Origem e destino sem VITE_MAPBOX_TOKEN', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ver preço fechado' }));
 
     expect(await screen.findByRole('main', { name: 'Preço fechado' })).toBeTruthy();
-    expect(api.definirTrajeto).not.toHaveBeenCalled();
+    // Sem trajeto o servidor não cota: o do protótipo vai gravado no Pedido (Eixo → Taguatinga Norte).
+    expect(api.definirTrajeto).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ kmRebocado: 21.3 }),
+    );
+  });
+
+  it('se o servidor recusa o trajeto de exemplo, avisa e fica na tela', async () => {
+    const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
+    api.definirTrajeto.mockRejectedValueOnce(new ErroApi('falha', 'x'));
+    renderEm('/pedido/1', api);
+    fireEvent.click(await screen.findByRole('button', { name: 'Carro de passeio' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Parou e não liga' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Sim' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar local no mapa' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Ver preço fechado' }));
+
+    expect(
+      await screen.findByText('Não foi possível gravar o trajeto. Tente de novo.'),
+    ).toBeTruthy();
+    expect(screen.getByRole('main', { name: 'Origem e destino' })).toBeTruthy();
   });
 });

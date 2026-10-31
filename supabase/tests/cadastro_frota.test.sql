@@ -7,6 +7,17 @@
 begin;
 select plan(71);
 
+-- Preparação (demo): o seed 05_demonstracao.sql traz a Frota "Cerrado Guinchos" (a representante,
+-- dois Guincheiros, dois veículos e seus itens). Este teste conta as Frotas com representante
+-- do seed original, então tira a Frota da demonstração do cenário.
+delete from public.itens_homologacao where frota_id = 'f0000000-0000-4000-8000-000000000004';
+delete from public.veiculos where frota_id = 'f0000000-0000-4000-8000-000000000004';
+delete from public.guincheiros where frota_id = 'f0000000-0000-4000-8000-000000000004';
+delete from public.frotas where id = 'f0000000-0000-4000-8000-000000000004';
+delete from public.perfis
+where id in ('d0d00000-0000-4000-8000-000000000001', 'd0d00000-0000-4000-8000-000000000002',
+             'd0d00000-0000-4000-8000-000000000003');
+
 insert into auth.users (id, aud, role, phone)
 values ('55555555-5555-4555-8555-555555555555', 'authenticated', 'authenticated', '5561900000008');
 

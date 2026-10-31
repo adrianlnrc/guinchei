@@ -329,8 +329,41 @@ const estiloApoio: CSSProperties = {
 // Sem VITE_MAPBOX_TOKEN: o mapa esquemático e os dados do protótipo
 // ---------------------------------------------------------------------------
 
+// O trajeto do protótipo (Eixo Monumental até Taguatinga Norte, 21,3 km de reboque) é gravado no
+// Pedido de verdade: sem trajeto o servidor não cota, e o Cliente ficaria sem o Preço fechado.
+const ORIGEM_DO_PROTOTIPO: Endereco = {
+  ponto: { lat: -15.7903, lng: -47.8921 },
+  rotulo: TRECHO.origem,
+};
+const DESTINO_DO_PROTOTIPO: Endereco = {
+  ponto: { lat: -15.81, lng: -48.056 },
+  rotulo: TRECHO.destino,
+};
+
 function LocalDoPrototipo() {
   const ir = useNavigate();
+  const api = useApi();
+  const { pedidoId, avisar } = useFluxo();
+  const [gravando, setGravando] = useState(false);
+
+  async function verPreco() {
+    if (!pedidoId) return;
+    setGravando(true);
+    try {
+      await api.definirTrajeto(pedidoId, {
+        origem: ORIGEM_DO_PROTOTIPO,
+        destino: DESTINO_DO_PROTOTIPO,
+        kmRebocado: TRECHO.kmReboque,
+      });
+      ir('/preco');
+    } catch {
+      setGravando(false);
+      avisar('Não foi possível gravar o trajeto. Tente de novo.');
+    }
+  }
+
+  if (!pedidoId) return <Navigate to="/pedido/1" replace />;
+
   return (
     <Tela mapa rotulo="Origem e destino">
       <Mapa
@@ -368,7 +401,9 @@ function LocalDoPrototipo() {
         <div style={estiloApoio}>
           {formatarKm(TRECHO.kmReboque)} de reboque · atendemos origem e destino dentro do DF
         </div>
-        <Botao onClick={() => ir('/preco')}>Ver preço fechado</Botao>
+        <Botao disabled={gravando} onClick={() => void verPreco()}>
+          Ver preço fechado
+        </Botao>
         <IndicadorHome />
       </div>
     </Tela>

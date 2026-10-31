@@ -10,11 +10,14 @@ select plan(79);
 
 -- Preparação (#50): o seed traz os dados de documento dos três Guincheiros homologados (Marcos,
 -- Wagner e Rita). Este teste conta os dados que ele cria mais a CNH do Paulo (demo), então tira
--- os três do cenário.
+-- os três do cenário, e também os dos dois Guincheiros da Frota "Cerrado Guinchos"
+-- (05_demonstracao.sql).
 delete from public.documentos_guincheiro
 where guincheiro_id in ('22222222-2222-4222-8222-222222222201',
                         '22222222-2222-4222-8222-222222222202',
-                        '22222222-2222-4222-8222-222222222203');
+                        '22222222-2222-4222-8222-222222222203',
+                        'd0d00000-0000-4000-8000-000000000002',
+                        'd0d00000-0000-4000-8000-000000000003');
 
 insert into auth.users (id, aud, role, phone) values
   ('d1000000-0000-4000-8000-00000000000a', 'authenticated', 'authenticated', '5561900000191'),

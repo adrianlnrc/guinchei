@@ -11,7 +11,7 @@ import { useApi } from '../api';
 import { mascararCelular, telefoneE164 } from '../celular';
 import { ROTA_DADOS_PESSOAIS } from '../rotas';
 import { MensagemDeErro } from '../MensagemDeErro';
-import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
+import { AVISO_NAO_E_GUINCHEIRO, useEhDonoDaFrota, useSessao } from '../sessao';
 import { Campo } from './cadastro/campos';
 
 /** "5561900000002" → "(61) 90000-0002" */
@@ -33,14 +33,19 @@ interface Carga {
 /** Convites e Guincheiros da Frota (#46): só para o representante. */
 export function Convites() {
   const estado = useSessao();
+  const dono = useEhDonoDaFrota(estado === 'pronto');
   if (estado === 'sem_sessao') return <Navigate to="/entrar" replace />;
   if (estado === 'nao_e_guincheiro') {
     return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_GUINCHEIRO }} />;
   }
   if (estado === 'convidado') return <Navigate to={ROTA_DADOS_PESSOAIS} replace />;
   if (estado === 'sem_perfil') return <Navigate to="/cadastro" replace />;
-  if (estado === 'pronto') return <Navigate to="/" replace />;
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
+  if (estado === 'pronto') {
+    // O Guincheiro de empresa volta ao plantão; o autônomo responde pela própria Frota.
+    if (dono === undefined) return <Tela rotulo="Carregando">{null}</Tela>;
+    if (!dono) return <Navigate to="/" replace />;
+  }
   return <Gestao />;
 }
 

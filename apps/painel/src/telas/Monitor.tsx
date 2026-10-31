@@ -57,7 +57,7 @@ export function Monitor() {
           className="ponto"
           style={{ font: '500 14px var(--fonte-texto)', color: 'var(--tinta-2)' }}
         >
-          Ao vivo · terça, 21:58
+          Indicadores e Corridas de exemplo · aprovações de preço reais
         </span>
       </header>
       <div
