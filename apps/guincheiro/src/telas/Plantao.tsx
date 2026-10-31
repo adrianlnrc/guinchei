@@ -7,6 +7,7 @@ import { useApi } from '../api';
 import { usePlantao } from '../plantao';
 import { AbasGuincheiro, somaRepasses } from './comum';
 import { AvisoDeHomologacao } from './documentos/AvisoDeHomologacao';
+import { MeuVeiculo } from './MeuVeiculo';
 
 function Interruptor({ ligado, onChange }: { ligado: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -140,6 +141,7 @@ export function Plantao() {
           </div>
         </div>
         {!disponivel && guincheiro && <AvisoDeHomologacao />}
+        {guincheiro && <MeuVeiculo />}
         <Rotulo style={{ marginTop: 8 }}>Hoje</Rotulo>
         <Heroi centavos={ganho} tamanho={56} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

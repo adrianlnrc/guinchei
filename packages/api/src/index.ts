@@ -228,6 +228,53 @@ export function estadoDoVeiculo(
   return itens.length > 0 ? 'aprovado' : 'pendente';
 }
 
+/**
+ * Situação do vínculo Guincheiro × veículo, calculada pelo banco: `ativo` (CNH aprovada que
+ * cobre o PBT) ou `pendente` (CNH ainda não aprovada; revalidado na aprovação).
+ */
+export type SituacaoVinculo = Enums<'situacao_vinculo'>;
+
+/** Vínculo Guincheiro × veículo da Frota do representante. */
+export interface VinculoDaFrota {
+  id: string;
+  veiculoId: string;
+  guincheiroId: string;
+  situacao: SituacaoVinculo;
+}
+
+/**
+ * O que o representante pode saber da CNH de um Guincheiro da Frota para avisar do vínculo:
+ * a categoria enviada e o estado da homologação (`null` se ainda não enviou). Sem número nem foto.
+ */
+export interface CnhDoGuincheiro {
+  guincheiroId: string;
+  categoria: string | null;
+  estado: EstadoHomologacao | null;
+}
+
+/** O veículo em que o Guincheiro logado está vinculado. */
+export interface MeuVeiculo {
+  vinculoId: string;
+  situacao: SituacaoVinculo;
+  veiculoId: string;
+  placa: string;
+  tipo: TipoVeiculoGuincho;
+  pbtKg: number;
+}
+
+/** Vínculo que acabou: derrubado pela revalidação CNH × PBT ou desfeito pelo representante. */
+export interface VinculoEncerrado {
+  id: number;
+  guincheiroId: string;
+  veiculoId: string;
+  placa: string;
+  motivo: 'cnh_nao_cobre' | 'desfeito_pelo_representante';
+  /** Em `cnh_nao_cobre`: o que a revalidação encontrou ("CNH B não cobre o PBT de 4200 kg"). */
+  detalhe: string | null;
+  /** ISO 8601, hora do servidor. */
+  encerradoEm: string;
+}
+
 /** Preço fechado calculado e gravado pelo servidor (Edge Function `cotar-pedido`). */
 export interface CotacaoPedido {
   /** Distância em linha reta do Guincheiro elegível mais próximo até a origem (provisório). */
@@ -456,6 +503,14 @@ export type MotivoErroApi =
   | 'veiculo_duplicado'
   /** Veículo: com item aprovado, placa, RENAVAM, tipo e PBT não mudam. */
   | 'veiculo_travado'
+  /** Vínculo: a CNH aprovada do Guincheiro não cobre o PBT do veículo (CTB art. 143). */
+  | 'vinculo_bloqueado'
+  /** Vínculo: o Guincheiro e o veículo não são da mesma Frota. */
+  | 'vinculo_outra_frota'
+  /** Vínculo: o Guincheiro já está vinculado a outro veículo. */
+  | 'guincheiro_ja_vinculado'
+  /** Vínculo: não existe (ou já foi desfeito). */
+  | 'vinculo_indisponivel'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -670,6 +725,26 @@ export interface ApiGuincheiro extends Pick<
    * a `pendente`. Erros `item_indisponivel`, `transicao_invalida`, `documento_ausente`.
    */
   reenviarItemDeVeiculo(itemId: string, arquivo: string): Promise<void>;
+  /** Representante: os vínculos Guincheiro × veículo da própria Frota. */
+  listarVinculos(): Promise<VinculoDaFrota[]>;
+  /**
+   * Representante: a categoria e o estado da CNH de cada Guincheiro da Frota, para o aviso
+   * CNH × PBT antes de confirmar o vínculo.
+   */
+  listarCnhDosGuincheiros(): Promise<CnhDoGuincheiro[]>;
+  /**
+   * Representante: vincula um Guincheiro a um veículo da Frota e devolve a situação (`ativo`, ou
+   * `pendente` se a CNH ainda não foi aprovada). O banco é a barreira: CNH aprovada que não
+   * cobre o PBT é `vinculo_bloqueado`. Outros erros: `sem_permissao`, `vinculo_outra_frota`,
+   * `guincheiro_ja_vinculado`.
+   */
+  vincularGuincheiro(guincheiroId: string, veiculoId: string): Promise<SituacaoVinculo>;
+  /** Representante: desfaz um vínculo da Frota (`vinculo_indisponivel` se já não existe). */
+  desfazerVinculo(vinculoId: string): Promise<void>;
+  /** Os vínculos que acabaram (os da Frota, para o representante; os próprios, para o Guincheiro), do mais novo ao mais antigo. */
+  listarVinculosEncerrados(): Promise<VinculoEncerrado[]>;
+  /** O veículo em que o Guincheiro logado está vinculado; `null` se não há. */
+  buscarMeuVeiculo(): Promise<MeuVeiculo | null>;
   /** O interruptor do plantão: grava `guincheiros.disponivel`. */
   definirDisponibilidade(disponivel: boolean): Promise<void>;
   /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
@@ -1418,6 +1493,43 @@ function erroDoConvite(
   }
 }
 
+/** Erros das funções de vínculo Guincheiro × veículo (migração `vinculo_guincheiro_veiculo`). */
+function erroDoVinculo(error: { code?: string }, mensagemDeFalha: string): ErroApi {
+  const causa = { cause: error };
+  switch (error.code) {
+    case 'GVL01':
+    case '42501':
+      return new ErroApi(
+        'sem_permissao',
+        'Só o representante da Frota vincula Guincheiros a veículos',
+        causa,
+      );
+    case 'GVL02':
+      return new ErroApi(
+        'vinculo_outra_frota',
+        'O Guincheiro e o veículo precisam ser da mesma Frota',
+        causa,
+      );
+    case 'GVL03':
+      return new ErroApi(
+        'vinculo_bloqueado',
+        'A categoria da CNH do Guincheiro não cobre o PBT deste veículo',
+        causa,
+      );
+    case 'GVL04':
+    case '23505':
+      return new ErroApi(
+        'guincheiro_ja_vinculado',
+        'Este Guincheiro já está vinculado a um veículo. Desfaça o vínculo antes.',
+        causa,
+      );
+    case 'GVL05':
+      return new ErroApi('vinculo_indisponivel', 'Este vínculo não existe mais', causa);
+    default:
+      return new ErroApi('falha', mensagemDeFalha, causa);
+  }
+}
+
 /** Erros das funções de documentos do Guincheiro (migração `documentos_do_guincheiro`). */
 function erroDosDocumentos(
   error: { code?: string; message?: string },
@@ -1671,6 +1783,79 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
         arquivo,
       });
       if (error) throw erroDoVeiculo(error, 'Não foi possível reenviar o item');
+    },
+
+    async listarVinculos() {
+      const { data, error } = await supabase
+        .from('vinculos_veiculo')
+        .select('id, veiculo_id, guincheiro_id, situacao')
+        .order('criado_em', { ascending: true })
+        .order('id', { ascending: true });
+      if (error) throw new ErroApi('falha', 'Não foi possível ler os vínculos', { cause: error });
+      return data.map((v) => ({
+        id: v.id,
+        veiculoId: v.veiculo_id,
+        guincheiroId: v.guincheiro_id,
+        situacao: v.situacao,
+      }));
+    },
+
+    async listarCnhDosGuincheiros() {
+      const { data, error } = await supabase.rpc('cnh_dos_meus_guincheiros');
+      if (error) throw new ErroApi('falha', 'Não foi possível ler as CNHs', { cause: error });
+      return data.map((c) => ({
+        guincheiroId: c.guincheiro_id,
+        categoria: c.categoria,
+        estado: c.estado,
+      }));
+    },
+
+    async vincularGuincheiro(guincheiroId, veiculoId) {
+      const { data, error } = await supabase.rpc('vincular_guincheiro_veiculo', {
+        guincheiro_id: guincheiroId,
+        veiculo_id: veiculoId,
+      });
+      if (error) throw erroDoVinculo(error, 'Não foi possível vincular o Guincheiro');
+      return data;
+    },
+
+    async desfazerVinculo(vinculoId) {
+      const { error } = await supabase.rpc('desfazer_vinculo', { vinculo_id: vinculoId });
+      if (error) throw erroDoVinculo(error, 'Não foi possível desfazer o vínculo');
+    },
+
+    async listarVinculosEncerrados() {
+      const { data, error } = await supabase
+        .from('vinculos_encerrados')
+        .select('id, guincheiro_id, veiculo_id, placa, motivo, detalhe, encerrado_em')
+        .order('encerrado_em', { ascending: false })
+        .order('id', { ascending: false })
+        .limit(20);
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o histórico', { cause: error });
+      return data.map((v) => ({
+        id: v.id,
+        guincheiroId: v.guincheiro_id,
+        veiculoId: v.veiculo_id,
+        placa: v.placa,
+        motivo: v.motivo === 'cnh_nao_cobre' ? 'cnh_nao_cobre' : 'desfeito_pelo_representante',
+        detalhe: v.detalhe,
+        encerradoEm: v.encerrado_em,
+      }));
+    },
+
+    async buscarMeuVeiculo() {
+      const { data, error } = await supabase.rpc('meu_veiculo');
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o seu veículo', { cause: error });
+      const v = data[0];
+      if (!v) return null;
+      return {
+        vinculoId: v.vinculo_id,
+        situacao: v.situacao,
+        veiculoId: v.veiculo_id,
+        placa: v.placa,
+        tipo: v.tipo,
+        pbtKg: v.pbt_kg,
+      };
     },
 
     async enviarCadastroFrota() {
@@ -2017,6 +2202,8 @@ export interface FrotaEmHomologacao {
   itens: ItemHomologacao[];
   /** Os veículos cadastrados, para dar nome (placa) aos itens de veículo. */
   veiculos: { id: string; placa: string; tipo: TipoVeiculoGuincho; pbtKg: number }[];
+  /** Os vínculos Guincheiro × veículo da Frota, para o aviso CNH × PBT ao aprovar uma CNH. */
+  vinculos: VinculoDaFrota[];
 }
 
 /** Erros das funções de homologação (migração `homologacao`). */
@@ -2119,7 +2306,7 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
       const { data, error } = await supabase
         .from('frotas')
         .select(
-          'id, nome, tipo, documento, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em), veiculos (id, placa, tipo, pbt_kg)',
+          'id, nome, tipo, documento, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em), veiculos (id, placa, tipo, pbt_kg), vinculos_veiculo (id, veiculo_id, guincheiro_id, situacao)',
         )
         .eq('id', frotaId)
         .maybeSingle();
@@ -2180,6 +2367,12 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
           placa: v.placa,
           tipo: v.tipo,
           pbtKg: v.pbt_kg,
+        })),
+        vinculos: data.vinculos_veiculo.map((v) => ({
+          id: v.id,
+          veiculoId: v.veiculo_id,
+          guincheiroId: v.guincheiro_id,
+          situacao: v.situacao,
         })),
       };
     },

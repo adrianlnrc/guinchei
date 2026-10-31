@@ -5,6 +5,7 @@
 // regra, aponte os imports para ela e atualize a tabela nos dois lugares.
 import { describe, expect, it } from 'vitest';
 import migracao from '../../../supabase/migrations/20261018190000_cnh_pbt.sql?raw';
+import vinculo from '../../../supabase/migrations/20261024090000_vinculo_guincheiro_veiculo.sql?raw';
 import testeDoBanco from '../../../supabase/tests/cnh_pbt.test.sql?raw';
 import { CATEGORIAS_CNH, LIMITE_PBT_CATEGORIA_B_KG, categoriaCobrePbt } from './index';
 
@@ -56,5 +57,11 @@ describe('CNH × PBT: TS e SQL não divergem', () => {
   it('a migração usa o mesmo limite e as mesmas categorias do TS', () => {
     expect(migracao).toContain(`<= ${LIMITE_PBT_CATEGORIA_B_KG}`);
     for (const categoria of CATEGORIAS_CNH) expect(migracao).toContain(`'${categoria}'`);
+  });
+
+  it('a migração do vínculo delega a regra à função do banco, sem repetir a tabela', () => {
+    expect(vinculo).toContain('public.categoria_cnh_cobre_pbt(');
+    expect(vinculo).not.toContain(String(LIMITE_PBT_CATEGORIA_B_KG));
+    for (const categoria of CATEGORIAS_CNH) expect(vinculo).not.toContain(`'${categoria}'`);
   });
 });

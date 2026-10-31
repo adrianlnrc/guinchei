@@ -309,3 +309,34 @@ button.linha-tabela:hover {
   font: 400 14px var(--fonte-texto);
   resize: vertical;
 }
+
+/* Aviso CNH × PBT ao aprovar uma CNH (#48) */
+.aviso-cnh {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--linha);
+  background: var(--linha-fina);
+  font: 400 13px/1.5 var(--fonte-texto);
+}
+.aviso-cnh--alerta {
+  border-color: var(--alerta-borda);
+  background: var(--alerta-fundo);
+}
+.aviso-cnh__titulo {
+  font: 600 14px var(--fonte-texto);
+}
+.aviso-cnh__lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+.aviso-cnh__nao-cobre {
+  color: var(--alerta-texto);
+}
+.aviso-cnh__cobre {
+  color: var(--sucesso-texto);
+}

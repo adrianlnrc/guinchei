@@ -240,6 +240,7 @@ describe('Homologação: documentos do Guincheiro (#47)', () => {
     tipo: 'empresa',
     documento: '11222333000181',
     veiculos: [],
+    vinculos: [],
     itens: [
       doGuincheiro('g-cnh', 'cnh', {
         validade: '2030-05-20',
@@ -379,5 +380,117 @@ describe('Homologação: veículos da Frota (#45)', () => {
       expect(janela.location.href).toBe('https://documentos.exemplo/i-crlv?token=x'),
     );
     expect(api.urlDoDocumento).toHaveBeenCalledWith('i-crlv');
+  });
+});
+
+describe('Homologação: aviso CNH × PBT ao aprovar a CNH (#48)', () => {
+  const CARLA = 'c1000000-0000-4000-8000-000000000001';
+  const LEVE = 'b2000000-0000-4000-8000-000000000001';
+  const PESADO = 'b2000000-0000-4000-8000-000000000002';
+  const frotaCom = (
+    categoria: string,
+    vinculos: FrotaEmHomologacao['vinculos'],
+    veiculos: FrotaEmHomologacao['veiculos'] = [
+      { id: LEVE, placa: 'ZQK3F55', tipo: 'lanca', pbtKg: 3500 },
+      { id: PESADO, placa: 'ZQK4G66', tipo: 'plataforma', pbtKg: 4200 },
+    ],
+  ): FrotaEmHomologacao => ({
+    id: 'f0000000-0000-4000-8000-000000000020',
+    nome: 'Guinchos do Planalto',
+    tipo: 'empresa',
+    documento: '11222333000181',
+    veiculos,
+    vinculos,
+    itens: [
+      {
+        id: 'c-cnh',
+        alvo: 'guincheiro',
+        alvoId: CARLA,
+        tipo: 'cnh',
+        estado: 'pendente',
+        motivo: null,
+        validade: '2030-05-20',
+        enviadoEm: '2026-10-24T12:00:00Z',
+        guincheiro: 'Carla Dias',
+        cnh: { numero: '04512398765', categoria, validade: '2030-05-20', ear: true },
+      },
+    ],
+  });
+  const aviso = () =>
+    within(itemDe('CNH do Guincheiro · Carla Dias')).queryByRole('note', {
+      name: 'Aviso CNH × PBT',
+    });
+
+  it('CNH B: mostra o que cobre, o que não cobre e o vínculo que a aprovação derrubaria', async () => {
+    await abrir(
+      apiFalsa({
+        sessao: true,
+        frotas: [
+          frotaCom('B', [
+            { id: 'v1', veiculoId: PESADO, guincheiroId: CARLA, situacao: 'pendente' },
+          ]),
+        ],
+      }),
+    );
+    await screen.findByRole('heading', { name: 'Guinchos do Planalto' });
+    const caixa = within(aviso()!);
+    expect(caixa.getByText('CNH × PBT · categoria B')).toBeTruthy();
+    expect(caixa.getByText(/ZQK-3F55 \(PBT 3\.500 kg\): a categoria cobre/)).toBeTruthy();
+    expect(
+      caixa.getByText(
+        /ZQK-4G66 \(PBT 4\.200 kg\): a categoria não cobre · vinculado a este Guincheiro/,
+      ),
+    ).toBeTruthy();
+    expect(caixa.getByRole('alert').textContent).toContain(
+      'Aprovar derruba o vínculo deste Guincheiro com ZQK-4G66',
+    );
+  });
+
+  it('CNH C cobre a Frota inteira: nada cai e o aviso diz que o vínculo se mantém', async () => {
+    await abrir(
+      apiFalsa({
+        sessao: true,
+        frotas: [
+          frotaCom('C', [
+            { id: 'v1', veiculoId: PESADO, guincheiroId: CARLA, situacao: 'pendente' },
+          ]),
+        ],
+      }),
+    );
+    await screen.findByRole('heading', { name: 'Guinchos do Planalto' });
+    const caixa = within(aviso()!);
+    expect(caixa.queryByRole('alert')).toBeNull();
+    expect(caixa.getAllByText(/a categoria cobre/)).toHaveLength(2);
+    expect(caixa.getByText('Aprovar mantém os vínculos existentes deste Guincheiro.')).toBeTruthy();
+  });
+
+  it('sem vínculo do Guincheiro, só informa a cobertura', async () => {
+    await abrir(apiFalsa({ sessao: true, frotas: [frotaCom('B', [])] }));
+    await screen.findByRole('heading', { name: 'Guinchos do Planalto' });
+    const caixa = within(aviso()!);
+    expect(caixa.queryByRole('alert')).toBeNull();
+    expect(
+      caixa.getByText('Este Guincheiro ainda não está vinculado a nenhum veículo.'),
+    ).toBeTruthy();
+  });
+
+  it('Frota sem veículos: diz que não há o que conferir', async () => {
+    await abrir(apiFalsa({ sessao: true, frotas: [frotaCom('B', [], [])] }));
+    await screen.findByRole('heading', { name: 'Guinchos do Planalto' });
+    expect(
+      within(aviso()!).getByText(/não tem veículos cadastrados: não há o que conferir/),
+    ).toBeTruthy();
+  });
+
+  it('vínculo de outro Guincheiro não entra na conta, e CNH já decidida não mostra o aviso', async () => {
+    const frota = frotaCom('B', [
+      { id: 'v9', veiculoId: PESADO, guincheiroId: 'outro-guincheiro', situacao: 'ativo' },
+    ]);
+    await abrir(apiFalsa({ sessao: true, frotas: [frota] }));
+    await screen.findByRole('heading', { name: 'Guinchos do Planalto' });
+    expect(within(aviso()!).queryByRole('alert')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovar CNH do Guincheiro · Carla Dias' }));
+    await waitFor(() => expect(screen.queryByRole('note', { name: 'Aviso CNH × PBT' })).toBeNull());
   });
 });

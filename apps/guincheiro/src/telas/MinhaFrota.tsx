@@ -3,7 +3,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import type { ItemHomologacao, MinhaFrota as Frota } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
-import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS, ROTA_DOCUMENTOS } from '../rotas';
+import { ROTA_CONVITES, ROTA_DADOS_PESSOAIS, ROTA_DOCUMENTOS, ROTA_VINCULOS } from '../rotas';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
 import { formatarData } from './cadastro/regras';
 
@@ -154,6 +154,11 @@ function Andamento({ comoGuincheiro }: { comoGuincheiro: boolean }) {
         {frota?.tipo === 'autonomo' && (
           <Link centro onClick={() => ir(ROTA_DOCUMENTOS)}>
             Meus documentos de Guincheiro
+          </Link>
+        )}
+        {frota && (
+          <Link centro onClick={() => ir(ROTA_VINCULOS)}>
+            Vincular Guincheiros a veículos
           </Link>
         )}
         {frota && (

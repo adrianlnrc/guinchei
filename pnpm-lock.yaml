@@ -166,6 +166,9 @@ importers:
       '@guinchei/api':
         specifier: workspace:*
         version: link:../../packages/api
+      '@guinchei/cnh':
+        specifier: workspace:*
+        version: link:../../packages/cnh
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados

@@ -108,6 +108,7 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
         }),
       ],
       veiculos: [{ id: VEICULO_CAPITAL, placa: 'PBX1D23', tipo: 'plataforma', pbtKg: 4500 }],
+      vinculos: [],
     },
     {
       id: 'f0000000-0000-4000-8000-000000000004',
@@ -116,6 +117,7 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
       documento: '45678912364',
       itens: [item('i-sul-alvara', { tipo: 'alvara', enviadoEm: '2026-10-17T08:00:00Z' })],
       veiculos: [],
+      vinculos: [],
     },
     {
       id: 'f0000000-0000-4000-8000-000000000001',
@@ -130,6 +132,7 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
         }),
       ],
       veiculos: [],
+      vinculos: [],
     },
   ];
 }

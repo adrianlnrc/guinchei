@@ -14,3 +14,6 @@ export const ROTA_DOCUMENTOS_SELFIE = '/guincheiro/documentos/selfie';
 
 /** Gestão de convites e Guincheiros da Frota, para o representante (#46). */
 export const ROTA_CONVITES = '/frota/convites';
+
+/** Quem dirige cada veículo: vínculos Guincheiro × veículo, para o representante (#48). */
+export const ROTA_VINCULOS = '/frota/vinculos';

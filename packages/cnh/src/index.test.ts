@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { categoriaCobrePbt, cnhHabilitaConduzir } from './index';
+import {
+  avaliarVinculo,
+  categoriaCobrePbt,
+  cnhHabilitaConduzir,
+  resumoDaAprovacaoDaCnh,
+} from './index';
 
 type Esperado = 'coberto' | 'nao_coberto' | 'erro';
 
@@ -138,5 +143,71 @@ describe('cnhHabilitaConduzir (categoria e EAR são pré-condições separadas)'
     const r = cnhHabilitaConduzir({ categoria: 'Z', ear: true }, 3000);
     expect(r.apto).toBe(false);
     expect(r.pendencias.map((p) => p.tipo)).toEqual(['categoria']);
+  });
+});
+
+describe('avaliarVinculo (espelho de avaliar_vinculo no banco)', () => {
+  it('CNH B em veículo de 4.200 kg aprovada: bloqueado, pede C e explica', () => {
+    const r = avaliarVinculo({ categoria: 'B', aprovada: true }, 4200);
+    expect(r.situacao).toBe('bloqueado');
+    expect(r.categoriaMinima).toBe('C');
+    expect(r.motivo).toContain('exige categoria C ou superior');
+  });
+
+  it('CNH C no mesmo veículo é aceita; B em 3.500 kg também', () => {
+    expect(avaliarVinculo({ categoria: 'C', aprovada: true }, 4200).situacao).toBe('ativo');
+    expect(avaliarVinculo({ categoria: 'B', aprovada: true }, 3500).situacao).toBe('ativo');
+    expect(avaliarVinculo({ categoria: 'B', aprovada: true }, 3501).situacao).toBe('bloqueado');
+  });
+
+  it('A e ACC aprovadas nunca cobrem', () => {
+    expect(avaliarVinculo({ categoria: 'A', aprovada: true }, 1000).situacao).toBe('bloqueado');
+    expect(avaliarVinculo({ categoria: 'ACC', aprovada: true }, 1000).situacao).toBe('bloqueado');
+  });
+
+  it('CNH não aprovada deixa o vínculo pendente, qualquer que seja a categoria', () => {
+    expect(avaliarVinculo({ categoria: 'B', aprovada: false }, 4200).situacao).toBe('pendente');
+    expect(avaliarVinculo({ categoria: null, aprovada: false }, 4200).situacao).toBe('pendente');
+    expect(avaliarVinculo({ categoria: null, aprovada: false }, 4200).motivo).toContain(
+      'ainda não enviou a CNH',
+    );
+  });
+
+  it('CNH aprovada sem categoria, ou PBT inválido, bloqueia (só a cobertura confirmada libera)', () => {
+    expect(avaliarVinculo({ categoria: null, aprovada: true }, 3000).situacao).toBe('bloqueado');
+    expect(avaliarVinculo({ categoria: 'C', aprovada: true }, 0).situacao).toBe('bloqueado');
+  });
+});
+
+describe('resumoDaAprovacaoDaCnh', () => {
+  const frota = [
+    { id: 'leve', pbtKg: 3000 },
+    { id: 'limite', pbtKg: 3500 },
+    { id: 'pesado', pbtKg: 4200 },
+  ];
+
+  it('B cobre até 3.500 kg e derruba só o vínculo do veículo pesado', () => {
+    expect(resumoDaAprovacaoDaCnh('B', frota, ['pesado', 'leve'])).toEqual({
+      cobertos: ['leve', 'limite'],
+      naoCobertos: ['pesado'],
+      derrubaria: ['pesado'],
+    });
+  });
+
+  it('C cobre a Frota inteira e não derruba nada', () => {
+    expect(resumoDaAprovacaoDaCnh('C', frota, ['pesado'])).toEqual({
+      cobertos: ['leve', 'limite', 'pesado'],
+      naoCobertos: [],
+      derrubaria: [],
+    });
+  });
+
+  it('sem vínculo, nada cai; sem veículos, listas vazias', () => {
+    expect(resumoDaAprovacaoDaCnh('B', frota, []).derrubaria).toEqual([]);
+    expect(resumoDaAprovacaoDaCnh('B', [], [])).toEqual({
+      cobertos: [],
+      naoCobertos: [],
+      derrubaria: [],
+    });
   });
 });

@@ -880,6 +880,125 @@ export type Database = {
           },
         ];
       };
+      vinculos_encerrados: {
+        Row: {
+          detalhe: string | null;
+          encerrado_em: string;
+          frota_id: string;
+          guincheiro_id: string;
+          id: number;
+          motivo: string;
+          placa: string;
+          veiculo_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          detalhe?: string | null;
+          encerrado_em?: string;
+          frota_id: string;
+          guincheiro_id: string;
+          id?: never;
+          motivo: string;
+          placa: string;
+          veiculo_id: string;
+        };
+        Update: {
+          detalhe?: string | null;
+          encerrado_em?: string;
+          frota_id?: string;
+          guincheiro_id?: string;
+          id?: never;
+          motivo?: string;
+          placa?: string;
+          veiculo_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'vinculos_encerrados_frota_id_fkey';
+            columns: ['frota_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'vinculos_encerrados_guincheiro_id_fkey';
+            columns: ['guincheiro_id'];
+            isOneToOne: false;
+            referencedRelation: 'guincheiros';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'vinculos_encerrados_veiculo_id_fkey';
+            columns: ['veiculo_id'];
+            isOneToOne: false;
+            referencedRelation: 'veiculos';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      vinculos_veiculo: {
+        Row: {
+          atualizado_em: string;
+          criado_em: string;
+          criado_por: string | null;
+          frota_id: string;
+          guincheiro_id: string;
+          id: string;
+          situacao: Database['public']['Enums']['situacao_vinculo'];
+          veiculo_id: string;
+        };
+        ComputedFields: never;
+        Insert: {
+          atualizado_em?: string;
+          criado_em?: string;
+          criado_por?: string | null;
+          frota_id: string;
+          guincheiro_id: string;
+          id?: string;
+          situacao?: Database['public']['Enums']['situacao_vinculo'];
+          veiculo_id: string;
+        };
+        Update: {
+          atualizado_em?: string;
+          criado_em?: string;
+          criado_por?: string | null;
+          frota_id?: string;
+          guincheiro_id?: string;
+          id?: string;
+          situacao?: Database['public']['Enums']['situacao_vinculo'];
+          veiculo_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'vinculos_veiculo_criado_por_fkey';
+            columns: ['criado_por'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'vinculos_veiculo_frota_id_fkey';
+            columns: ['frota_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'vinculos_veiculo_guincheiro_id_fkey';
+            columns: ['guincheiro_id'];
+            isOneToOne: true;
+            referencedRelation: 'guincheiros';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'vinculos_veiculo_veiculo_id_fkey';
+            columns: ['veiculo_id'];
+            isOneToOne: false;
+            referencedRelation: 'veiculos';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -913,8 +1032,17 @@ export type Database = {
         };
         Returns: undefined;
       };
+      avaliar_vinculo: { Args: { guincheiro: string; veiculo: string }; Returns: string };
       cancelar_convite_guincheiro: { Args: { convite_id: string }; Returns: undefined };
       categoria_cnh_cobre_pbt: { Args: { categoria: string; pbt_kg: number }; Returns: boolean };
+      cnh_dos_meus_guincheiros: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          categoria: string | null;
+          estado: Database['public']['Enums']['estado_homologacao'] | null;
+          guincheiro_id: string;
+        }[];
+      };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       conferir_arquivo_homologacao: { Args: { arquivo: string; dono: string }; Returns: undefined };
       cadastrar_veiculo: {
@@ -962,10 +1090,15 @@ export type Database = {
         };
         Returns: undefined;
       };
+      desfazer_vinculo: { Args: { vinculo_id: string }; Returns: undefined };
       disparar_ofertar_proximo: { Args: { pedido_id: string }; Returns: number };
       eh_operacao: { Args: Record<PropertyKey, never>; Returns: boolean };
       encerrar_rodada_sem_guincheiro: {
         Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
+        Returns: undefined;
+      };
+      encerrar_vinculo: {
+        Args: { detalhe?: string; motivo: string; vinculo_id: string };
         Returns: undefined;
       };
       enviar_antecedentes: { Args: { arquivo: string; emissao: string }; Returns: string };
@@ -1037,6 +1170,17 @@ export type Database = {
         Returns: {
           frota_nome: string;
           valido_ate: string;
+        }[];
+      };
+      meu_veiculo: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          pbt_kg: number;
+          placa: string;
+          situacao: Database['public']['Enums']['situacao_vinculo'];
+          tipo: Database['public']['Enums']['tipo_veiculo_guincho'];
+          veiculo_id: string;
+          vinculo_id: string;
         }[];
       };
       pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
@@ -1147,7 +1291,15 @@ export type Database = {
         };
       };
       validade_antecedentes: { Args: { emissao: string }; Returns: string };
+      revalidar_vinculos: {
+        Args: { guincheiro?: string; veiculo?: string };
+        Returns: number;
+      };
       varrer_match: { Args: Record<PropertyKey, never>; Returns: string[] };
+      vincular_guincheiro_veiculo: {
+        Args: { guincheiro_id: string; veiculo_id: string };
+        Returns: Database['public']['Enums']['situacao_vinculo'];
+      };
     };
     Enums: {
       abrangencia_feriado: 'nacional' | 'df';
@@ -1164,6 +1316,7 @@ export type Database = {
       resultado_tentativa: 'oferecida' | 'aceita' | 'recusada' | 'expirada' | 'pulada_teto';
       rodas_giram: 'sim' | 'nao' | 'nao_sei';
       situacao_veiculo: 'nao_liga' | 'batida' | 'superaqueceu' | 'outro';
+      situacao_vinculo: 'pendente' | 'ativo';
       tipo_frota: 'empresa' | 'autonomo';
       tipo_item_homologacao:
         'alvara' | 'apolice_rc' | 'crlv' | 'foto_veiculo' | 'cnh' | 'antecedentes' | 'selfie';
@@ -1304,6 +1457,7 @@ export const Constants = {
       resultado_tentativa: ['oferecida', 'aceita', 'recusada', 'expirada', 'pulada_teto'],
       rodas_giram: ['sim', 'nao', 'nao_sei'],
       situacao_veiculo: ['nao_liga', 'batida', 'superaqueceu', 'outro'],
+      situacao_vinculo: ['pendente', 'ativo'],
       tipo_frota: ['empresa', 'autonomo'],
       tipo_item_homologacao: [
         'alvara',
