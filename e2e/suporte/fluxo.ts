@@ -1,14 +1,15 @@
 // Passos de tela que mais de um cenário repete. Tudo pela interface, como o usuário faria.
 import type { Page } from '@playwright/test';
 import { DESTINO, ORIGEM } from './mapbox';
-import { expect, URL_CLIENTE, URL_GUINCHEIRO } from './navegadores';
+import { expect, URL_CLIENTE, URL_GUINCHEIRO, URL_PAINEL } from './navegadores';
 import { pedidoAtual } from './banco';
 
 export const CODIGO_DE_TESTE = '123456';
 export const CELULAR_CLIENTE = '(61) 90000-0001';
 export const CELULAR_MARCOS = '(61) 90000-0002';
+export const CELULAR_OPERACAO = '(61) 90000-0005';
 
-async function digitarCodigo(page: Page, celular: string): Promise<void> {
+export async function digitarCodigo(page: Page, celular: string): Promise<void> {
   await page.getByLabel('Celular com DDD').fill(celular);
   // O Auth aceita um envio por número a cada 5 s: um cenário logo após o outro, com o mesmo
   // número, pode ser recusado. Tenta de novo até o código ser pedido.
@@ -34,6 +35,13 @@ export async function entrarComoGuincheiro(page: Page): Promise<void> {
   await page.goto(URL_GUINCHEIRO);
   await digitarCodigo(page, CELULAR_MARCOS);
   await expect(page.getByText('Disponível', { exact: true })).toBeVisible();
+}
+
+/** Login da operação (número de teste do seed) no Painel; termina com a lateral na tela. */
+export async function entrarNoPainel(page: Page): Promise<void> {
+  await page.goto(URL_PAINEL);
+  await digitarCodigo(page, CELULAR_OPERACAO);
+  await expect(page.getByRole('navigation', { name: 'Painel de operação' })).toBeVisible();
 }
 
 /** "R$ 258,80", como o app escreve (o número-herói parte o valor em dois elementos). */

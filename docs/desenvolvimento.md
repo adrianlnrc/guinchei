@@ -29,6 +29,7 @@ packages/
   mock/         dados do cenário do protótipo navegável (o preço vem de @guinchei/preco)
 e2e/
   skeleton.spec.ts   e2e do walking skeleton (Playwright), rodado no CI; veja [E2E](#e2e)
+  cadastro.spec.ts   e2e do cadastro, da homologação e da Frota ativa no Match (#51); veja [E2E](#e2e)
 supabase/
   config.toml   config do Supabase CLI (auth por telefone, números de teste)
   functions/    Edge Functions (Deno): cotar-pedido, confirmar-pedido, ofertar-proximo e estornar-pedido
@@ -66,7 +67,7 @@ cp apps/cliente/.env.example apps/cliente/.env.local
 | `pnpm format` | Prettier (`format:check` só verifica) |
 | `pnpm build` | build de produção dos três apps |
 | `pnpm test:db` | testes de banco (pgTAP) no Supabase local |
-| `pnpm e2e` | e2e do skeleton (Playwright), veja [E2E](#e2e) |
+| `pnpm e2e` | e2e do skeleton e do cadastro de prestadores (Playwright), veja [E2E](#e2e) |
 | `pnpm gen:tipos` | regera `packages/tipos/src/database.ts` a partir do schema local |
 | `pnpm supabase db reset` | recria o banco local: migrações + seed |
 | `pnpm supabase functions serve` | serve as Edge Functions com recarga ao salvar (veja [Edge Functions](#edge-functions)) |
@@ -154,6 +155,8 @@ Login por telefone + código (ADR-0010). Os números são fictícios e estão em
 | Guincheiro | Rita Campos | +55 61 90000-0004 | autônoma · Guará, ~9,6 km |
 | Operação | Operação Guinchei | +55 61 90000-0005 | entra no Painel (porta 5175) |
 | Guincheiro | Paulo Mendes | +55 61 90000-0007 | Guincho Capital · Frota pendente de homologação (inativa, indisponível, fora do Match); dono dos itens da demo |
+| Autônomo do e2e (feliz) | (nenhum) | +55 61 90000-0051 | só em `[auth.sms.test_otp]`: o e2e de cadastro (#51) o cadastra do zero, e o preparo do banco o liberta no fim de cada cenário |
+| Autônomo do e2e (negativo) | (nenhum) | +55 61 90000-0052 | idem, no cenário em que a CNH B é bloqueada num veículo de 4.200 kg |
 | Prestador novo, sem perfil | (nenhum) | +55 61 90000-0008 | só em `[auth.sms.test_otp]`, sem usuário nem perfil no seed: no app do Guincheiro cai no cadastro de Frota autônoma ([Cadastro de Frota autônoma](#cadastro-de-frota-autônoma)) |
 | Guincheiro convidado, sem perfil | (nenhum) | +55 61 90000-0046 | só em `[auth.sms.test_otp]`, sem usuário nem perfil, mas com **convite pendente da Reboque Planalto** no seed (`04_convites.sql`): no app do Guincheiro cai no primeiro acesso (nome, CPF, termos) e nasce Guincheiro da Reboque Planalto ([Convite de Guincheiro](#convite-de-guincheiro)) |
 | Pessoa nova, sem convite | (nenhum) | +55 61 90000-0047 | só em `[auth.sms.test_otp]`, sem convite no seed: o e2e a convida pelo representante de uma Frota e depois entra com ela |
@@ -283,7 +286,7 @@ select vault.create_secret('<service_role key do projeto>', 'match_chave_servico
 - **API:** `ApiPainel` em `@guinchei/api` (`criarApiPainel`): `enviarCodigo`, `confirmarCodigo`, `temSessao`, `buscarMeuPerfil`, `sair` e `buscarMeuOperador` (`null` se o perfil não é `operacao`). Os testes de integração estão em `packages/api/src/integracao.test.ts` (bloco "Painel de operação") e incluem a prova de que a RLS de `eh_operacao()` deixa a operação, e só ela, ler o perfil de outra pessoa. Os testes do app usam o dublê em memória `src/teste/apiFalsa.ts`.
 - **Sair:** o botão "Sair" na lateral chama `ApiPainel.sair()` e volta para `/entrar`; se a chamada falhar, o Painel avisa e a sessão continua.
 - **Dados:** o nome na lateral vem do perfil da sessão e a Homologação lê o banco (veja [Homologação por item](#homologação-por-item)). Monitor, Disputas e Tabela de preços continuam com dados de exemplo (`@guinchei/mock`).
-- **Fora de escopo:** não há expiração visível da sessão; o e2e (`pnpm e2e`) ainda não cobre o Painel. A entrada "Frotas" da lateral segue inativa: a lista de Frotas ativas é de outro ticket, e apontá-la para a Homologação duplicaria o link.
+- **Fora de escopo:** não há expiração visível da sessão; o e2e da homologação e da ativação da Frota no Painel é o `e2e/cadastro.spec.ts` (veja [E2E](#e2e)). A entrada "Frotas" da lateral segue inativa: a lista de Frotas ativas é de outro ticket, e apontá-la para a Homologação duplicaria o link.
 
 ## Homologação por item
 
@@ -437,6 +440,13 @@ Cenários (um banco limpo antes e depois de cada um):
 2. **Sem Guincheiro, tentar de novo.** Com todos fora do plantão depois da cotação, o Pedido vai a `sem_guincheiro` e o Cliente vê as duas opções; com os Guincheiros de volta, "Tentar de novo" abre a rodada 2 e o Marcos recebe a oferta.
 3. **Sem Guincheiro, estornar.** "Estornar o pagamento" mostra o estorno; o pagamento e o Pedido ficam `estornado`.
 
+**Cadastro, homologação e Frota ativa no Match** (`e2e/cadastro.spec.ts`, issue #51, aceite do Incremento 1). Três navegadores à parte: o Guincheiro (celular), o Painel (computador, porta 5175) e o Cliente. O autônomo, a operação e o Cliente só usam as telas; o banco entra para conferir e para ligar o plantão à força no cenário negativo. CPF, nome, CNH, placa e RENAVAM são sorteados a cada cenário (`e2e/suporte/cadastro.ts`), e os arquivos de upload são o `carro.png` e o `documento.pdf` (alguns bytes cada) de `e2e/suporte/`.
+
+4. **Feliz.** O autônomo (+55 61 90000-0051) entra, cai no cadastro de Frota e preenche as cinco etapas (CPF, endereço, alvará e apólice com validade, Pix, termos). Cadastra um veículo de 3.200 kg com CRLV e foto, envia CNH B, certidão de antecedentes e selfie e se vincula ao veículo (vínculo pendente, porque a CNH ainda está em análise). Antes da homologação o plantão aparece bloqueado e não liga. A operação (+55 61 90000-0005) entra no Painel, abre a Frota na fila e aprova os sete itens (alvará, apólice, CRLV, foto, CNH, certidão e selfie); o vínculo passa a ativo, a Frota aparece como "Pronta para ativar" e continua inativa até a operação clicar em "Ativar Frota". O autônomo liga o plantão, os três Guincheiros do seed saem do plantão, o Cliente pede e paga, e a oferta chega à tela do autônomo, o único elegível.
+5. **Negativo.** Outro autônomo (+55 61 90000-0052) cadastra a Frota, um veículo de 4.200 kg e a CNH B. A operação vê no Painel o aviso CNH × PBT e aprova só a CNH; na tela de vínculos, a CNH B aprovada × 4.200 kg é bloqueada ("Não é possível vincular…") e nada é gravado. Com ele ligado ao plantão à força pelo banco (a tela não deixaria) e só o Marcos além dele, o Cliente paga e a oferta vai apenas ao Marcos: sem homologação completa e Frota ativa o Match ignora o autônomo, mesmo ele estando mais perto.
+
+**Limpeza do cadastro.** `prepararBanco` (antes e depois de cada cenário, inclusive os do skeleton) apaga os arquivos do bucket `documentos-prestadores`, os vínculos e o histórico deles, os dados de CNH e certidão, os convites e o rascunho de quem entrou com os telefones de cadastro, e tira esses Guincheiros do plantão. A Frota, os itens de homologação, o veículo e o perfil **não se apagam**: a trilha `auditoria_homologacao` é imutável (nem o `service_role` a altera) e referencia os itens, que referenciam a Frota e o perfil. Como na integração do `@guinchei/api`, o telefone de teste passa a um número aleatório e o cenário seguinte o encontra como pessoa nova. Sobram, portanto, Frotas com itens pendentes na fila do Painel entre uma rodada e outra; os cenários localizam a Frota pelo nome sorteado e não dependem de a fila estar vazia.
+
 O preparo e a conferência do banco usam a `service_role` (`e2e/suporte/banco.ts`); o fluxo em si passa só pelas telas. Cada cenário apaga as Corridas antes de religar o plantão (a guarda `GDP01` recusa `disponivel = true` com Corrida aberta). Os cenários não dependem da ordem. Nada espera tempo fixo: tudo é `expect(...)` com prazo de 30 s, e o Match sem Guincheiro conclui na hora (não depende do timeout de 30 s da oferta).
 
 **Como rodar.** Com o Supabase de pé e o banco recriado:
@@ -444,8 +454,9 @@ O preparo e a conferência do banco usam a `service_role` (`e2e/suporte/banco.ts
 ```bash
 pnpm supabase start
 pnpm supabase db reset
-pnpm e2e                    # builda Cliente e Guincheiro com as chaves locais e roda o Playwright
+pnpm e2e                    # builda Cliente, Guincheiro e Painel com as chaves locais e roda o Playwright
 pnpm e2e --grep estorna     # um cenário só; argumentos vão para o `playwright test`
+pnpm e2e cadastro.spec.ts   # só o cadastro, a homologação e a Frota ativa (#51)
 E2E_SEM_BUILD=1 pnpm e2e    # repete sem rebuildar os apps
 ```
 
@@ -457,7 +468,7 @@ Os navegadores vêm de `pnpm --filter @guinchei/e2e exec playwright install chro
 
 - **Mapbox:** o build do e2e usa o token falso `VITE_MAPBOX_TOKEN=pk.e2e` e o contexto do Cliente responde toda chamada a `api.mapbox.com` com fixtures (`e2e/suporte/mapbox.ts`): estilo vazio, Geocoding v6 (busca e reverso), Directions v5 (21,3 km, 28 min) e a telemetria. O mapa do `mapbox-gl` sobe de verdade (WebGL pelo SwiftShader) e o trajeto é gravado pela tela, mas endereços e rota não vêm do Mapbox real; o que ele responde para o DF segue pendente (veja [Mapbox](#mapbox)). Chamada ao Mapbox sem fixture reprova o cenário.
 - **Pagamento:** o `GatewayPagamento` mock das Edge Functions (autoriza sempre, estorna). Nada de PSP.
-- **Login:** os números de teste do Auth, código 123456. O Auth aceita um envio de código por número a cada 5 s, então o login repete o pedido até o código ser pedido.
+- **Login:** os números de teste do Auth, código 123456 (o da operação é o do seed, +55 61 90000-0005; os dois autônomos do cadastro são números novos). O Auth aceita um envio de código por número a cada 5 s, então o login repete o pedido até o código ser pedido.
 - **Service worker** do PWA bloqueado no teste, para não ficar entre a página e as fixtures.
 
 ## Convenções
