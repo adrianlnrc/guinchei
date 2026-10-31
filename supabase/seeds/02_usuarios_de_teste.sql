@@ -104,4 +104,4 @@ where id = 'a1000000-0000-4000-8000-000000000001';
 -- categoria, validade e EAR ao lado do documento.
 insert into public.documentos_guincheiro
   (guincheiro_id, cnh_numero, cnh_categoria, cnh_validade, cnh_ear)
-values ('22222222-2222-4222-8222-222222222204', '04512398765', 'C', current_date + 730, true);
+values ('22222222-2222-4222-8222-222222222204', '90817263540', 'C', current_date + 730, true);
