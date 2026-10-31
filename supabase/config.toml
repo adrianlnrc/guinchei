@@ -283,6 +283,8 @@ max_frequency = "5s"
 5561900000060 = "123456" # Demo: Helena Duarte, representante da Cerrado Guinchos (05_demonstracao.sql)
 5561900000061 = "123456" # Demo: Cláudia Brito, Guincheira da Cerrado Guinchos (CNH C)
 5561900000062 = "123456" # Demo: Diego Ferraz, Guincheiro da Cerrado Guinchos (CNH B)
+5561900000051 = "123456" # Autônomo do e2e de cadastro e homologação (caminho feliz, #51); o e2e liberta o número no fim de cada cenário
+5561900000052 = "123456" # Autônomo do e2e de cadastro e homologação (cenário negativo, #51)
 
 # Configure logged in session timeouts.
 # [auth.sessions]
