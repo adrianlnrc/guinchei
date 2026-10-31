@@ -28,6 +28,7 @@ const item = (
 ): ItemHomologacao => ({
   id: `item-${tipo}`,
   alvo: 'guincheiro',
+  alvoId: PERFIL_AURORA.id,
   tipo,
   estado: 'pendente',
   motivo: null,

@@ -2,7 +2,11 @@ import { vi } from 'vitest';
 import {
   ErroApi,
   LIMITE_FOTOS_POR_ETAPA,
+  LIMITE_FOTOS_VEICULO,
+  PBT_MAXIMO_KG,
+  PBT_MINIMO_KG,
   TAMANHO_MAXIMO_DOCUMENTO_BYTES,
+  estadoDoVeiculo,
   type ApiGuincheiro,
   type ArquivoDeMidia,
   type CadastroGuincheiroConvidado,
@@ -13,6 +17,8 @@ import {
   type MeusDocumentos,
   type GuincheiroDaFrota,
   type MeuConvite,
+  type DadosVeiculo,
+  type VeiculoDaFrota,
   type FotoEstado,
   type OpcoesFotoEstado,
   type CorridaDoGuincheiro,
@@ -25,6 +31,12 @@ import {
 } from '@guinchei/api';
 import { validadeDosAntecedentes } from '@guinchei/documentos';
 import { podeTransitar } from '@guinchei/estados';
+import {
+  normalizarPlaca,
+  normalizarRenavam,
+  placaValida,
+  renavamValido,
+} from '@guinchei/documentos';
 
 export const CODIGO_CERTO = '123456';
 
@@ -90,9 +102,74 @@ export function ofertaDeTeste(segundosParaVencer = 25): OfertaAberta {
   };
 }
 
+/** Um veículo já cadastrado pela Aurora, com o CRLV aprovado e as fotos em análise. */
+export const VEICULO_APROVADO: VeiculoDaFrota = {
+  id: 'veiculo-1',
+  placa: 'ABC1D23',
+  renavam: '63936443047',
+  tipo: 'plataforma',
+  pbtKg: 4500,
+  estado: 'aprovado',
+  itens: [
+    {
+      id: 'v1-crlv',
+      alvo: 'veiculo',
+      alvoId: 'veiculo-1',
+      tipo: 'crlv',
+      estado: 'aprovado',
+      motivo: null,
+      validade: null,
+      enviadoEm: '2026-10-18T12:00:00Z',
+    },
+    {
+      id: 'v1-foto-1',
+      alvo: 'veiculo',
+      alvoId: 'veiculo-1',
+      tipo: 'foto_veiculo',
+      estado: 'aprovado',
+      motivo: null,
+      validade: null,
+      enviadoEm: '2026-10-18T12:00:01Z',
+    },
+  ],
+};
+
+/** Um veículo com a foto recusada e o CRLV ainda em análise. */
+export const VEICULO_RECUSADO: VeiculoDaFrota = {
+  id: 'veiculo-2',
+  placa: 'XYZ9876',
+  renavam: '12345678900',
+  tipo: 'lanca',
+  pbtKg: 3200,
+  estado: 'recusado',
+  itens: [
+    {
+      id: 'v2-crlv',
+      alvo: 'veiculo',
+      alvoId: 'veiculo-2',
+      tipo: 'crlv',
+      estado: 'pendente',
+      motivo: null,
+      validade: null,
+      enviadoEm: '2026-10-18T13:00:00Z',
+    },
+    {
+      id: 'v2-foto-1',
+      alvo: 'veiculo',
+      alvoId: 'veiculo-2',
+      tipo: 'foto_veiculo',
+      estado: 'recusado',
+      motivo: 'Foto escura: refaça de dia',
+      validade: null,
+      enviadoEm: '2026-10-18T13:00:01Z',
+    },
+  ],
+};
+
 export const ITEM_ALVARA: MinhaFrota['itens'][number] = {
   id: 'item-alvara',
   alvo: 'frota',
+  alvoId: 'frota-nova',
   tipo: 'alvara',
   estado: 'pendente',
   motivo: null,
@@ -103,6 +180,7 @@ export const ITEM_ALVARA: MinhaFrota['itens'][number] = {
 export const ITEM_APOLICE: MinhaFrota['itens'][number] = {
   id: 'item-apolice',
   alvo: 'frota',
+  alvoId: 'frota-nova',
   tipo: 'apolice_rc',
   estado: 'pendente',
   motivo: null,
@@ -137,6 +215,7 @@ export function apiFalsa({
   fotos = [],
   rascunho = null,
   frota = null,
+  veiculos = [],
   telefone = '5561900000008',
   convite = null,
   convites = [],
@@ -155,6 +234,8 @@ export function apiFalsa({
   rascunho?: RascunhoFrota | null;
   /** A Frota que a pessoa logada já cadastrou. */
   frota?: MinhaFrota | null;
+  /** Os veículos que a Frota já tem. */
+  veiculos?: VeiculoDaFrota[];
   /** Telefone do login (dígitos, com o 55). */
   telefone?: string;
   /** O convite pendente do telefone de quem entrou sem perfil. */
@@ -177,6 +258,7 @@ export function apiFalsa({
   let frotaAtual = frota;
   const docs = structuredClone(documentos);
   let linhaDeGuincheiro = guincheiroDaPropriaFrota;
+  const veiculosAtuais = structuredClone(veiculos);
   const arquivosEnviados: string[] = [];
   let estaDisponivel = disponivel;
   let abertas = [...ofertas];
@@ -198,6 +280,7 @@ export function apiFalsa({
     return {
       id: `item-${tipo}`,
       alvo: 'guincheiro',
+      alvoId: perfilAtual?.id ?? PERFIL_AURORA.id,
       tipo,
       estado: 'pendente',
       motivo: null,
@@ -362,6 +445,78 @@ export function apiFalsa({
     enviarSelfie: vi.fn(async (arquivo: string) => {
       if (!arquivo) throw new ErroApi('documento_ausente', 'O arquivo não chegou ao servidor');
       docs.selfie = enviarItem('selfie', docs.selfie, null);
+    }),
+    // Como o servidor: PDF só no CRLV, imagem nas fotos, até 10 MiB.
+    enviarArquivoDoVeiculo: vi.fn(async (arquivo: ArquivoDeMidia, finalidade: 'crlv' | 'foto') => {
+      const imagem = arquivo.type.startsWith('image/');
+      if (!imagem && !(finalidade === 'crlv' && arquivo.type === 'application/pdf')) {
+        throw new ErroApi('arquivo_invalido', 'Formato não aceito.');
+      }
+      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+      }
+      const caminho = `${PERFIL_AURORA.id}/veiculo-${arquivosEnviados.length + 1}.${imagem ? 'jpg' : 'pdf'}`;
+      arquivosEnviados.push(caminho);
+      return caminho;
+    }),
+    // Como o banco: placa e RENAVAM válidos e únicos, PBT na faixa, de 1 a 6 fotos.
+    cadastrarVeiculo: vi.fn(async (dados: DadosVeiculo) => {
+      const placa = normalizarPlaca(dados.placa);
+      const renavam = normalizarRenavam(dados.renavam);
+      if (!placaValida(placa)) throw new ErroApi('placa_invalida', 'Placa inválida.');
+      if (!renavamValido(renavam)) throw new ErroApi('renavam_invalido', 'RENAVAM inválido.');
+      if (dados.pbtKg < PBT_MINIMO_KG || dados.pbtKg > PBT_MAXIMO_KG) {
+        throw new ErroApi('veiculo_dados_invalidos', 'PBT fora da faixa.');
+      }
+      if (dados.fotosArquivos.length < 1 || dados.fotosArquivos.length > LIMITE_FOTOS_VEICULO) {
+        throw new ErroApi('fotos_do_veiculo', 'Envie de 1 a 6 fotos do veículo.');
+      }
+      if (veiculosAtuais.some((v) => v.placa === placa || v.renavam === renavam)) {
+        throw new ErroApi(
+          'veiculo_duplicado',
+          'Já existe um veículo cadastrado com esta placa ou este RENAVAM.',
+        );
+      }
+      const id = `veiculo-${veiculosAtuais.length + 1}-novo`;
+      const itens = [
+        { tipo: 'crlv' as const, arquivo: dados.crlvArquivo },
+        ...dados.fotosArquivos.map((arquivo) => ({ tipo: 'foto_veiculo' as const, arquivo })),
+      ].map((i, n) => ({
+        id: `${id}-${n}`,
+        alvo: 'veiculo' as const,
+        alvoId: id,
+        tipo: i.tipo,
+        estado: 'pendente' as const,
+        motivo: null,
+        validade: null,
+        enviadoEm: `2026-10-18T14:00:0${n}Z`,
+      }));
+      veiculosAtuais.push({
+        id,
+        placa,
+        renavam,
+        tipo: dados.tipo,
+        pbtKg: dados.pbtKg,
+        estado: estadoDoVeiculo(itens),
+        itens,
+      });
+      return id;
+    }),
+    listarMeusVeiculos: vi.fn(async () => structuredClone(veiculosAtuais)),
+    reenviarItemDeVeiculo: vi.fn(async (itemId: string, arquivo: string) => {
+      if (!arquivo) throw new ErroApi('documento_ausente', 'Um arquivo não chegou ao servidor.');
+      for (const v of veiculosAtuais) {
+        const item = v.itens.find((i) => i.id === itemId);
+        if (!item) continue;
+        if (item.estado !== 'recusado' && item.estado !== 'vencido') {
+          throw new ErroApi('transicao_invalida', 'Só se reenvia item recusado ou vencido');
+        }
+        item.estado = 'pendente';
+        item.motivo = null;
+        v.estado = estadoDoVeiculo(v.itens);
+        return;
+      }
+      throw new ErroApi('item_indisponivel', 'Este item não existe mais');
     }),
     definirDisponibilidade: vi.fn(async (valor: boolean) => {
       estaDisponivel = valor;

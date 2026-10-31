@@ -72,7 +72,7 @@ describe('Homologação: detalhe da Frota', () => {
     expect(within(apolice).getByText('Pendente')).toBeTruthy();
     expect(within(apolice).getByText(/Validade 15\/10\/2027/)).toBeTruthy();
     expect(within(itemDe('Alvará')).getByText('Aprovado')).toBeTruthy();
-    expect(within(itemDe('CRLV do veículo')).getByText(/Veículo/)).toBeTruthy();
+    expect(within(itemDe('CRLV do veículo PBX-1D23')).getByText(/Veículo/)).toBeTruthy();
   });
 
   it('destaca o item vencido e não oferece aprovar sem reenvio', async () => {
@@ -119,7 +119,7 @@ describe('Homologação: decidir item', () => {
   it('recusar pede o motivo e só confirma com ele preenchido', async () => {
     const api = await abrir();
     await screen.findByRole('heading', { name: 'Guincho Capital' });
-    fireEvent.click(screen.getByRole('button', { name: 'Recusar CRLV do veículo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Recusar CRLV do veículo PBX-1D23' }));
 
     const confirmar = screen.getByRole('button', { name: 'Confirmar recusa' }) as HTMLButtonElement;
     expect(confirmar.disabled).toBe(true);
@@ -131,11 +131,11 @@ describe('Homologação: decidir item', () => {
     fireEvent.click(confirmar);
 
     await waitFor(() =>
-      expect(within(itemDe('CRLV do veículo')).getByText('Recusado')).toBeTruthy(),
+      expect(within(itemDe('CRLV do veículo PBX-1D23')).getByText('Recusado')).toBeTruthy(),
     );
     expect(api.recusarItem).toHaveBeenCalledWith('i-crlv', 'Foto cortada, placa ilegível');
     expect(
-      within(itemDe('CRLV do veículo')).getByText(/Foto cortada, placa ilegível/),
+      within(itemDe('CRLV do veículo PBX-1D23')).getByText(/Foto cortada, placa ilegível/),
     ).toBeTruthy();
     expect(screen.queryByLabelText('Motivo da recusa')).toBeNull();
   });
@@ -143,12 +143,12 @@ describe('Homologação: decidir item', () => {
   it('cancelar a recusa fecha o motivo sem chamar a API', async () => {
     const api = await abrir();
     await screen.findByRole('heading', { name: 'Guincho Capital' });
-    fireEvent.click(screen.getByRole('button', { name: 'Recusar CRLV do veículo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Recusar CRLV do veículo PBX-1D23' }));
     fireEvent.change(screen.getByLabelText('Motivo da recusa'), { target: { value: 'x' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(screen.queryByLabelText('Motivo da recusa')).toBeNull();
     expect(api.recusarItem).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Aprovar CRLV do veículo' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Aprovar CRLV do veículo PBX-1D23' })).toBeTruthy();
   });
 
   it('a Frota sai da fila quando o último item pendente é decidido', async () => {
@@ -225,6 +225,7 @@ describe('Homologação: documentos do Guincheiro (#47)', () => {
   ): ItemHomologacao => ({
     id,
     alvo: 'guincheiro',
+    alvoId: 'c1000000-0000-4000-8000-000000000001',
     tipo,
     estado: 'pendente',
     motivo: null,
@@ -238,6 +239,7 @@ describe('Homologação: documentos do Guincheiro (#47)', () => {
     nome: 'Reboque Planalto',
     tipo: 'empresa',
     documento: '11222333000181',
+    veiculos: [],
     itens: [
       doGuincheiro('g-cnh', 'cnh', {
         validade: '2030-05-20',
@@ -329,5 +331,53 @@ describe('Homologação: documentos do Guincheiro (#47)', () => {
     await waitFor(() =>
       expect(api.recusarItem).toHaveBeenCalledWith('g-ant', 'Falta a certidão da PF'),
     );
+  });
+});
+
+describe('Homologação: veículos da Frota (#45)', () => {
+  it('mostra os itens do veículo com a placa, o tipo e o PBT', async () => {
+    await abrir();
+    await screen.findByRole('heading', { name: 'Guincho Capital' });
+
+    const crlv = itemDe('CRLV do veículo PBX-1D23');
+    expect(within(crlv).getByText('Pendente')).toBeTruthy();
+    expect(
+      within(crlv).getByText(/Veículo PBX-1D23 \(Plataforma, PBT 4\.500 kg\) · Sem validade/),
+    ).toBeTruthy();
+    // A operação confere o registro como reboque no DETRAN (invariante 3).
+    expect(within(crlv).getByText(/registro do veículo como reboque no DETRAN/)).toBeTruthy();
+
+    expect(within(itemDe('Foto 1 do veículo PBX-1D23')).getByText('Aprovado')).toBeTruthy();
+    const recusada = itemDe('Foto 2 do veículo PBX-1D23');
+    expect(within(recusada).getByText('Recusado')).toBeTruthy();
+    expect(within(recusada).getByText(/Motivo: Foto escura/)).toBeTruthy();
+  });
+
+  it('aprova o CRLV do veículo pendente', async () => {
+    const api = await abrir();
+    await screen.findByRole('heading', { name: 'Guincho Capital' });
+    fireEvent.click(screen.getByRole('button', { name: 'Aprovar CRLV do veículo PBX-1D23' }));
+
+    await waitFor(() =>
+      expect(within(itemDe('CRLV do veículo PBX-1D23')).getByText('Aprovado')).toBeTruthy(),
+    );
+    expect(api.aprovarItem).toHaveBeenCalledWith('i-crlv');
+    expect((await screen.findByRole('status')).textContent).toContain(
+      'CRLV do veículo PBX-1D23 aprovado.',
+    );
+  });
+
+  it('abre o CRLV do veículo pela URL assinada', async () => {
+    const janela = { location: { href: '' }, close: vi.fn(), opener: {} };
+    vi.spyOn(window, 'open').mockReturnValue(janela as unknown as Window);
+    const api = await abrir();
+    await screen.findByRole('heading', { name: 'Guincho Capital' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Ver documento: CRLV do veículo PBX-1D23' }),
+    );
+    await waitFor(() =>
+      expect(janela.location.href).toBe('https://documentos.exemplo/i-crlv?token=x'),
+    );
+    expect(api.urlDoDocumento).toHaveBeenCalledWith('i-crlv');
   });
 });

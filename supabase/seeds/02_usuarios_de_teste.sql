@@ -105,3 +105,9 @@ where id = 'a1000000-0000-4000-8000-000000000001';
 insert into public.documentos_guincheiro
   (guincheiro_id, cnh_numero, cnh_categoria, cnh_validade, cnh_ear)
 values ('22222222-2222-4222-8222-222222222204', '90817263540', 'C', current_date + 730, true);
+
+-- Veículo da Frota pendente (#45), alvo do item de CRLV acima. Placa Mercosul e RENAVAM
+-- válidos só no dígito verificador.
+insert into public.veiculos (id, frota_id, placa, renavam, tipo, pbt_kg)
+values ('b1000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000003',
+  'PBX1D23', '63936443047', 'plataforma', 4500);

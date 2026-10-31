@@ -97,3 +97,39 @@ export function mascararCnh(texto: string): string {
 export function cnhNumeroValido(numero: string): boolean {
   return /^\d{11}$/.test(numero);
 }
+
+// Placa e RENAVAM (ADR-0012, issue #45). Mesmas regras de public.placa_valida e
+// public.renavam_valido no banco.
+
+/** Placa sem hífen e em maiúsculas: "abc-1d23" → "ABC1D23". */
+export function normalizarPlaca(texto: string): string {
+  return texto.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+/** AAA9999 (padrão antigo) ou AAA9A99 (Mercosul), já normalizada. */
+export function placaValida(placa: string): boolean {
+  return /^[A-Z]{3}\d{4}$/.test(placa) || /^[A-Z]{3}\d[A-Z]\d{2}$/.test(placa);
+}
+
+/** "abc1d23" → "ABC-1D23" (o hífen só aparece na máscara; o dado guardado não tem). */
+export function mascararPlaca(texto: string): string {
+  const p = normalizarPlaca(texto).slice(0, 7);
+  return p.length > 3 ? `${p.slice(0, 3)}-${p.slice(3)}` : p;
+}
+
+/** Só dígitos, preenchidos com zeros à esquerda até 11 (RENAVAM de 9 ou 10 dígitos). */
+export function normalizarRenavam(texto: string): string {
+  return texto.replace(/\D/g, '').padStart(11, '0');
+}
+
+const PESOS_RENAVAM = [3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+
+/**
+ * RENAVAM de 11 dígitos (normalizado) com o dígito verificador correto: módulo 11, pesos
+ * 3 2 9 8 7 6 5 4 3 2 nos dez primeiros. Não aceita todos os dígitos iguais.
+ */
+export function renavamValido(renavam: string): boolean {
+  if (!/^\d{11}$/.test(renavam) || /^(\d)\1{10}$/.test(renavam)) return false;
+  const soma = PESOS_RENAVAM.reduce((s, peso, i) => s + Number(renavam[i]) * peso, 0);
+  return ((soma * 10) % 11) % 10 === Number(renavam[10]);
+}

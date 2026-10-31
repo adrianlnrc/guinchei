@@ -838,6 +838,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      veiculos: {
+        Row: {
+          atualizado_em: string;
+          criado_em: string;
+          frota_id: string;
+          id: string;
+          pbt_kg: number;
+          placa: string;
+          renavam: string;
+          tipo: Database['public']['Enums']['tipo_veiculo_guincho'];
+        };
+        ComputedFields: never;
+        Insert: {
+          atualizado_em?: string;
+          criado_em?: string;
+          frota_id: string;
+          id?: string;
+          pbt_kg: number;
+          placa: string;
+          renavam: string;
+          tipo: Database['public']['Enums']['tipo_veiculo_guincho'];
+        };
+        Update: {
+          atualizado_em?: string;
+          criado_em?: string;
+          frota_id?: string;
+          id?: string;
+          pbt_kg?: number;
+          placa?: string;
+          renavam?: string;
+          tipo?: Database['public']['Enums']['tipo_veiculo_guincho'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'veiculos_frota_id_fkey';
+            columns: ['frota_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -875,6 +917,17 @@ export type Database = {
       categoria_cnh_cobre_pbt: { Args: { categoria: string; pbt_kg: number }; Returns: boolean };
       cnpj_valido: { Args: { cnpj: string }; Returns: boolean };
       conferir_arquivo_homologacao: { Args: { arquivo: string; dono: string }; Returns: undefined };
+      cadastrar_veiculo: {
+        Args: {
+          crlv_arquivo: string;
+          fotos: string[];
+          pbt_kg: number;
+          placa: string;
+          renavam: string;
+          tipo: Database['public']['Enums']['tipo_veiculo_guincho'];
+        };
+        Returns: string;
+      };
       contraparte_da_corrida: {
         Args: { corrida_id: string };
         Returns: {
@@ -993,6 +1046,7 @@ export type Database = {
         Args: { esperado: Database['public']['Enums']['papel']; perfil_id: string };
         Returns: boolean;
       };
+      placa_valida: { Args: { placa: string }; Returns: boolean };
       pode_cadastrar_frota: { Args: Record<PropertyKey, never>; Returns: boolean };
       pode_enviar_documento_de_prestador: { Args: Record<PropertyKey, never>; Returns: boolean };
       ponto_no_df: { Args: { latitude: number; longitude: number }; Returns: boolean };
@@ -1033,6 +1087,7 @@ export type Database = {
       };
       sou_cliente_do_pedido: { Args: { pedido_id: string }; Returns: boolean };
       sou_representante_da_frota: { Args: { frota: string }; Returns: boolean };
+      renavam_valido: { Args: { renavam: string }; Returns: boolean };
       tabela_precos_vigente: {
         Args: { em?: string };
         Returns: {
@@ -1114,6 +1169,7 @@ export type Database = {
         'alvara' | 'apolice_rc' | 'crlv' | 'foto_veiculo' | 'cnh' | 'antecedentes' | 'selfie';
       tipo_midia: 'foto' | 'video';
       tipo_veiculo: 'carro' | 'suv' | 'moto' | 'van';
+      tipo_veiculo_guincho: 'plataforma' | 'asa_delta' | 'lanca';
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -1260,6 +1316,7 @@ export const Constants = {
       ],
       tipo_midia: ['foto', 'video'],
       tipo_veiculo: ['carro', 'suv', 'moto', 'van'],
+      tipo_veiculo_guincho: ['plataforma', 'asa_delta', 'lanca'],
     },
   },
 } as const;

@@ -33,6 +33,41 @@ const ESTADO: Record<EstadoHomologacao, { texto: string; classe: string }> = {
   vencido: { texto: 'Vencido', classe: ' etiqueta--alerta' },
 };
 
+const TIPO_DO_VEICULO = {
+  plataforma: 'Plataforma',
+  asa_delta: 'Asa-delta',
+  lanca: 'Lança',
+} as const;
+
+/** "PBX1D23" → "PBX-1D23" */
+const placaComHifen = (placa: string) => `${placa.slice(0, 3)}-${placa.slice(3)}`;
+
+/**
+ * O nome do item na tela. Os de veículo levam a placa (e o número, nas fotos), para a operação
+ * distinguir um veículo do outro; os demais, o nome do documento.
+ */
+function nomeDoItem(item: ItemHomologacao, frota: FrotaEmHomologacao): string {
+  const veiculo = item.alvo === 'veiculo' && frota.veiculos.find((v) => v.id === item.alvoId);
+  if (!veiculo) return TIPO[item.tipo];
+  const placa = placaComHifen(veiculo.placa);
+  if (item.tipo === 'foto_veiculo') {
+    const fotos = frota.itens.filter((i) => i.tipo === 'foto_veiculo' && i.alvoId === item.alvoId);
+    return `Foto ${fotos.findIndex((i) => i.id === item.id) + 1} do veículo ${placa}`;
+  }
+  return `${TIPO[item.tipo]} ${placa}`;
+}
+
+/** Linha de apoio do item: o alvo e, no veículo, o tipo e o PBT que a regra CNH × PBT usa. */
+function detalheDoItem(item: ItemHomologacao, frota: FrotaEmHomologacao): string {
+  const veiculo = item.alvo === 'veiculo' && frota.veiculos.find((v) => v.id === item.alvoId);
+  const alvo = veiculo
+    ? `Veículo ${placaComHifen(veiculo.placa)} (${TIPO_DO_VEICULO[veiculo.tipo]}, PBT ${new Intl.NumberFormat('pt-BR').format(veiculo.pbtKg)} kg)`
+    : item.guincheiro
+      ? `Guincheiro ${item.guincheiro}`
+      : ALVO[item.alvo];
+  return `${alvo} · ${item.validade ? `Validade ${dia(item.validade)}` : 'Sem validade'}`;
+}
+
 const mensagemDe = (erro: unknown, padrao: string) =>
   erro instanceof ErroApi ? erro.message : padrao;
 
@@ -262,20 +297,23 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
             className="cartao"
             style={{ borderRadius: 14, listStyle: 'none', margin: 0, padding: 0 }}
           >
-            {frota.itens.map((item) => (
-              <ItemLinha
-                key={item.id}
-                item={item}
-                ocupado={ocupado}
-                aoVerDocumento={() => void verDocumento(item)}
-                aoAprovar={() =>
-                  decidir(() => api.aprovarItem(item.id), `${TIPO[item.tipo]} aprovado.`)
-                }
-                aoRecusar={(motivo) =>
-                  decidir(() => api.recusarItem(item.id, motivo), `${TIPO[item.tipo]} recusado.`)
-                }
-              />
-            ))}
+            {frota.itens.map((item) => {
+              const nome = nomeDoItem(item, frota);
+              return (
+                <ItemLinha
+                  key={item.id}
+                  item={item}
+                  nome={nome}
+                  detalhe={detalheDoItem(item, frota)}
+                  ocupado={ocupado}
+                  aoVerDocumento={() => void verDocumento(item)}
+                  aoAprovar={() => decidir(() => api.aprovarItem(item.id), `${nome} aprovado.`)}
+                  aoRecusar={(motivo) =>
+                    decidir(() => api.recusarItem(item.id, motivo), `${nome} recusado.`)
+                  }
+                />
+              );
+            })}
           </ul>
           <p className="apoio" style={{ fontSize: 13 }}>
             Esta tela só decide itens. Ativar a Frota é outro passo.
@@ -327,12 +365,16 @@ function DadosDoDocumento({ item }: { item: ItemHomologacao }) {
 
 function ItemLinha({
   item,
+  nome,
+  detalhe,
   ocupado,
   aoVerDocumento,
   aoAprovar,
   aoRecusar,
 }: {
   item: ItemHomologacao;
+  nome: string;
+  detalhe: string;
   ocupado: boolean;
   aoVerDocumento: () => void;
   aoAprovar: () => Promise<void>;
@@ -341,7 +383,6 @@ function ItemLinha({
   const [recusando, setRecusando] = useState(false);
   const [motivo, setMotivo] = useState('');
   const campo = useId();
-  const nome = TIPO[item.tipo];
   // Vários Guincheiros na Frota têm CNH, certidão e selfie cada um: o nome desfaz a ambiguidade.
   const rotulo = item.guincheiro ? `${nome} · ${item.guincheiro}` : nome;
   const estado = ESTADO[item.estado];
@@ -355,13 +396,17 @@ function ItemLinha({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span style={{ font: '600 15px var(--fonte-texto)' }}>{nome}</span>
           <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-            {item.guincheiro ? `Guincheiro ${item.guincheiro}` : ALVO[item.alvo]} ·{' '}
-            {item.validade ? `Validade ${dia(item.validade)}` : 'Sem validade'}
+            {detalhe}
           </span>
         </div>
         <span className={`etiqueta${estado.classe}`}>{estado.texto}</span>
       </div>
       <DadosDoDocumento item={item} />
+      {item.tipo === 'crlv' && item.estado === 'pendente' && (
+        <p style={{ margin: 0, font: '400 13px/1.5 var(--fonte-texto)' }}>
+          Conferir o registro do veículo como reboque no DETRAN.
+        </p>
+      )}
       {item.estado === 'recusado' && item.motivo && (
         <p style={{ margin: 0, font: '400 13px/1.5 var(--fonte-texto)' }}>Motivo: {item.motivo}</p>
       )}

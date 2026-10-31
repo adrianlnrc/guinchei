@@ -1787,6 +1787,227 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(await cliente.api.buscarRascunhoFrota()).toBeNull();
       expect(await cliente.api.buscarMinhaFrota()).toBeNull();
     });
+
+    describe('veículos da Frota (#45): cadastro, RLS, fila e reenvio', () => {
+      const jpg = () => new Blob([new Uint8Array([255, 216, 255])], { type: 'image/jpeg' });
+
+      /** Placa Mercosul e RENAVAM válidos novos a cada chamada: o teste roda de novo sem `db reset`. */
+      function veiculoNovo(): { placa: string; renavam: string } {
+        const letras = () => String.fromCharCode(65 + Math.floor(Math.random() * 26));
+        const numero = (n: number) =>
+          Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');
+        const placa = `${letras()}${letras()}${letras()}${numero(1)}${letras()}${numero(2)}`;
+        const base = numero(10);
+        const pesos = [3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+        const soma = pesos.reduce((s, peso, i) => s + Number(base[i]) * peso, 0);
+        const renavam = `${base}${((soma * 10) % 11) % 10}`;
+        return /^(\d)\1{10}$/.test(renavam) ? veiculoNovo() : { placa, renavam };
+      }
+
+      let crlv: string;
+      let fotos: string[];
+      let veiculoId: string;
+      let dados: { placa: string; renavam: string };
+
+      it('o upload do veículo limita tipo e tamanho; a foto não aceita PDF', async () => {
+        const { api } = sessao;
+        expect(
+          await motivoDe(api.enviarArquivoDoVeiculo({ type: 'video/mp4', size: 10 }, 'foto')),
+        ).toBe('arquivo_invalido');
+        expect(
+          await motivoDe(api.enviarArquivoDoVeiculo({ type: 'application/pdf', size: 10 }, 'foto')),
+        ).toBe('arquivo_invalido');
+        expect(
+          await motivoDe(
+            api.enviarArquivoDoVeiculo(
+              { type: 'image/jpeg', size: TAMANHO_MAXIMO_DOCUMENTO_BYTES + 1 },
+              'crlv',
+            ),
+          ),
+        ).toBe('arquivo_grande');
+
+        crlv = await api.enviarArquivoDoVeiculo(pdf(), 'crlv');
+        fotos = [
+          await api.enviarArquivoDoVeiculo(jpg(), 'foto'),
+          await api.enviarArquivoDoVeiculo(jpg(), 'foto'),
+        ];
+        expect(crlv).toMatch(new RegExp(`^${usuarioId}/[0-9a-f-]{36}\\.pdf$`));
+        expect(fotos[0]).toMatch(/\.jpg$/);
+      });
+
+      it('recusa placa, RENAVAM, PBT, fotos e arquivo ausente inválidos', async () => {
+        const { api } = sessao;
+        const valido = veiculoNovo();
+        const base = {
+          ...valido,
+          tipo: 'plataforma' as const,
+          pbtKg: 4500,
+          crlvArquivo: crlv,
+          fotosArquivos: fotos,
+        };
+        expect(await motivoDe(api.cadastrarVeiculo({ ...base, placa: 'AB12345' }))).toBe(
+          'placa_invalida',
+        );
+        expect(await motivoDe(api.cadastrarVeiculo({ ...base, renavam: '12345678901' }))).toBe(
+          'renavam_invalido',
+        );
+        expect(await motivoDe(api.cadastrarVeiculo({ ...base, pbtKg: 100 }))).toBe(
+          'veiculo_dados_invalidos',
+        );
+        expect(await motivoDe(api.cadastrarVeiculo({ ...base, fotosArquivos: [] }))).toBe(
+          'fotos_do_veiculo',
+        );
+        expect(
+          await motivoDe(api.cadastrarVeiculo({ ...base, fotosArquivos: Array(7).fill(fotos[0]) })),
+        ).toBe('fotos_do_veiculo');
+        expect(
+          await motivoDe(
+            api.cadastrarVeiculo({ ...base, crlvArquivo: `${usuarioId}/nao-existe.pdf` }),
+          ),
+        ).toBe('documento_ausente');
+        expect(await api.listarMeusVeiculos()).toEqual([]);
+      });
+
+      it('cadastra o veículo com o CRLV e as fotos pendentes, aceitando a máscara', async () => {
+        const { api } = sessao;
+        dados = veiculoNovo();
+        veiculoId = await api.cadastrarVeiculo({
+          placa: `${dados.placa.slice(0, 3)}-${dados.placa.slice(3).toLowerCase()}`,
+          renavam: dados.renavam,
+          tipo: 'asa_delta',
+          pbtKg: 6500,
+          crlvArquivo: crlv,
+          fotosArquivos: fotos,
+        });
+        const [meu] = await api.listarMeusVeiculos();
+        expect(meu).toMatchObject({
+          id: veiculoId,
+          placa: dados.placa,
+          renavam: dados.renavam,
+          tipo: 'asa_delta',
+          pbtKg: 6500,
+          estado: 'pendente',
+        });
+        expect(meu!.itens.map((i) => [i.alvo, i.tipo, i.estado]).sort()).toEqual([
+          ['veiculo', 'crlv', 'pendente'],
+          ['veiculo', 'foto_veiculo', 'pendente'],
+          ['veiculo', 'foto_veiculo', 'pendente'],
+        ]);
+      });
+
+      it('placa ou RENAVAM repetidos têm erro claro, mesmo vindo de outra Frota', async () => {
+        const { api } = sessao;
+        const base = {
+          tipo: 'lanca' as const,
+          pbtKg: 3500,
+          crlvArquivo: crlv,
+          fotosArquivos: fotos,
+        };
+        const outro = veiculoNovo();
+        expect(
+          await motivoDe(api.cadastrarVeiculo({ ...base, ...outro, placa: dados.placa })),
+        ).toBe('veiculo_duplicado');
+        expect(
+          await motivoDe(api.cadastrarVeiculo({ ...base, ...outro, renavam: dados.renavam })),
+        ).toBe('veiculo_duplicado');
+        // PBX1D23, do seed, é de outra Frota que este representante não enxerga.
+        expect(await motivoDe(api.cadastrarVeiculo({ ...base, ...outro, placa: 'PBX1D23' }))).toBe(
+          'veiculo_duplicado',
+        );
+      });
+
+      it('só o representante cadastra e lê; Cliente e Guincheiro ficam de fora', async () => {
+        const cliente = novoGuincheiro();
+        await cliente.api.confirmarCodigo(RAFAEL.telefone, CODIGO_DE_TESTE);
+        expect(await cliente.api.listarMeusVeiculos()).toEqual([]);
+        expect(
+          await motivoDe(
+            cliente.api.cadastrarVeiculo({
+              ...veiculoNovo(),
+              tipo: 'plataforma',
+              pbtKg: 4500,
+              crlvArquivo: crlv,
+              fotosArquivos: fotos,
+            }),
+          ),
+        ).toBe('sem_frota');
+
+        const marcos = novoGuincheiro();
+        await marcos.api.confirmarCodigo(MARCOS_TELEFONE, CODIGO_DE_TESTE);
+        expect(await marcos.api.listarMeusVeiculos()).toEqual([]);
+      });
+
+      it('os itens do veículo aparecem no detalhe da Frota no Painel, que aprova e recusa', async () => {
+        const painel = criarClienteApi({
+          supabaseUrl: SUPABASE_URL!,
+          supabaseAnonKey: SUPABASE_ANON_KEY!,
+        });
+        const api = criarApiPainel(painel);
+        await api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+        const detalhe = await api.buscarFrotaHomologacao(frotaId);
+        expect(detalhe?.veiculos).toEqual([
+          { id: veiculoId, placa: dados.placa, tipo: 'asa_delta', pbtKg: 6500 },
+        ]);
+        const doVeiculo = detalhe!.itens.filter((i) => i.alvo === 'veiculo');
+        expect(doVeiculo.every((i) => i.alvoId === veiculoId && i.estado === 'pendente')).toBe(
+          true,
+        );
+        expect(doVeiculo).toHaveLength(3);
+
+        const itemCrlv = doVeiculo.find((i) => i.tipo === 'crlv')!;
+        const [foto1, foto2] = doVeiculo.filter((i) => i.tipo === 'foto_veiculo');
+        await api.aprovarItem(itemCrlv.id);
+        await api.aprovarItem(foto1!.id);
+        await api.recusarItem(foto2!.id, 'Foto escura: refaça de dia');
+        // O documento do veículo abre por URL assinada.
+        expect(await api.urlDoDocumento(itemCrlv.id)).toContain('token=');
+      });
+
+      it('o representante vê o veículo recusado, reenvia a foto e ele volta a pendente', async () => {
+        const { api } = sessao;
+        const [recusado] = await api.listarMeusVeiculos();
+        expect(recusado!.estado).toBe('recusado');
+        const item = recusado!.itens.find((i) => i.estado === 'recusado')!;
+        expect(item).toMatchObject({ tipo: 'foto_veiculo', motivo: 'Foto escura: refaça de dia' });
+
+        const nova = await api.enviarArquivoDoVeiculo(jpg(), 'foto');
+        await api.reenviarItemDeVeiculo(item.id, nova);
+        const [depois] = await api.listarMeusVeiculos();
+        expect(depois!.estado).toBe('pendente');
+        expect(depois!.itens.find((i) => i.id === item.id)).toMatchObject({
+          estado: 'pendente',
+          motivo: null,
+        });
+        // Reenviar o que não foi recusado não vale.
+        const aprovado = depois!.itens.find((i) => i.estado === 'aprovado')!;
+        expect(await motivoDe(api.reenviarItemDeVeiculo(aprovado.id, nova))).toBe(
+          'transicao_invalida',
+        );
+      });
+
+      it('com tudo aprovado o veículo é aprovado, e a placa não muda mais', async () => {
+        const painel = criarClienteApi({
+          supabaseUrl: SUPABASE_URL!,
+          supabaseAnonKey: SUPABASE_ANON_KEY!,
+        });
+        const operacao = criarApiPainel(painel);
+        await operacao.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+        const detalhe = await operacao.buscarFrotaHomologacao(frotaId);
+        for (const item of detalhe!.itens.filter(
+          (i) => i.alvo === 'veiculo' && i.estado === 'pendente',
+        )) {
+          await operacao.aprovarItem(item.id);
+        }
+        const [pronto] = await sessao.api.listarMeusVeiculos();
+        expect(pronto!.estado).toBe('aprovado');
+
+        const edicao = await sessao.supabase
+          .from('veiculos')
+          .update({ pbt_kg: 9000 })
+          .eq('id', veiculoId);
+        expect(edicao.error?.code).toBe('GVE07');
+      });
+    });
   });
 
   describe('Convite de Guincheiro (#46): convidar, cancelar e primeiro acesso', () => {

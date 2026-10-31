@@ -46,8 +46,18 @@ function item(
   id: string,
   campos: Partial<ItemHomologacao> & Pick<ItemHomologacao, 'tipo' | 'enviadoEm'>,
 ): ItemHomologacao {
-  return { id, alvo: 'frota', estado: 'pendente', motivo: null, validade: null, ...campos };
+  return {
+    id,
+    alvo: 'frota',
+    alvoId: 'f0000000-0000-4000-8000-000000000003',
+    estado: 'pendente',
+    motivo: null,
+    validade: null,
+    ...campos,
+  };
 }
+
+const VEICULO_CAPITAL = 'b1000000-0000-4000-8000-000000000001';
 
 /**
  * Frotas de exemplo da Homologação: "Guincho Capital" enviou primeiro (um item aprovado, dois
@@ -75,8 +85,29 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
           validade: '2026-09-30',
           enviadoEm: '2026-10-15T10:10:00Z',
         }),
-        item('i-crlv', { tipo: 'crlv', alvo: 'veiculo', enviadoEm: '2026-10-16T09:00:00Z' }),
+        item('i-crlv', {
+          tipo: 'crlv',
+          alvo: 'veiculo',
+          alvoId: VEICULO_CAPITAL,
+          enviadoEm: '2026-10-16T09:00:00Z',
+        }),
+        item('i-foto-1', {
+          tipo: 'foto_veiculo',
+          alvo: 'veiculo',
+          alvoId: VEICULO_CAPITAL,
+          estado: 'aprovado',
+          enviadoEm: '2026-10-16T09:00:01Z',
+        }),
+        item('i-foto-2', {
+          tipo: 'foto_veiculo',
+          alvo: 'veiculo',
+          alvoId: VEICULO_CAPITAL,
+          estado: 'recusado',
+          motivo: 'Foto escura',
+          enviadoEm: '2026-10-16T09:00:02Z',
+        }),
       ],
+      veiculos: [{ id: VEICULO_CAPITAL, placa: 'PBX1D23', tipo: 'plataforma', pbtKg: 4500 }],
     },
     {
       id: 'f0000000-0000-4000-8000-000000000004',
@@ -84,6 +115,7 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
       tipo: 'autonomo',
       documento: '45678912364',
       itens: [item('i-sul-alvara', { tipo: 'alvara', enviadoEm: '2026-10-17T08:00:00Z' })],
+      veiculos: [],
     },
     {
       id: 'f0000000-0000-4000-8000-000000000001',
@@ -97,6 +129,7 @@ export function frotasDeHomologacao(): FrotaEmHomologacao[] {
           enviadoEm: '2026-10-01T08:00:00Z',
         }),
       ],
+      veiculos: [],
     },
   ];
 }
