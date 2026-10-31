@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import type { FrotaNaFila } from '@guinchei/api';
+import type { FrotaNaFila, PedidoAguardandoAprovacao } from '@guinchei/api';
 import { MONITOR, TAXA_CANCELAMENTO, type CorridaMonitor } from '@guinchei/mock';
 import { TABELA_PADRAO, type TabelaPrecos } from '@guinchei/preco';
 import { useApi } from './api';
@@ -21,6 +21,11 @@ const TABELA_INICIAL: TabelaDoPainel = { ...TABELA_PADRAO, taxaCancelamento: TAX
 
 interface Operacao {
   corridas: CorridaMonitor[];
+  /**
+   * Pedidos redirecionados a outra Frota por um preço maior, à espera de o Cliente aprovar
+   * (ADR-0013); `null` até a leitura chegar. A leitura se repete a cada 10 s.
+   */
+  aguardandoAprovacao: PedidoAguardandoAprovacao[] | null;
   /** Frotas com item pendente, a mais antiga primeiro; `null` até a fila carregar. */
   fila: FrotaNaFila[] | null;
   /** A leitura da fila falhou (a tela não deve mostrar "fila vazia"). */
@@ -44,6 +49,9 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   const corridas = MONITOR;
   const [fila, setFila] = useState<FrotaNaFila[] | null>(null);
   const [erroFila, setErroFila] = useState(false);
+  const [aguardandoAprovacao, setAguardandoAprovacao] = useState<
+    PedidoAguardandoAprovacao[] | null
+  >(null);
   const [decisaoDisputa, setDecisaoDisputa] = useState<string | null>(null);
   const disputasAbertas = decisaoDisputa === null ? 1 : 0;
   const [tabela, setTabela] = useState(TABELA_INICIAL);
@@ -79,6 +87,25 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     };
   }, [api]);
 
+  // O Monitor acompanha os Pedidos que o Match pausou à espera do Cliente. Falha de leitura
+  // mantém a última lista boa e tenta de novo no próximo ciclo.
+  useEffect(() => {
+    let vigente = true;
+    const ler = () =>
+      api.listarPedidosAguardandoAprovacao().then(
+        (lidos) => {
+          if (vigente) setAguardandoAprovacao(lidos);
+        },
+        () => {},
+      );
+    void ler();
+    const ciclo = setInterval(() => void ler(), 10_000);
+    return () => {
+      vigente = false;
+      clearInterval(ciclo);
+    };
+  }, [api]);
+
   const resolverDisputa = useCallback((decisao: string) => setDecisaoDisputa(decisao), []);
   const publicarTabela = useCallback(
     (t: TabelaDoPainel) => setTabela({ ...t, versao: t.versao + 1 }),
@@ -90,6 +117,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   const valor = useMemo(
     () => ({
       corridas,
+      aguardandoAprovacao,
       fila,
       erroFila,
       recarregarFila,
@@ -104,6 +132,7 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     }),
     [
       corridas,
+      aguardandoAprovacao,
       fila,
       erroFila,
       recarregarFila,

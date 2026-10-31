@@ -38,7 +38,8 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 | **Pedido** | Solicitação de reboque criada pelo Cliente: tipo de veículo, situação, "as 4 rodas giram?", origem, destino. É o "chamado" antes do aceite. |
 | **Corrida** | Um Pedido aceito e em execução por um Guincheiro, do aceite à entrega. Estados: aceita → a_caminho → no_local → carregado → entregue (ver ADR-0008). Evite "viagem". |
 | **Match** | Processo que atribui um Pedido a um Guincheiro (ver ADR-0002). |
-| **Preço fechado** | Valor total calculado pela plataforma e mostrado ao Cliente antes da confirmação. Não é orçamento; só muda se o destino mudar durante a Corrida (ver ADR-0003). |
+| **Preço fechado** | Valor total calculado pela plataforma e mostrado ao Cliente antes da confirmação. Não é orçamento; só muda se o destino mudar durante a Corrida (ver ADR-0003) ou se o Pedido for redirecionado a outra Frota que a cotada (ver ADR-0013). |
+| **Frota cotada** | Frota do Guincheiro elegível mais próximo no momento da cotação; o Preço fechado vale com ela. Muda quando o Pedido passa a outra Frota e o preço é refeito (ver ADR-0013). |
 | **Comissão** | Percentual do Preço fechado retido pela plataforma. MVP: 20%. |
 | **Take efetivo** | Comissão menos os subsídios pagos naquela Corrida. |
 | **Painel de operação** | Superfície interna: verificação de Frota, monitor de Corridas, resolução de Disputa. Evite "admin", "backoffice". |
@@ -50,7 +51,7 @@ Use estes termos exatamente. Sinônimos a evitar estão anotados.
 ## Regras e invariantes
 
 1. Toda Corrida tem origem **e** destino dentro do Distrito Federal (MVP).
-2. O Cliente vê o Preço fechado antes de confirmar o Pedido; o valor só muda se o destino mudar durante a Corrida.
+2. O Cliente vê o Preço fechado antes de confirmar o Pedido; o valor só muda se o destino mudar durante a Corrida ou se o Pedido for redirecionado a outra Frota que a cotada. Nesse caso o preço é refeito: se menor ou igual, segue com aviso e estorno da diferença; se maior, o Cliente aprova ou desiste (estorno integral) antes de qualquer oferta à outra Frota (ADR-0013, que revisa o ADR-0009).
 3. Uma Frota só fica ativa após verificação manual da operação: CNPJ ativo, contrato assinado, registro do veículo como reboque no DETRAN, CNH do Guincheiro, apólice de responsabilidade civil por avaria em transporte com a plataforma como cossegurada.
 4. Nenhum valor transita em conta da plataforma — todo dinheiro passa pelo PSP com split.
 5. Fotos de estado são opcionais e podem ser registradas pelo Cliente e pelo Guincheiro; os dois apps avisam que registrar protege numa reclamação de avaria (ADR-0011).
@@ -102,6 +103,6 @@ Hipóteses centrais ainda não validadas:
 - Norma distrital específica de credenciamento de guincho particular no DF, além do alvará geral.
 - Estrutura contratual da apólice de avaria com a plataforma como cossegurada/beneficiária.
 - Modelo de dados e SLA dos contratos com Frotas âncora.
-- Preço fechado × Match: o Cliente paga a cotação com o Guincheiro mais próximo; quem aceita recebe pela própria distância e a plataforma absorve a diferença até o teto da Comissão (ADR-0009, provisório); medir no piloto.
+- Preço fechado × Match: o Cliente paga a cotação com o Guincheiro mais próximo; dentro da Frota cotada, quem aceita recebe pela própria distância e a plataforma absorve a diferença até o teto da Comissão (ADR-0009, provisório); ao passar a outra Frota, o preço é refeito (ADR-0013, provisório); medir no piloto.
 - Escolha do PSP (ADR-0004 lista as opções; o skeleton usa adaptador mock).
 - Posição da SEFAZ-DF sobre CT-e/ICMS-transporte caso a praça se estenda ao entorno goiano.

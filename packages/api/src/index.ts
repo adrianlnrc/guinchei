@@ -284,7 +284,39 @@ export interface OfertaAberta {
  * (o Pedido pago entra no Match na mesma transação); `atribuido` vira o estado da Corrida.
  */
 export type EtapaDoAcompanhamento =
-  'cotado' | 'em_match' | 'sem_guincheiro' | 'estornado' | Enums<'estado_corrida'>;
+  | 'cotado'
+  | 'em_match'
+  /** O Match pausou: outra Frota atenderia por um preço maior e o Cliente precisa aprovar (ADR-0013). */
+  | 'aguardando_aprovacao_preco'
+  | 'sem_guincheiro'
+  | 'estornado'
+  | Enums<'estado_corrida'>;
+
+/** Decomposição de um Preço fechado, em centavos (ADR-0009). */
+export interface DecomposicaoDoPreco {
+  taxaBase: number;
+  ateVeiculo: number;
+  rebocado: number;
+  adicionalNoturno: number;
+  adicionalFeriado: number;
+  ajusteMinimo: number;
+}
+
+/**
+ * O preço refeito porque o Pedido foi redirecionado a outra Frota (ADR-0013). `pendente`: o
+ * Cliente precisa aprovar ou desistir antes de `expiraEm`; `aplicada`: o preço novo é menor
+ * (ou igual) e já vale, com a diferença estornada; `aprovada`: o Cliente aprovou o maior.
+ */
+export interface RecotacaoDoPedido {
+  estado: 'pendente' | 'aplicada' | 'aprovada';
+  /** Centavos. */
+  precoAnterior: number;
+  precoNovo: number;
+  /** Do preço novo. */
+  decomposicao: DecomposicaoDoPreco;
+  /** ISO 8601; só na `pendente`. */
+  expiraEm: string | null;
+}
 
 /** O que o Cliente vê do Guincheiro: só o nome e a Frota (sem CPF nem telefone). */
 export interface GuincheiroDaCorrida {
@@ -300,6 +332,8 @@ export interface Acompanhamento {
   precoTotal: number | null;
   origemEndereco: string | null;
   destinoEndereco: string | null;
+  /** A recotação mais recente que ainda vale (pendente, aplicada ou aprovada); `null` se nunca houve. */
+  recotacao: RecotacaoDoPedido | null;
   /** `null` até um Guincheiro aceitar (e depois do estorno). */
   corrida: {
     id: string;
@@ -361,6 +395,8 @@ export type MotivoErroApi =
   /** O Pedido não tem Preço fechado (ex.: o trajeto mudou depois de cotar). */
   | 'sem_cotacao'
   | 'pagamento_recusado'
+  /** O prazo para aprovar o novo preço venceu; o Pedido será estornado. */
+  | 'prazo_vencido'
   /** O Pedido não é do Cliente ou não está no estado que a ação pede. */
   | 'pedido_indisponivel'
   /** A oferta não é do Guincheiro, já foi respondida ou expirou. */
@@ -494,6 +530,13 @@ export interface ApiGuinchei {
   tentarDeNovo(pedidoId: string): Promise<void>;
   /** Cliente, em `sem_guincheiro`: estorna o pagamento e encerra o Pedido (`estornado`). */
   estornarPedido(pedidoId: string): Promise<PagamentoEstornado>;
+  /**
+   * Cliente, em `aguardando_aprovacao_preco`: aprova o novo preço (autoriza a diferença) e o
+   * Match continua com a outra Frota (ADR-0013). Depois do prazo, `prazo_vencido`.
+   */
+  aprovarNovoPreco(pedidoId: string): Promise<void>;
+  /** Cliente, em `aguardando_aprovacao_preco`: desiste, com estorno integral e sem custo. */
+  desistirDoNovoPreco(pedidoId: string): Promise<void>;
   /**
    * Cliente: o Pedido e a Corrida de hoje, com o nome do Guincheiro. `null` se o Pedido não
    * existe ou não é do Cliente (a RLS esconde o dos outros).
@@ -764,6 +807,7 @@ async function chamarFuncao<T>(
 const PEDIDO_EM_ANDAMENTO: Enums<'estado_pedido'>[] = [
   'confirmado',
   'em_match',
+  'aguardando_aprovacao_preco',
   'sem_guincheiro',
   'atribuido',
 ];
@@ -777,12 +821,50 @@ function etapaDoPedido(
     case 'sem_guincheiro':
     case 'estornado':
       return estado;
+    case 'aguardando_aprovacao_preco':
+      return estado;
     case 'confirmado':
     case 'em_match':
       return 'em_match';
     case 'atribuido':
       return corrida ?? 'aceita';
   }
+}
+
+const COLUNAS_DA_RECOTACAO =
+  'resultado, preco_anterior, preco_novo, expira_em, preco_taxa_base, preco_ate_veiculo, preco_rebocado, preco_adicional_noturno, preco_adicional_feriado, preco_ajuste_minimo';
+type LinhaDaRecotacao = Pick<
+  Tables<'recotacoes_pedido'>,
+  | 'resultado'
+  | 'preco_anterior'
+  | 'preco_novo'
+  | 'expira_em'
+  | 'preco_taxa_base'
+  | 'preco_ate_veiculo'
+  | 'preco_rebocado'
+  | 'preco_adicional_noturno'
+  | 'preco_adicional_feriado'
+  | 'preco_ajuste_minimo'
+>;
+
+function recotacaoDaLinha(linha: LinhaDaRecotacao): RecotacaoDoPedido {
+  return {
+    estado:
+      linha.resultado === 'pendente' || linha.resultado === 'aprovada'
+        ? linha.resultado
+        : 'aplicada',
+    precoAnterior: linha.preco_anterior,
+    precoNovo: linha.preco_novo,
+    decomposicao: {
+      taxaBase: linha.preco_taxa_base,
+      ateVeiculo: linha.preco_ate_veiculo,
+      rebocado: linha.preco_rebocado,
+      adicionalNoturno: linha.preco_adicional_noturno,
+      adicionalFeriado: linha.preco_adicional_feriado,
+      ajusteMinimo: linha.preco_ajuste_minimo,
+    },
+    expiraEm: linha.expira_em,
+  };
 }
 
 const BUCKET_FOTOS = 'fotos-estado';
@@ -830,6 +912,24 @@ function erroDoRegistroDaFoto(error: { code?: string }): ErroApi {
   }
 }
 
+/** Erros de `aprovar_novo_preco` e `desistir_do_novo_preco` (migração `recotacao_do_preco`). */
+function erroDaRespostaAoNovoPreco(error: { code?: string }, mensagemDeFalha: string): ErroApi {
+  switch (error.code) {
+    case 'GRC01':
+      return new ErroApi(
+        'prazo_vencido',
+        'O prazo para aprovar o novo preço venceu. O pagamento será estornado.',
+        { cause: error },
+      );
+    case 'P0002':
+      return new ErroApi('pedido_indisponivel', 'O Pedido não está aguardando a sua aprovação', {
+        cause: error,
+      });
+    default:
+      return new ErroApi('falha', mensagemDeFalha, { cause: error });
+  }
+}
+
 let assinaturas = 0;
 
 export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
@@ -864,17 +964,25 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
   }
 
   async function lerAcompanhamento(pedidoId: string): Promise<Acompanhamento | null> {
-    const [pedido, corrida] = await Promise.all([
+    const [pedido, corrida, recotacao] = await Promise.all([
       supabase
         .from('pedidos')
         .select('id, estado, preco_total, origem_endereco, destino_endereco')
         .eq('id', pedidoId)
         .maybeSingle(),
       supabase.from('corridas').select('id, estado').eq('pedido_id', pedidoId).maybeSingle(),
+      supabase
+        .from('recotacoes_pedido')
+        .select(COLUNAS_DA_RECOTACAO)
+        .eq('pedido_id', pedidoId)
+        .in('resultado', ['pendente', 'aplicada', 'aprovada'])
+        .order('id', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
-    if (pedido.error || corrida.error) {
+    if (pedido.error || corrida.error || recotacao.error) {
       throw new ErroApi('falha', 'Não foi possível ler o acompanhamento', {
-        cause: pedido.error ?? corrida.error,
+        cause: pedido.error ?? corrida.error ?? recotacao.error,
       });
     }
     if (!pedido.data) return null;
@@ -898,6 +1006,7 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       precoTotal: pedido.data.preco_total,
       origemEndereco: pedido.data.origem_endereco,
       destinoEndereco: pedido.data.destino_endereco,
+      recotacao: recotacao.data ? recotacaoDaLinha(recotacao.data) : null,
       corrida: corrida.data
         ? { id: corrida.data.id, estado: corrida.data.estado, guincheiro }
         : null,
@@ -1039,6 +1148,16 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
         { pedido_id: pedidoId },
         'Não foi possível estornar o pagamento',
       );
+    },
+
+    async aprovarNovoPreco(pedidoId) {
+      const { error } = await supabase.rpc('aprovar_novo_preco', { pedido_id: pedidoId });
+      if (error) throw erroDaRespostaAoNovoPreco(error, 'Não foi possível aprovar o novo preço');
+    },
+
+    async desistirDoNovoPreco(pedidoId) {
+      const { error } = await supabase.rpc('desistir_do_novo_preco', { pedido_id: pedidoId });
+      if (error) throw erroDaRespostaAoNovoPreco(error, 'Não foi possível desistir do Pedido');
     },
 
     buscarAcompanhamento: lerAcompanhamento,
@@ -2045,6 +2164,18 @@ function erroDaHomologacao(error: { code?: string }, mensagemDeFalha: string): E
   }
 }
 
+/** Pedido parado à espera de o Cliente aprovar o novo preço (ADR-0013), como o Monitor mostra. */
+export interface PedidoAguardandoAprovacao {
+  pedidoId: string;
+  /** Centavos: o preço anterior e o novo, de outra Frota. */
+  precoAnterior: number;
+  precoNovo: number;
+  /** ISO 8601: sem resposta até aqui, vale como desistência. */
+  expiraEm: string;
+  origemEndereco: string | null;
+  destinoEndereco: string | null;
+}
+
 /**
  * O que o Painel de operação usa: a entrada por telefone do `ApiGuinchei`, mais sair e a
  * leitura do operador. O Painel só admite perfis com papel `operacao`.
@@ -2057,6 +2188,8 @@ export interface ApiPainel extends Pick<
   sair(): Promise<void>;
   /** `null` sem sessão ou se o perfil logado não é da operação. */
   buscarMeuOperador(): Promise<MeuOperador | null>;
+  /** Monitor: Pedidos aguardando o Cliente aprovar o novo preço, o que vence primeiro no topo. */
+  listarPedidosAguardandoAprovacao(): Promise<PedidoAguardandoAprovacao[]>;
   /** Frotas com item `pendente`, a de envio mais antigo primeiro. */
   listarFilaHomologacao(): Promise<FrotaNaFila[]>;
   /** A Frota com todos os itens; `null` se não existe. */
@@ -2085,6 +2218,29 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
     async buscarMeuOperador() {
       const perfil = await base.buscarMeuPerfil();
       return perfil?.papel === 'operacao' ? { nome: perfil.nome } : null;
+    },
+
+    async listarPedidosAguardandoAprovacao() {
+      const { data, error } = await supabase
+        .from('recotacoes_pedido')
+        .select(
+          'pedido_id, preco_anterior, preco_novo, expira_em, pedidos (origem_endereco, destino_endereco)',
+        )
+        .eq('resultado', 'pendente')
+        .order('expira_em', { ascending: true });
+      if (error) {
+        throw new ErroApi('falha', 'Não foi possível ler os Pedidos aguardando aprovação', {
+          cause: error,
+        });
+      }
+      return data.map((r) => ({
+        pedidoId: r.pedido_id,
+        precoAnterior: r.preco_anterior,
+        precoNovo: r.preco_novo,
+        expiraEm: r.expira_em ?? '',
+        origemEndereco: r.pedidos?.origem_endereco ?? null,
+        destinoEndereco: r.pedidos?.destino_endereco ?? null,
+      }));
     },
 
     async listarFilaHomologacao() {

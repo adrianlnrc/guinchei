@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LIMITE_TENTATIVAS_PADRAO, decidirProximo } from './index';
+import { LIMITE_TENTATIVAS_PADRAO, decidirProximo, decidirRecotacao } from './index';
 
 // Guincheiros do seed, do mais perto ao mais longe do Eixo Monumental.
 const MARCOS = { guincheiroId: 'marcos', km: 4.21 };
@@ -114,5 +114,86 @@ describe('decidirProximo', () => {
     expect(() =>
       decidirProximo({ candidatos: CANDIDATOS, tentativasDaRodada: [], limiteTentativas: 0 }),
     ).toThrow(RangeError);
+  });
+});
+
+describe('decidirRecotacao (ADR-0013)', () => {
+  const PLANALTO = 'frota-planalto';
+  const AUTONOMA = 'frota-rita';
+
+  it('mesma Frota cotada: nada muda para o Cliente, qualquer que seja a distância', () => {
+    expect(
+      decidirRecotacao({
+        frotaCotadaId: PLANALTO,
+        frotaDoCandidatoId: PLANALTO,
+        precoAtual: 25915,
+        precoNovo: 27000,
+      }),
+    ).toEqual({ tipo: 'manter' });
+  });
+
+  it('outra Frota e preço menor: aplica sem pausa e informa a diferença a estornar', () => {
+    expect(
+      decidirRecotacao({
+        frotaCotadaId: PLANALTO,
+        frotaDoCandidatoId: AUTONOMA,
+        precoAtual: 25915,
+        precoNovo: 24000,
+      }),
+    ).toEqual({ tipo: 'aplicar', precoAnterior: 25915, precoNovo: 24000, diferenca: 1915 });
+  });
+
+  it('outra Frota e preço igual: aplica sem pausa, sem diferença a estornar', () => {
+    expect(
+      decidirRecotacao({
+        frotaCotadaId: PLANALTO,
+        frotaDoCandidatoId: AUTONOMA,
+        precoAtual: 25915,
+        precoNovo: 25915,
+      }),
+    ).toEqual({ tipo: 'aplicar', precoAnterior: 25915, precoNovo: 25915, diferenca: 0 });
+  });
+
+  it('outra Frota e preço maior: pede a aprovação do Cliente antes de ofertar', () => {
+    expect(
+      decidirRecotacao({
+        frotaCotadaId: PLANALTO,
+        frotaDoCandidatoId: AUTONOMA,
+        precoAtual: 25915,
+        precoNovo: 28000,
+      }),
+    ).toEqual({ tipo: 'pedir_aprovacao', precoAnterior: 25915, precoNovo: 28000, acrescimo: 2085 });
+  });
+
+  it('Pedido sem Frota cotada (cotado antes do ADR-0013): mantém o preço', () => {
+    expect(
+      decidirRecotacao({
+        frotaCotadaId: null,
+        frotaDoCandidatoId: AUTONOMA,
+        precoAtual: 25915,
+        precoNovo: 28000,
+      }),
+    ).toEqual({ tipo: 'manter' });
+  });
+
+  it('recusa preço que não seja inteiro positivo em centavos', () => {
+    for (const ruim of [0, -1, 10.5, Number.NaN]) {
+      expect(() =>
+        decidirRecotacao({
+          frotaCotadaId: PLANALTO,
+          frotaDoCandidatoId: AUTONOMA,
+          precoAtual: ruim,
+          precoNovo: 100,
+        }),
+      ).toThrow(RangeError);
+      expect(() =>
+        decidirRecotacao({
+          frotaCotadaId: PLANALTO,
+          frotaDoCandidatoId: AUTONOMA,
+          precoAtual: 100,
+          precoNovo: ruim,
+        }),
+      ).toThrow(RangeError);
+    }
   });
 });

@@ -3,6 +3,7 @@
 - Status: aceito (provisório; revisar com dados do piloto)
 - Data: 2026-10-17
 - Decisores: Adrian de Alencar Stelo (produto e arquitetura)
+- Revisado em parte por: [ADR-0013](0013-preco-refeito-ao-redirecionar-para-outra-frota.md)
 
 ## Contexto
 
@@ -26,6 +27,8 @@ O ADR-0003 define a estrutura do Preço fechado, mas não os valores. A nota de 
 
 **Cálculo:** valores em centavos, cada parcela arredondada, de modo que a decomposição exibida soma o total. Noturno e feriado são decididos no fuso `America/Sao_Paulo`; a lista de feriados vem do banco. O cálculo é um pacote TS puro (`@guinchei/preco`).
 
+> **Nota (2026-10-22):** o [ADR-0013](0013-preco-refeito-ao-redirecionar-para-outra-frota.md) substitui a opção A abaixo quando o Pedido passa a **outra Frota**: o preço é refeito (a opção B descartada adiante). Dentro da Frota cotada, o que segue vale como está.
+
 **Repasse quando outra Frota aceita** (opção A do grilling):
 
 - O Cliente mantém o Preço fechado da cotação.
@@ -36,7 +39,7 @@ O ADR-0003 define a estrutura do Preço fechado, mas não os valores. A nota de 
 ## Alternativas consideradas
 
 - **Valores mais baixos (R$ 85 / 5 / 6,50)**: 12–13% abaixo do mercado em todos os trechos, mas reduz o repasse; descartado porque a prioridade é a oferta.
-- **Preço do Cliente muda a cada recusa (opção B)**: o Cliente aprova o novo valor antes da oferta à próxima Frota. Quebra a promessa de preço fechado no momento de maior estresse; descartado por ora.
+- **Preço do Cliente muda a cada recusa (opção B)**: o Cliente aprova o novo valor antes da oferta à próxima Frota. Quebra a promessa de preço fechado no momento de maior estresse; descartado por ora. **Adotada, só ao trocar de Frota, no ADR-0013 (2026-10-22).**
 - **Cotar com a Frota mais distante entre as candidatas**: protege a margem, mas encarece o caso comum.
 
 ## Consequências

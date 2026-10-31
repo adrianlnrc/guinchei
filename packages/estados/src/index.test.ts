@@ -28,6 +28,26 @@ describe('podeTransitar: Pedido', () => {
   });
 });
 
+describe('podeTransitar: aprovação do novo preço (ADR-0013)', () => {
+  it('o Match pausa em em_match quando a outra Frota cobra mais', () => {
+    expect(podeTransitar('pedido', 'em_match', 'aguardando_aprovacao_preco')).toBe(true);
+  });
+
+  it('o Cliente aprova e o Match continua', () => {
+    expect(podeTransitar('pedido', 'aguardando_aprovacao_preco', 'em_match')).toBe(true);
+  });
+
+  it('o Cliente desiste (ou o prazo vence) e o pagamento é estornado', () => {
+    expect(podeTransitar('pedido', 'aguardando_aprovacao_preco', 'estornado')).toBe(true);
+  });
+
+  it('não vai direto à Corrida nem a sem_guincheiro', () => {
+    expect(podeTransitar('pedido', 'aguardando_aprovacao_preco', 'atribuido')).toBe(false);
+    expect(podeTransitar('pedido', 'aguardando_aprovacao_preco', 'sem_guincheiro')).toBe(false);
+    expect(podeTransitar('pedido', 'sem_guincheiro', 'aguardando_aprovacao_preco')).toBe(false);
+  });
+});
+
 describe('podeTransitar: sem Guincheiro', () => {
   it('o Cliente pode tentar de novo', () => {
     expect(podeTransitar('pedido', 'sem_guincheiro', 'em_match')).toBe(true);

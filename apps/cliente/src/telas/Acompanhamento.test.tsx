@@ -136,6 +136,181 @@ describe('Acompanhamento do Pedido', () => {
     });
   });
 
+  describe('Pedido redirecionado a outra empresa (ADR-0013)', () => {
+    const DECOMPOSICAO = {
+      taxaBase: 11000,
+      ateVeiculo: 4800,
+      rebocado: 12810,
+      adicionalNoturno: 0,
+      adicionalFeriado: 0,
+      ajusteMinimo: 0,
+    };
+    const PENDENTE = {
+      estado: 'pendente' as const,
+      precoAnterior: 25915,
+      precoNovo: 28610,
+      decomposicao: DECOMPOSICAO,
+      expiraEm: '2026-10-22T18:02:00Z',
+    };
+
+    /** O Rafael reabre o app com o Pedido à espera da aprovação do novo preço. */
+    async function abrirAguardando() {
+      const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
+      const aguardando = acompanhamentoEm('aguardando_aprovacao_preco', {
+        precoTotal: 25915,
+        recotacao: PENDENTE,
+      });
+      api.buscarAcompanhamentoEmAndamento.mockResolvedValue(aguardando);
+      api.buscarAcompanhamento.mockResolvedValue(aguardando);
+      renderEm('/acompanhamento', api);
+      await screen.findByRole('heading', { level: 1 });
+      return api;
+    }
+
+    it('mostra "Outra empresa vai atender" com o preço anterior, o novo e a decomposição', async () => {
+      await abrirAguardando();
+      expect(titulo()).toBe('Outra empresa vai atender');
+      const corpo = document.body.textContent ?? '';
+      expect(corpo).toContain(`Preço anterior${formatarReais(25915)}`);
+      expect(corpo).toContain(`Novo preço${formatarReais(28610)}`);
+      expect(corpo).toContain(`Diferença${formatarReais(2695)}`);
+      const decomposicao = screen.getByRole('group', { name: 'Decomposição do novo preço' });
+      expect(decomposicao.textContent).toContain(`Taxa base${formatarReais(11000)}`);
+      expect(decomposicao.textContent).toContain(`Até o veículo${formatarReais(4800)}`);
+      expect(decomposicao.textContent).toContain(`Reboque${formatarReais(12810)}`);
+      expect(decomposicao.textContent).not.toContain('Adicional noturno');
+    });
+
+    it('diz até que horas o Cliente pode responder, no horário de Brasília', async () => {
+      await abrirAguardando();
+      expect(document.body.textContent).toContain('Responda até as 15:02');
+    });
+
+    it('"Aprovar" autoriza o novo preço e o Match volta a procurar', async () => {
+      const api = await abrirAguardando();
+      api.buscarAcompanhamento.mockResolvedValue(
+        acompanhamentoEm('em_match', {
+          precoTotal: 28610,
+          recotacao: { ...PENDENTE, estado: 'aprovada', expiraEm: null },
+        }),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: `Aprovar ${formatarReais(28610)}` }));
+
+      await waitFor(() => expect(api.aprovarNovoPreco).toHaveBeenCalledWith('pedido-novo'));
+      await waitFor(() => expect(titulo()).toBe('Chamando o guincho mais próximo'));
+      expect(document.body.textContent).toContain(`travado em ${formatarReais(28610)}`);
+    });
+
+    it('"Desistir" estorna por inteiro, sem custo, e leva a um novo Pedido', async () => {
+      const api = await abrirAguardando();
+      api.buscarAcompanhamento.mockResolvedValue(
+        acompanhamentoEm('estornado', { precoTotal: 25915 }),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: 'Desistir e estornar' }));
+
+      await waitFor(() => expect(api.desistirDoNovoPreco).toHaveBeenCalledWith('pedido-novo'));
+      await waitFor(() => expect(titulo()).toBe('Pagamento estornado'));
+      expect(document.body.textContent).toContain(`${formatarReais(25915)} voltam`);
+    });
+
+    it('prazo vencido: mostra o erro e relê o Pedido, já estornado', async () => {
+      const api = await abrirAguardando();
+      api.aprovarNovoPreco.mockRejectedValueOnce(
+        new ErroApi('prazo_vencido', 'O prazo para aprovar o novo preço venceu.'),
+      );
+      api.buscarAcompanhamento.mockResolvedValue(acompanhamentoEm('estornado'));
+
+      fireEvent.click(screen.getByRole('button', { name: `Aprovar ${formatarReais(28610)}` }));
+
+      await waitFor(() => expect(titulo()).toBe('Pagamento estornado'));
+      expect(api.buscarAcompanhamento).toHaveBeenCalledWith('pedido-novo');
+    });
+
+    it('erro ao aprovar: mostra a mensagem e deixa tentar outra vez', async () => {
+      const api = await abrirAguardando();
+      api.aprovarNovoPreco.mockRejectedValueOnce(
+        new ErroApi('pedido_indisponivel', 'O Pedido não está aguardando a sua aprovação'),
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: `Aprovar ${formatarReais(28610)}` }));
+
+      expect((await screen.findByRole('alert')).textContent).toBe(
+        'O Pedido não está aguardando a sua aprovação',
+      );
+      expect(titulo()).toBe('Outra empresa vai atender');
+    });
+
+    it('a tela aparece sozinha quando o Realtime avisa que o Match pausou', async () => {
+      const api = await abrirEm('em_match');
+      act(() =>
+        api.emitir(
+          acompanhamentoEm('aguardando_aprovacao_preco', {
+            precoTotal: 25915,
+            recotacao: PENDENTE,
+          }),
+        ),
+      );
+      expect(titulo()).toBe('Outra empresa vai atender');
+    });
+
+    describe('preço menor ou igual: segue sem pausa', () => {
+      const REDUZIDA = {
+        estado: 'aplicada' as const,
+        precoAnterior: 25915,
+        precoNovo: 24000,
+        decomposicao: DECOMPOSICAO,
+        expiraEm: null,
+      };
+
+      it('avisa que outra empresa vai atender, o novo preço e a diferença estornada', async () => {
+        const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
+        api.buscarAcompanhamentoEmAndamento.mockResolvedValue(
+          acompanhamentoEm('em_match', { precoTotal: 24000, recotacao: REDUZIDA }),
+        );
+        renderEm('/acompanhamento', api);
+        await screen.findByRole('heading', { level: 1 });
+
+        expect(titulo()).toBe('Chamando o guincho mais próximo');
+        const aviso = screen.getByRole('status');
+        expect(aviso.textContent).toContain('Outra empresa vai atender.');
+        expect(aviso.textContent).toContain(
+          `baixou de ${formatarReais(25915)} para ${formatarReais(24000)}`,
+        );
+        expect(aviso.textContent).toContain(`${formatarReais(1915)} será estornada`);
+        expect(document.body.textContent).toContain(`travado em ${formatarReais(24000)}`);
+        expect(screen.queryByRole('button', { name: /Aprovar/ })).toBeNull();
+      });
+
+      it('o aviso continua depois que o Guincheiro aceita', async () => {
+        await abrirEm('aceita');
+        expect(screen.queryByRole('status')).toBeNull();
+
+        const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
+        api.buscarAcompanhamentoEmAndamento.mockResolvedValue(
+          acompanhamentoEm('aceita', { precoTotal: 24000, recotacao: REDUZIDA }),
+        );
+        cleanup();
+        renderEm('/acompanhamento', api);
+        await screen.findByRole('heading', { level: 1 });
+        expect(screen.getByRole('status').textContent).toContain('Outra empresa vai atender.');
+      });
+
+      it('preço igual: nada a avisar', async () => {
+        const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
+        api.buscarAcompanhamentoEmAndamento.mockResolvedValue(
+          acompanhamentoEm('em_match', {
+            recotacao: { ...REDUZIDA, precoNovo: 25915 },
+          }),
+        );
+        renderEm('/acompanhamento', api);
+        await screen.findByRole('heading', { level: 1 });
+        expect(screen.queryByRole('status')).toBeNull();
+      });
+    });
+  });
+
   it('um Pedido estornado mostra o desfecho, sem botões do Match', async () => {
     await abrirEm('estornado');
     expect(titulo()).toBe('Pagamento estornado');
