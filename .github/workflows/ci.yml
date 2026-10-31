@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   verificar:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -29,7 +29,7 @@ jobs:
   # Banco, Edge Functions e navegador de verdade: separado do `verificar` para ele continuar
   # rápido. Sobe o Supabase local no Docker do runner e roda os testes que precisam dele.
   integracao-e-e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
