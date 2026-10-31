@@ -4,6 +4,7 @@ import {
   type AlvoHomologacao,
   type EstadoHomologacao,
   type FrotaEmHomologacao,
+  type ItemEmAlerta,
   type ItemHomologacao,
   type TipoItemHomologacao,
 } from '@guinchei/api';
@@ -90,16 +91,42 @@ const itensPendentes = (n: number) => `${n} ${n === 1 ? 'item pendente' : 'itens
 const documentoDa = (f: { documento: string }) =>
   `${f.documento.length === 11 ? 'CPF' : 'CNPJ'} ${f.documento}`;
 
+/** Rótulo curto do documento na lista de vencimentos. */
+const TIPO_CURTO: Partial<Record<TipoItemHomologacao, string>> = {
+  apolice_rc: 'Apólice de RC',
+  cnh: 'CNH',
+  antecedentes: 'Certidão de antecedentes',
+};
+
+const plural = (n: number, singular: string, mais: string) => `${n} ${n === 1 ? singular : mais}`;
+
+/** "Vence em 12 dias", "Vence hoje", "Venceu há 3 dias": o prazo em palavras. */
+export function prazoDoVencimento(diasRestantes: number): string {
+  if (diasRestantes < 0) return `Venceu há ${plural(-diasRestantes, 'dia', 'dias')}`;
+  if (diasRestantes === 0) return 'Vence hoje';
+  if (diasRestantes === 1) return 'Vence amanhã';
+  return `Vence em ${diasRestantes} dias`;
+}
+
+const nomeDoAlerta = (item: ItemEmAlerta) => {
+  const nome = TIPO_CURTO[item.tipo] ?? TIPO[item.tipo];
+  return item.guincheiro ? `${nome} · ${item.guincheiro}` : nome;
+};
+
+type Aba = 'fila' | 'vencendo';
+
 export function Homologacao() {
-  const { fila, erroFila, recarregarFila } = useOperacao();
+  const { fila, erroFila, recarregarFila, frotasVencendo, homologacoesPendentes } = useOperacao();
+  const [aba, setAba] = useState<Aba>('fila');
   const [escolhida, setEscolhida] = useState<string | null>(null);
   // Decidido o último item de uma Frota, ela sai da fila e a seguinte assume o detalhe.
-  const selecionada = fila?.find((f) => f.id === escolhida)?.id ?? fila?.[0]?.id ?? null;
+  const ids = aba === 'fila' ? (fila?.map((f) => f.id) ?? []) : frotasVencendo.map((f) => f.id);
+  const selecionada = ids.includes(escolhida ?? '') ? escolhida : (ids[0] ?? null);
 
   return (
     <>
       <aside
-        aria-label="Fila de homologação"
+        aria-label={aba === 'fila' ? 'Fila de homologação' : 'Vencendo'}
         style={{
           width: 340,
           flex: 'none',
@@ -107,76 +134,156 @@ export function Homologacao() {
           background: '#fff',
           display: 'flex',
           flexDirection: 'column',
+          overflowY: 'auto',
         }}
       >
-        <div
-          className="topo__titulo"
-          style={{
-            height: 72,
-            flex: 'none',
-            padding: '0 24px',
-            display: 'flex',
-            alignItems: 'center',
-            borderBottom: '1px solid var(--linha-suave)',
-          }}
-        >
-          Fila de homologação
-        </div>
-        {fila?.map((f) => (
+        <div className="homologacao__abas" role="tablist" aria-label="Listas de homologação">
           <button
-            key={f.id}
             type="button"
-            className="homologacao__fila-item"
-            aria-current={f.id === selecionada}
-            onClick={() => setEscolhida(f.id)}
+            role="tab"
+            aria-selected={aba === 'fila'}
+            className="homologacao__aba"
+            onClick={() => setAba('fila')}
           >
-            <span style={{ font: '600 16px var(--fonte-titulo)' }}>{f.nome}</span>
-            <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-              {f.tipo === 'empresa' ? 'Empresa' : 'Autônomo'} · enviado {enviadoEm(f.enviadoEm)}
-            </span>
-            <span style={{ font: '500 13px var(--fonte-texto)' }}>
-              {itensPendentes(f.pendentes)}
-            </span>
+            Pendentes
+            {homologacoesPendentes > 0 && (
+              <span className="homologacao__aba-contagem">{homologacoesPendentes}</span>
+            )}
           </button>
-        ))}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={aba === 'vencendo'}
+            className="homologacao__aba"
+            onClick={() => setAba('vencendo')}
+          >
+            Vencendo
+            {frotasVencendo.length > 0 && (
+              <span className="homologacao__aba-contagem homologacao__aba-contagem--alerta">
+                {frotasVencendo.length}
+              </span>
+            )}
+          </button>
+        </div>
+        {aba === 'fila'
+          ? fila?.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className="homologacao__fila-item"
+                aria-current={f.id === selecionada}
+                onClick={() => setEscolhida(f.id)}
+              >
+                <span style={{ font: '600 16px var(--fonte-titulo)' }}>{f.nome}</span>
+                <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
+                  {f.tipo === 'empresa' ? 'Empresa' : 'Autônomo'} · enviado {enviadoEm(f.enviadoEm)}
+                </span>
+                <span style={{ font: '500 13px var(--fonte-texto)' }}>
+                  {itensPendentes(f.pendentes)}
+                </span>
+              </button>
+            ))
+          : frotasVencendo.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className="homologacao__fila-item"
+                aria-current={f.id === selecionada}
+                aria-label={`${f.nome}: ${plural(f.itens.length, 'documento vencendo', 'documentos vencendo')}`}
+                onClick={() => setEscolhida(f.id)}
+              >
+                <span style={{ font: '600 16px var(--fonte-titulo)' }}>{f.nome}</span>
+                {f.itens.map((item) => (
+                  <span key={item.itemId} className="homologacao__vencendo-item">
+                    <span>{nomeDoAlerta(item)}</span>
+                    <span
+                      className={`etiqueta${item.diasRestantes < 0 ? ' etiqueta--alerta' : ' etiqueta--atencao'}`}
+                    >
+                      {prazoDoVencimento(item.diasRestantes)}
+                    </span>
+                  </span>
+                ))}
+              </button>
+            ))}
       </aside>
       <main className="conteudo">
         {selecionada ? (
           <DetalheDaFrota key={selecionada} frotaId={selecionada} />
+        ) : aba === 'fila' ? (
+          <EstadoDaLista
+            carregada={fila !== null}
+            erro={erroFila}
+            vazio="Nenhuma Frota aguardando homologação."
+            carregando="Carregando a fila…"
+            falha="Não foi possível carregar a fila."
+            tentarDeNovo={recarregarFila}
+          />
         ) : (
-          <div style={{ padding: '32px' }}>
-            {fila ? (
-              <p className="apoio" style={{ fontSize: 15 }}>
-                Nenhuma Frota aguardando homologação.
-              </p>
-            ) : erroFila ? (
-              <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
-                <p className="apoio" style={{ fontSize: 15 }}>
-                  Não foi possível carregar a fila.
-                </p>
-                <button
-                  type="button"
-                  className="acao acao--contorno"
-                  onClick={() => void recarregarFila()}
-                >
-                  Tentar de novo
-                </button>
-              </div>
-            ) : (
-              <p className="apoio" style={{ fontSize: 15 }}>
-                Carregando a fila…
-              </p>
-            )}
-          </div>
+          <SemVencimentos />
         )}
       </main>
     </>
   );
 }
 
+/** Lista vazia, carregando ou com falha: nunca confunde falha de leitura com "nada a fazer". */
+function EstadoDaLista({
+  carregada,
+  erro,
+  vazio,
+  carregando,
+  falha,
+  tentarDeNovo,
+}: {
+  carregada: boolean;
+  erro: boolean;
+  vazio: string;
+  carregando: string;
+  falha: string;
+  tentarDeNovo: () => Promise<void>;
+}) {
+  return (
+    <div style={{ padding: '32px' }}>
+      {carregada ? (
+        <p className="apoio" style={{ fontSize: 15 }}>
+          {vazio}
+        </p>
+      ) : erro ? (
+        <div style={{ display: 'grid', gap: 12, justifyItems: 'start' }}>
+          <p className="apoio" style={{ fontSize: 15 }}>
+            {falha}
+          </p>
+          <button type="button" className="acao acao--contorno" onClick={() => void tentarDeNovo()}>
+            Tentar de novo
+          </button>
+        </div>
+      ) : (
+        <p className="apoio" style={{ fontSize: 15 }}>
+          {carregando}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function SemVencimentos() {
+  const { vencimentos, erroVencimentos, recarregarVencimentos } = useOperacao();
+  const prazo = vencimentos?.prazoDias;
+  return (
+    <EstadoDaLista
+      carregada={vencimentos !== null}
+      erro={erroVencimentos}
+      vazio={`Nenhuma apólice, certidão ou CNH vence${prazo ? ` nos próximos ${prazo} dias` : ' em breve'}, e nenhuma está vencida.`}
+      carregando="Carregando os vencimentos…"
+      falha="Não foi possível carregar os vencimentos."
+      tentarDeNovo={recarregarVencimentos}
+    />
+  );
+}
+
 function DetalheDaFrota({ frotaId }: { frotaId: string }) {
   const api = useApi();
-  const { recarregarFila, avisar } = useOperacao();
+  const { recarregarFila, recarregarVencimentos, vencimentos, avisar } = useOperacao();
   const [frota, setFrota] = useState<FrotaEmHomologacao | null | undefined>(undefined);
   const [erro, setErro] = useState(false);
   const [ocupado, setOcupado] = useState(false);
@@ -221,6 +328,7 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
     }
     await recarregar();
     await recarregarFila();
+    await recarregarVencimentos();
     if (montado.current) setOcupado(false);
   }
 
@@ -307,6 +415,7 @@ function DetalheDaFrota({ frotaId }: { frotaId: string }) {
                   frota={frota}
                   nome={nome}
                   detalhe={detalheDoItem(item, frota)}
+                  vencimento={vencimentos?.itens.find((a) => a.itemId === item.id) ?? null}
                   ocupado={ocupado}
                   aoVerDocumento={() => void verDocumento(item)}
                   aoAprovar={() => decidir(() => api.aprovarItem(item.id), `${nome} aprovado.`)}
@@ -431,6 +540,7 @@ function ItemLinha({
   frota,
   nome,
   detalhe,
+  vencimento,
   ocupado,
   aoVerDocumento,
   aoAprovar,
@@ -440,6 +550,8 @@ function ItemLinha({
   frota: FrotaEmHomologacao;
   nome: string;
   detalhe: string;
+  /** O alerta deste item, quando ele está vencendo ou vencido. */
+  vencimento: ItemEmAlerta | null;
   ocupado: boolean;
   aoVerDocumento: () => void;
   aoAprovar: () => Promise<void>;
@@ -479,6 +591,18 @@ function ItemLinha({
       {item.estado === 'vencido' && (
         <p style={{ margin: 0, font: '400 13px/1.5 var(--fonte-texto)' }}>
           Aguardando novo envio do documento.
+        </p>
+      )}
+      {item.estado === 'aprovado' && vencimento && (
+        <p
+          style={{
+            margin: 0,
+            font: '500 13px/1.5 var(--fonte-texto)',
+            color: 'var(--alerta-texto)',
+          }}
+        >
+          {prazoDoVencimento(vencimento.diasRestantes)} ({dia(vencimento.validade)}). Peça o
+          documento novo antes que a validade passe.
         </p>
       )}
       {recusando ? (

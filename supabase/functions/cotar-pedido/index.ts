@@ -27,6 +27,8 @@ interface DadosDaCotacao {
   trajeto: string;
   tabela: LinhaTabelaPrecos;
   feriados: string[];
+  /** Frota do Guincheiro elegível mais próximo: a Frota cotada (ADR-0013). */
+  frota_id: string;
 }
 
 function traduzir(erro: ErroBanco): ErroServidor | null {
@@ -73,6 +75,8 @@ async function cotar(pedidoId: string, clienteId: string) {
     preco_total: preco.total,
     // O Match recalcula a oferta a cada Guincheiro com este mesmo instante (ADR-0009).
     instante: dados.instante,
+    // O Match só recota o Pedido que passa a outra Frota (ADR-0013).
+    frota_cotada_id: dados.frota_id,
   });
 
   return {

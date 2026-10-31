@@ -8,6 +8,7 @@ import { usePlantao } from '../plantao';
 import { AbasGuincheiro, somaRepasses } from './comum';
 import { AvisoDeHomologacao } from './documentos/AvisoDeHomologacao';
 import { MeuVeiculo } from './MeuVeiculo';
+import { AvisosDeVencimento } from './vencimentos/AvisosDeVencimento';
 
 function Interruptor({ ligado, onChange }: { ligado: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -140,6 +141,7 @@ export function Plantao() {
               : 'Você não recebe chamados enquanto estiver indisponível.'}
           </div>
         </div>
+        {guincheiro && <AvisosDeVencimento />}
         {!disponivel && guincheiro && <AvisoDeHomologacao />}
         {guincheiro && <MeuVeiculo />}
         <Rotulo style={{ marginTop: 8 }}>Hoje</Rotulo>

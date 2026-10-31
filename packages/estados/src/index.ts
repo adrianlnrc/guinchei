@@ -12,6 +12,7 @@ export const ESTADOS_PEDIDO = [
   'atribuido',
   'sem_guincheiro',
   'estornado',
+  'aguardando_aprovacao_preco',
 ] as const;
 export type EstadoPedido = (typeof ESTADOS_PEDIDO)[number];
 
@@ -31,6 +32,10 @@ export type Transicao<E> = readonly [de: E, para: E];
  * De `sem_guincheiro` o Cliente tenta de novo (nova rodada de Match, mesmo Preço fechado)
  * ou estorna o pagamento (`estornado`, terminal). `atribuido` é terminal para o Pedido: a
  * partir dali quem anda é a Corrida. Cancelamento (RF14) fica fora do skeleton.
+ *
+ * ADR-0013: se o Match passa o Pedido a outra Frota por um preço maior, `em_match` vai a
+ * `aguardando_aprovacao_preco`; o Cliente aprova (volta a `em_match`) ou desiste, ou o prazo
+ * vence (`estornado`, com estorno integral).
  */
 export const TRANSICOES_PEDIDO: readonly Transicao<EstadoPedido>[] = [
   ['cotado', 'confirmado'],
@@ -39,6 +44,9 @@ export const TRANSICOES_PEDIDO: readonly Transicao<EstadoPedido>[] = [
   ['em_match', 'sem_guincheiro'],
   ['sem_guincheiro', 'em_match'],
   ['sem_guincheiro', 'estornado'],
+  ['em_match', 'aguardando_aprovacao_preco'],
+  ['aguardando_aprovacao_preco', 'em_match'],
+  ['aguardando_aprovacao_preco', 'estornado'],
 ];
 
 /**
