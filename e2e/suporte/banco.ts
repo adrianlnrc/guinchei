@@ -43,13 +43,20 @@ async function apagarArquivosDeFotos(): Promise<void> {
 }
 
 /**
- * Deixa o banco como o cenário espera: sem Pedidos, Corridas, ofertas, pagamentos nem fotos, e
+ * Deixa o banco como o cenário espera: sem Pedidos, Corridas, ofertas, recotações, pagamentos nem fotos, e
  * com os três Guincheiros do seed em plantão. As Corridas saem antes de religar a
  * disponibilidade (o banco recusa `disponivel = true` com Corrida aberta).
  */
 export async function prepararBanco(): Promise<void> {
   await apagarArquivosDeFotos();
-  for (const tabela of ['fotos_estado', 'corridas', 'tentativas_match', 'pagamentos', 'pedidos']) {
+  for (const tabela of [
+    'fotos_estado',
+    'corridas',
+    'tentativas_match',
+    'recotacoes_pedido',
+    'pagamentos',
+    'pedidos',
+  ]) {
     conferir(await banco.from(tabela).delete().not('id', 'is', null));
   }
   await definirPlantao(TODOS_OS_GUINCHEIROS, true);

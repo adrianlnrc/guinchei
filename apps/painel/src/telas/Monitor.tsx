@@ -1,5 +1,5 @@
 import { INDICADORES } from '@guinchei/mock';
-import { Mapa, type Marcador } from '@guinchei/ui';
+import { Mapa, formatarReais, type Marcador } from '@guinchei/ui';
 import { useOperacao } from '../operacao';
 
 const ROTULO_ESTADO = {
@@ -23,8 +23,18 @@ const POSICOES: Record<number, { left: number; top: number }> = {
   2311: { left: 380, top: 560 },
 };
 
+/** Horário de Brasília do prazo para o Cliente responder. */
+function horaDeBrasilia(iso: string): string {
+  return new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  });
+}
+
 export function Monitor() {
-  const { corridas } = useOperacao();
+  const { corridas, aguardandoAprovacao } = useOperacao();
+  const aguardando = aguardandoAprovacao ?? [];
   const semGuincheiro = corridas.filter((c) => c.estado === 'sem_guincheiro');
   const emMatch = corridas.filter((c) => c.estado === 'em_match');
   const emCurso = corridas.length - semGuincheiro.length - emMatch.length;
@@ -218,6 +228,41 @@ export function Monitor() {
             <span style={{ textAlign: 'right' }}>Tempo</span>
           </div>
           <div style={{ overflowY: 'auto' }}>
+            {aguardando.map((a) => (
+              <div
+                key={a.pedidoId}
+                role="row"
+                aria-label={`Pedido ${a.pedidoId.slice(0, 8)} aguardando aprovação do novo preço`}
+                className="linha-tabela"
+                style={{
+                  gridTemplateColumns: COLUNAS,
+                  background: 'var(--alerta-fundo)',
+                }}
+              >
+                <span style={{ font: '600 14px var(--fonte-mono)' }}>{a.pedidoId.slice(0, 8)}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ font: '500 14px var(--fonte-texto)' }}>
+                    {a.origemEndereco ?? 'Origem'} → {a.destinoEndereco ?? 'Destino'}
+                  </span>
+                  <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
+                    Preço anterior {formatarReais(a.precoAnterior)} · novo preço{' '}
+                    {formatarReais(a.precoNovo)}
+                  </span>
+                </div>
+                <span style={{ font: '600 13px var(--fonte-texto)', color: 'var(--alerta-texto)' }}>
+                  Aguardando aprovação do Cliente
+                </span>
+                <span
+                  style={{
+                    textAlign: 'right',
+                    font: '600 12px var(--fonte-titulo)',
+                    color: 'var(--alerta-texto)',
+                  }}
+                >
+                  até {horaDeBrasilia(a.expiraEm)}
+                </span>
+              </div>
+            ))}
             {corridas.map((c) => {
               const alerta = c.estado === 'sem_guincheiro';
               return (
@@ -273,6 +318,9 @@ export function Monitor() {
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ font: '500 13px var(--fonte-texto)' }}>{resumo}</span>
+              <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
+                {aguardando.length} aguardando aprovação de novo preço
+              </span>
               <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
                 O Match atribui o Guincheiro sozinho.
               </span>

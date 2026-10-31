@@ -4,7 +4,8 @@
 // (supabase/tests/transicoes.test.sql) completa a prova: o trigger aceita exatamente os
 // pares dessas tabelas. Se uma migração nova mudar as transições, aponte este import para ela.
 import { describe, expect, it } from 'vitest';
-import migracao from '../../../supabase/migrations/20261017233246_transicoes_de_estado.sql?raw';
+import migracaoInicial from '../../../supabase/migrations/20261017233246_transicoes_de_estado.sql?raw';
+import migracaoRecotacao from '../../../supabase/migrations/20261022193100_recotacao_do_preco.sql?raw';
 import { Constants } from '@guinchei/tipos';
 import {
   ESTADOS_CORRIDA,
@@ -14,10 +15,19 @@ import {
   type Transicao,
 } from './index';
 
+function paresDoBloco(migracao: string, bloco: string): string[] {
+  const achado = new RegExp(`-- inicio:${bloco}\\n([\\s\\S]*?)-- fim:${bloco}`).exec(migracao);
+  if (!achado?.[1]) throw new Error(`Bloco ${bloco} não encontrado na migração`);
+  return [...achado[1].matchAll(/\('(\w+)', '(\w+)'\)/g)].map(([, de, para]) => `${de}→${para}`);
+}
+
+// As transições do Pedido são as da migração inicial mais as que a migração da recotação
+// (ADR-0013) acrescentou.
 function paresDaMigracao(tabela: string): string[] {
-  const bloco = new RegExp(`-- inicio:${tabela}\\n([\\s\\S]*?)-- fim:${tabela}`).exec(migracao);
-  if (!bloco?.[1]) throw new Error(`Bloco ${tabela} não encontrado na migração`);
-  return [...bloco[1].matchAll(/\('(\w+)', '(\w+)'\)/g)].map(([, de, para]) => `${de}→${para}`);
+  const inicial = paresDoBloco(migracaoInicial, tabela);
+  return tabela === 'transicoes_pedido'
+    ? [...inicial, ...paresDoBloco(migracaoRecotacao, 'transicoes_pedido_recotacao')]
+    : inicial;
 }
 
 function pares(transicoes: readonly Transicao<string>[]): string[] {

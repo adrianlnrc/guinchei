@@ -20,7 +20,8 @@ Lista para a demo (issue #15): o que o skeleton faz de verdade, o que é simulad
 ## Aproximações no preço e no Match
 
 - **Distância na cotação é em linha reta.** A distância do Guincheiro até o veículo é a linha reta (PostGIS) do mais próximo elegível; o km rebocado é o que o app calculou pela rota do Mapbox. A rota real no servidor depende do token de servidor do Mapbox.
-- **Tabela de preços, piso e repasse são provisórios** (ADR-0009), a revisar com dados do piloto. Quem aceita recebe pela própria distância e a plataforma absorve a diferença até o teto da Comissão.
+- **Tabela de preços, piso e repasse são provisórios** (ADR-0009), a revisar com dados do piloto. Dentro da Frota cotada, quem aceita recebe pela própria distância e a plataforma absorve a diferença até o teto da Comissão; ao passar a outra Frota, o preço é refeito e, se subir, o Cliente aprova ou desiste (ADR-0013).
+- **Recotação sem PSP real.** A autorização da diferença e o estorno ao refazer o preço, ao desistir ou ao vencer o prazo só atualizam `pagamentos` (o GatewayPagamento mock não guarda estado); com o PSP real (RF12) passam por uma Edge Function que chama o PSP.
 - Um Guincheiro pode receber ofertas de Pedidos diferentes ao mesmo tempo; ao aceitar uma, as outras falham até expirarem.
 - Estorno: se o Cliente pedir "tentar de novo" entre o estorno no provedor e o registro, o registro falha; com PSP real é preciso conciliar.
 - Quando ninguém aceita, não há broadcast (RF08 é do Incremento 1) e o Painel não atribui: o Cliente decide entre tentar de novo e estornar.

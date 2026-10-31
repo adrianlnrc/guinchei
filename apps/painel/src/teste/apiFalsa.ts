@@ -6,6 +6,7 @@ import {
   type FrotaEmHomologacao,
   type ItemHomologacao,
   type MeuOperador,
+  type PedidoAguardandoAprovacao,
   type Perfil,
 } from '@guinchei/api';
 
@@ -144,11 +145,13 @@ export function apiFalsa({
   perfil = PERFIL_OPERACAO,
   frotas = frotasDeHomologacao(),
   vencimentos = { prazoDias: 30, itens: [] },
+  aguardandoAprovacao = [],
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
   frotas?: FrotaEmHomologacao[];
   vencimentos?: AlertaDeVencimento;
+  aguardandoAprovacao?: PedidoAguardandoAprovacao[];
 } = {}) {
   let logado = sessao;
   const todosOsItens = () => frotas.flatMap((f) => f.itens);
@@ -175,6 +178,7 @@ export function apiFalsa({
     buscarMeuOperador: vi.fn(async (): Promise<MeuOperador | null> =>
       logado && perfil?.papel === 'operacao' ? { nome: perfil.nome } : null,
     ),
+    listarPedidosAguardandoAprovacao: vi.fn(async () => aguardandoAprovacao),
     // Como o banco: a fila é das Frotas com item pendente, a de envio mais antigo primeiro.
     listarFilaHomologacao: vi.fn(async () =>
       frotas
