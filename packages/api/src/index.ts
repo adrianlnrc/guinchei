@@ -137,6 +137,59 @@ export interface CadastroGuincheiroConvidado {
   cpf: string;
   /** Versão dos termos de uso aceita (ADR-0010). */
   termosVersao: string;
+export type TipoVeiculoGuincho = Enums<'tipo_veiculo_guincho'>;
+
+/** Quantas fotos o veículo leva (de 1 a este número), cada uma um item de homologação. */
+export const LIMITE_FOTOS_VEICULO = 6;
+/** PBT aceito, em kg (o mesmo `check` de `veiculos.pbt_kg`). */
+export const PBT_MINIMO_KG = 500;
+export const PBT_MAXIMO_KG = 60_000;
+
+/**
+ * Cadastro de um veículo de guincho. Placa e RENAVAM podem ir com máscara: o servidor
+ * normaliza (RENAVAM de 9 ou 10 dígitos entra com zeros à esquerda). Os arquivos já estão no
+ * bucket (`enviarArquivoDoVeiculo`).
+ */
+export interface DadosVeiculo {
+  placa: string;
+  renavam: string;
+  tipo: TipoVeiculoGuincho;
+  /** Peso bruto total em kg: a regra CNH × PBT depende deste número. */
+  pbtKg: number;
+  /** Caminho do CRLV no bucket. */
+  crlvArquivo: string;
+  /** Caminhos das fotos no bucket (de 1 a `LIMITE_FOTOS_VEICULO`). */
+  fotosArquivos: string[];
+}
+
+/**
+ * Estado do veículo na homologação, resumido dos itens: `recusado` se algum foi recusado,
+ * senão `vencido` se algum venceu, senão `pendente` se algum aguarda a operação, senão
+ * `aprovado` (todos os itens aprovados).
+ */
+export type EstadoDoVeiculo = EstadoHomologacao;
+
+/** Veículo de guincho da Frota, com o estado da homologação de cada item. */
+export interface VeiculoDaFrota {
+  id: string;
+  /** Sem hífen, em maiúsculas. */
+  placa: string;
+  renavam: string;
+  tipo: TipoVeiculoGuincho;
+  pbtKg: number;
+  estado: EstadoDoVeiculo;
+  /** CRLV e fotos, do mais antigo ao mais novo. */
+  itens: ItemHomologacao[];
+}
+
+/** Resumo do estado de um veículo a partir dos seus itens de homologação. */
+export function estadoDoVeiculo(
+  itens: readonly Pick<ItemHomologacao, 'estado'>[],
+): EstadoDoVeiculo {
+  for (const estado of ['recusado', 'vencido', 'pendente'] as const) {
+    if (itens.some((i) => i.estado === estado)) return estado;
+  }
+  return itens.length > 0 ? 'aprovado' : 'pendente';
 }
 
 /** Preço fechado calculado e gravado pelo servidor (Edge Function `cotar-pedido`). */
@@ -337,6 +390,20 @@ export type MotivoErroApi =
   | 'convite_indisponivel'
   /** Primeiro acesso: o CPF não passa no dígito verificador. */
   | 'cpf_invalido'
+  /** Veículo: só o representante de uma Frota cadastra veículos. */
+  | 'sem_frota'
+  /** Veículo: placa fora dos padrões antigo e Mercosul. */
+  | 'placa_invalida'
+  /** Veículo: RENAVAM com dígito verificador errado. */
+  | 'renavam_invalido'
+  /** Veículo: tipo ou PBT fora do aceito. */
+  | 'veiculo_dados_invalidos'
+  /** Veículo: de 1 a 6 fotos. */
+  | 'fotos_do_veiculo'
+  /** Veículo: a placa ou o RENAVAM já estão cadastrados. */
+  | 'veiculo_duplicado'
+  /** Veículo: com item aprovado, placa, RENAVAM, tipo e PBT não mudam. */
+  | 'veiculo_travado'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -506,6 +573,24 @@ export interface ApiGuincheiro extends Pick<
    * `numero_ja_tem_conta`, `dados_incompletos`, `cpf_invalido`, `cpf_ja_cadastrado`.
    */
   aceitarConvite(dados: CadastroGuincheiroConvidado): Promise<void>;
+   * Envia o CRLV (PDF ou imagem) ou uma foto (só imagem) do veículo ao bucket
+   * `documentos-prestadores` e devolve o caminho, para `cadastrarVeiculo` ou
+   * `reenviarItemDeVeiculo`. Até 10 MiB; erros `arquivo_invalido` e `arquivo_grande`.
+   */
+  enviarArquivoDoVeiculo(arquivo: ArquivoDeMidia, finalidade: 'crlv' | 'foto'): Promise<string>;
+  /**
+   * Cadastra o veículo da própria Frota; o CRLV e as fotos viram itens `pendente` na fila do
+   * Painel. Devolve o id. Erros: `sem_frota`, `placa_invalida`, `renavam_invalido`,
+   * `veiculo_dados_invalidos`, `fotos_do_veiculo`, `veiculo_duplicado`, `documento_ausente`.
+   */
+  cadastrarVeiculo(dados: DadosVeiculo): Promise<string>;
+  /** Os veículos da própria Frota, do mais antigo ao mais novo, com o estado de cada um. */
+  listarMeusVeiculos(): Promise<VeiculoDaFrota[]>;
+  /**
+   * Reenvia o item recusado ou vencido de um veículo com o arquivo novo (já no bucket); volta
+   * a `pendente`. Erros `item_indisponivel`, `transicao_invalida`, `documento_ausente`.
+   */
+  reenviarItemDeVeiculo(itemId: string, arquivo: string): Promise<void>;
   /** O interruptor do plantão: grava `guincheiros.disponivel`. */
   definirDisponibilidade(disponivel: boolean): Promise<void>;
   /** Hora do banco (ISO 8601), para contar o prazo da oferta. */
@@ -1088,6 +1173,64 @@ function dadosDoJson(json: unknown): DadosCadastroFrota {
   return dados;
 }
 
+/** Erros de `cadastrar_veiculo` e do reenvio de itens (migrações `veiculos` e `homologacao`). */
+function erroDoVeiculo(
+  error: { code?: string; message?: string },
+  mensagemDeFalha: string,
+): ErroApi {
+  const causa = { cause: error };
+  switch (error.code) {
+    case 'GVE01':
+    case '42501':
+      return new ErroApi('sem_frota', 'Só o representante de uma Frota cadastra veículos', causa);
+    case 'GVE02':
+      return new ErroApi(
+        'placa_invalida',
+        'Placa inválida. Confira as letras e os números.',
+        causa,
+      );
+    case 'GVE03':
+      return new ErroApi('renavam_invalido', 'RENAVAM inválido. Confira os números.', causa);
+    case 'GVE04':
+      return new ErroApi(
+        'veiculo_dados_invalidos',
+        `Informe o tipo e o PBT em kg (de ${PBT_MINIMO_KG} a ${PBT_MAXIMO_KG}).`,
+        causa,
+      );
+    case 'GVE05':
+      return new ErroApi(
+        'fotos_do_veiculo',
+        `Envie de 1 a ${LIMITE_FOTOS_VEICULO} fotos do veículo.`,
+        causa,
+      );
+    case 'GVE06':
+    case '23505':
+      return new ErroApi(
+        'veiculo_duplicado',
+        'Já existe um veículo cadastrado com esta placa ou este RENAVAM.',
+        causa,
+      );
+    case 'GVE07':
+      return new ErroApi(
+        'veiculo_travado',
+        'Veículo com documento aprovado não muda placa, RENAVAM, tipo nem PBT.',
+        causa,
+      );
+    case 'GHM06':
+      return new ErroApi(
+        'documento_ausente',
+        'Um arquivo não chegou ao servidor. Envie de novo.',
+        causa,
+      );
+    case 'P0002':
+      return new ErroApi('item_indisponivel', 'Este item não existe mais', causa);
+    case 'GHM03':
+      return new ErroApi('transicao_invalida', 'Só se reenvia item recusado ou vencido', causa);
+    default:
+      return new ErroApi('falha', mensagemDeFalha, causa);
+  }
+}
+
 /** Erros de `enviar_cadastro_frota` e do rascunho (migração `cadastro_de_frota`). */
 function erroDoCadastroDeFrota(
   error: { code?: string; message?: string },
@@ -1203,6 +1346,32 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     return data.session?.user.id ?? null;
   }
 
+  /** Envia ao bucket de documentos, na pasta de quem está logado. Só o CRLV aceita PDF. */
+  async function enviarAoBucketDeDocumentos(arquivo: ArquivoDeMidia, aceitaPdf: boolean) {
+    const id = await meuId();
+    if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
+    const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
+    if (!extensao || (!aceitaPdf && arquivo.type === 'application/pdf')) {
+      throw new ErroApi(
+        'arquivo_invalido',
+        aceitaPdf
+          ? 'Formato não aceito. Envie um PDF ou uma foto.'
+          : 'Formato não aceito. Envie uma foto.',
+      );
+    }
+    if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
+      throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
+    }
+    const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
+    const envio = await supabase.storage
+      .from(BUCKET_DOCUMENTOS)
+      .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+    if (envio.error) {
+      throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
+    }
+    return caminho;
+  }
+
   async function completarCorrida(
     linha: {
       id: string;
@@ -1300,23 +1469,68 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
     },
 
     async enviarDocumentoDaFrota(arquivo) {
-      const id = await meuId();
-      if (!id) throw new ErroApi('sem_sessao', 'Entre com o celular antes');
-      const extensao = EXTENSAO_DO_DOCUMENTO[arquivo.type];
-      if (!extensao) {
-        throw new ErroApi('arquivo_invalido', 'Formato não aceito. Envie um PDF ou uma foto.');
+      return enviarAoBucketDeDocumentos(arquivo, true);
+    },
+
+    async enviarArquivoDoVeiculo(arquivo, finalidade) {
+      return enviarAoBucketDeDocumentos(arquivo, finalidade === 'crlv');
+    },
+
+    async cadastrarVeiculo(dados) {
+      const { data, error } = await supabase.rpc('cadastrar_veiculo', {
+        placa: dados.placa,
+        renavam: dados.renavam,
+        tipo: dados.tipo,
+        pbt_kg: dados.pbtKg,
+        crlv_arquivo: dados.crlvArquivo,
+        fotos: dados.fotosArquivos,
+      });
+      if (error) throw erroDoVeiculo(error, 'Não foi possível cadastrar o veículo');
+      return data;
+    },
+
+    async listarMeusVeiculos() {
+      const { data: veiculos, error } = await supabase
+        .from('veiculos')
+        .select('id, placa, renavam, tipo, pbt_kg')
+        .order('criado_em', { ascending: true })
+        .order('id', { ascending: true });
+      if (error) throw new ErroApi('falha', 'Não foi possível ler os veículos', { cause: error });
+      if (veiculos.length === 0) return [];
+      const { data: itens, error: erroItens } = await supabase
+        .from('itens_homologacao')
+        .select('id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em')
+        .eq('alvo', 'veiculo')
+        .in(
+          'alvo_id',
+          veiculos.map((v) => v.id),
+        );
+      if (erroItens) {
+        throw new ErroApi('falha', 'Não foi possível ler os veículos', { cause: erroItens });
       }
-      if (arquivo.size > TAMANHO_MAXIMO_DOCUMENTO_BYTES) {
-        throw new ErroApi('arquivo_grande', 'O arquivo passa de 10 MB.');
-      }
-      const caminho = `${id}/${crypto.randomUUID()}.${extensao}`;
-      const envio = await supabase.storage
-        .from(BUCKET_DOCUMENTOS)
-        .upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
-      if (envio.error) {
-        throw new ErroApi('falha', 'Não foi possível enviar o documento', { cause: envio.error });
-      }
-      return caminho;
+      return veiculos.map((v) => {
+        const doVeiculo = itens
+          .filter((i) => i.alvo_id === v.id)
+          .map(itemDeHomologacao)
+          .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.id.localeCompare(b.id));
+        return {
+          id: v.id,
+          placa: v.placa,
+          renavam: v.renavam,
+          tipo: v.tipo,
+          pbtKg: v.pbt_kg,
+          estado: estadoDoVeiculo(doVeiculo),
+          itens: doVeiculo,
+        };
+      });
+    },
+
+    async reenviarItemDeVeiculo(itemId, arquivo) {
+      const { error } = await supabase.rpc('reenviar_item_homologacao', {
+        item_id: itemId,
+        arquivo,
+      });
+      if (error) throw erroDoVeiculo(error, 'Não foi possível reenviar o item');
     },
 
     async enviarCadastroFrota() {
@@ -1331,7 +1545,7 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
       const { data, error } = await supabase
         .from('frotas')
         .select(
-          'id, tipo, documento, nome, ativa, base_cep, base_endereco, base_bairro, chave_pix, apolice_validade, termos_prestador_versao, itens_homologacao (id, alvo, tipo, estado, motivo, validade, enviado_em)',
+          'id, tipo, documento, nome, ativa, base_cep, base_endereco, base_bairro, chave_pix, apolice_validade, termos_prestador_versao, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em)',
         )
         .eq('representante_id', id)
         .maybeSingle();
@@ -1350,15 +1564,7 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
         apoliceValidade: data.apolice_validade,
         termosPrestadorVersao: data.termos_prestador_versao,
         itens: data.itens_homologacao
-          .map((i) => ({
-            id: i.id,
-            alvo: i.alvo,
-            tipo: i.tipo,
-            estado: i.estado,
-            motivo: i.motivo,
-            validade: i.validade,
-            enviadoEm: i.enviado_em,
-          }))
+          .map(itemDeHomologacao)
           .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.tipo.localeCompare(b.tipo)),
       };
     },
@@ -1538,6 +1744,8 @@ export type AlvoHomologacao = Enums<'alvo_homologacao'>;
 export interface ItemHomologacao {
   id: string;
   alvo: AlvoHomologacao;
+  /** A Frota, o Guincheiro ou o veículo a que o item se refere. */
+  alvoId: string;
   tipo: TipoItemHomologacao;
   estado: EstadoHomologacao;
   /** Motivo da recusa vigente; `null` fora de `recusado`. */
@@ -1546,6 +1754,30 @@ export interface ItemHomologacao {
   validade: string | null;
   /** ISO 8601: quando entrou (ou voltou) para a fila. */
   enviadoEm: string;
+}
+
+interface LinhaDoItem {
+  id: string;
+  alvo: AlvoHomologacao;
+  alvo_id: string;
+  tipo: TipoItemHomologacao;
+  estado: EstadoHomologacao;
+  motivo: string | null;
+  validade: string | null;
+  enviado_em: string;
+}
+
+function itemDeHomologacao(i: LinhaDoItem): ItemHomologacao {
+  return {
+    id: i.id,
+    alvo: i.alvo,
+    alvoId: i.alvo_id,
+    tipo: i.tipo,
+    estado: i.estado,
+    motivo: i.motivo,
+    validade: i.validade,
+    enviadoEm: i.enviado_em,
+  };
 }
 
 /** Uma Frota com item `pendente`, na ordem de envio. */
@@ -1566,6 +1798,8 @@ export interface FrotaEmHomologacao {
   documento: string;
   /** Todos os itens, em qualquer estado, do mais antigo ao mais novo. */
   itens: ItemHomologacao[];
+  /** Os veículos cadastrados, para dar nome (placa) aos itens de veículo. */
+  veiculos: { id: string; placa: string; tipo: TipoVeiculoGuincho; pbtKg: number }[];
 }
 
 /** Erros das funções de homologação (migração `homologacao`). */
@@ -1668,7 +1902,7 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
       const { data, error } = await supabase
         .from('frotas')
         .select(
-          'id, nome, tipo, documento, itens_homologacao (id, alvo, tipo, estado, motivo, validade, enviado_em)',
+          'id, nome, tipo, documento, itens_homologacao (id, alvo, alvo_id, tipo, estado, motivo, validade, enviado_em), veiculos (id, placa, tipo, pbt_kg)',
         )
         .eq('id', frotaId)
         .maybeSingle();
@@ -1680,16 +1914,14 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
         tipo: data.tipo,
         documento: data.documento,
         itens: data.itens_homologacao
-          .map((i) => ({
-            id: i.id,
-            alvo: i.alvo,
-            tipo: i.tipo,
-            estado: i.estado,
-            motivo: i.motivo,
-            validade: i.validade,
-            enviadoEm: i.enviado_em,
-          }))
+          .map(itemDeHomologacao)
           .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.id.localeCompare(b.id)),
+        veiculos: data.veiculos.map((v) => ({
+          id: v.id,
+          placa: v.placa,
+          tipo: v.tipo,
+          pbtKg: v.pbt_kg,
+        })),
       };
     },
 

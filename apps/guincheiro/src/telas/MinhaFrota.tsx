@@ -137,7 +137,17 @@ function Andamento() {
           </p>
         )}
         <div className="espaco" />
-        <Botao variante="claro" grande disabled={saindo} onClick={sair}>
+        {frota && (
+          <Botao variante="claro" grande onClick={() => ir('/veiculos')}>
+            Meus veículos
+          </Botao>
+        )}
+        <Botao
+          variante={frota ? 'contorno-escuro' : 'claro'}
+          grande
+          disabled={saindo}
+          onClick={sair}
+        >
           Sair
         </Botao>
         {frota && (

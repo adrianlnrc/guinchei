@@ -99,3 +99,9 @@ update public.itens_homologacao
 set estado = 'aprovado', decidido_em = now() - interval '1 day',
     decidido_por = '33333333-3333-4333-8333-333333333333'
 where id = 'a1000000-0000-4000-8000-000000000001';
+
+-- Veículo da Frota pendente (#45), alvo do item de CRLV acima. Placa Mercosul e RENAVAM
+-- válidos só no dígito verificador.
+insert into public.veiculos (id, frota_id, placa, renavam, tipo, pbt_kg)
+values ('b1000000-0000-4000-8000-000000000001', 'f0000000-0000-4000-8000-000000000003',
+  'PBX1D23', '63936443047', 'plataforma', 4500);
