@@ -8,6 +8,7 @@ import {
 } from '@guinchei/api';
 import { Botao, Corpo, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
+import { ROTA_DADOS_PESSOAIS } from '../rotas';
 import { AVISO_NAO_E_GUINCHEIRO, useSessao } from '../sessao';
 import { Dados } from './cadastro/Dados';
 import { Documentos } from './cadastro/Documentos';
@@ -57,6 +58,7 @@ export function Cadastro() {
   if (estado === 'nao_e_guincheiro') {
     return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_GUINCHEIRO }} />;
   }
+  if (estado === 'convidado') return <Navigate to={ROTA_DADOS_PESSOAIS} replace />;
   if (estado === 'pronto') return <Navigate to="/" replace />;
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
   return <Assistente />;

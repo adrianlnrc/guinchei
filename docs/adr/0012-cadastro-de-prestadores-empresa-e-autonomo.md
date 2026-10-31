@@ -44,6 +44,11 @@ Nada abaixo muda a decisão; só a precisa no banco e no app.
 - **Apólice:** o formulário e o servidor recusam validade vencida ou a vencer em menos de 30 dias (ADR-0007), para não aprovar o que vence antes da ativação.
 - **Termos para prestadores:** texto provisório, versionado como os termos de uso (ADR-0010); o perfil novo do representante grava essa versão como aceite dos termos.
 
+## Detalhamento do convite de Guincheiro (issue #46)
+
+- **Convite por telefone:** o representante convida um número (`convites_guincheiro`: telefone, Frota, estado `pendente`/`aceito`/`cancelado`, validade de 7 dias). Um número tem no máximo um convite pendente, então duas Frotas nunca disputam o mesmo número; número que já tem conta (Guincheiro, Cliente, representante ou operação) não é convidado.
+- **Conta própria no primeiro login:** o convidado entra por telefone + código (ADR-0010) e, no primeiro acesso, informa nome e CPF e aceita os termos de uso; `aceitar_convite_guincheiro()` cria o perfil de Guincheiro e a linha em `guincheiros` na Frota que convidou, e marca o convite como aceito. O número convidado vale mais do que o cadastro da própria Frota autônoma.
+- **Fora do Match até a homologação:** o Guincheiro nasce `disponivel = false`; CNH, antecedentes e selfie vêm na etapa de documentos (#47), e a operação homologa antes de qualquer chamado.
 ## Detalhamento do modelo (issue #45, veículos)
 
 - **Entidade `veiculos`:** pertence a uma Frota e é cadastrada pelo representante. Placa (padrão antigo ou Mercosul, guardada sem hífen) e RENAVAM (11 dígitos, dígito verificador conferido) são únicos; o PBT é numérico, em kg, porque a regra CNH × PBT depende dele; o tipo é `plataforma`, `asa_delta` ou `lanca`.

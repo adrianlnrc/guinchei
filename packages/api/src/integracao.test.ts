@@ -79,6 +79,14 @@ async function pedidoComTrajeto() {
   return { supabase, api, id };
 }
 
+function novaApiGuincheiro() {
+  const supabase = criarClienteApi({
+    supabaseUrl: SUPABASE_URL!,
+    supabaseAnonKey: SUPABASE_ANON_KEY!,
+  });
+  return { supabase, api: criarApiGuincheiro(supabase) };
+}
+
 function admin() {
   if (!SUPABASE_SERVICE_ROLE_KEY) throw new Error('defina SUPABASE_SERVICE_ROLE_KEY');
   return createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY, {
@@ -1999,6 +2007,254 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           .eq('id', veiculoId);
         expect(edicao.error?.code).toBe('GVE07');
       });
+    });
+  });
+
+  describe('Convite de Guincheiro (#46): convidar, cancelar e primeiro acesso', () => {
+    // Os usuários nascem pela service_role, com telefone aleatório e senha: o Supabase local
+    // compartilhado não recarrega o config.toml, então não há número de teste novo à mão. O
+    // telefone verificado da sessão é o do usuário, como no login por código.
+    const SENHA = 'senha-de-teste-46';
+    const MARCOS = '+5561900000002';
+    const MARCOS_DIGITOS = '5561900000002';
+
+    const motivoDe = async (promessa: Promise<unknown>) =>
+      ((await promessa.catch((e: unknown) => e)) as ErroApi).motivo;
+
+    function digitoVerificador(digitos: number[]) {
+      const soma = digitos.reduce((s, d, i) => s + d * (digitos.length + 1 - i), 0);
+      return ((soma * 10) % 11) % 10;
+    }
+    /** CPF válido novo a cada chamada: o teste roda de novo sem `db reset`. */
+    function cpfNovo(): string {
+      const base = Array.from({ length: 9 }, () => Math.floor(Math.random() * 10));
+      const d1 = digitoVerificador(base);
+      const cpf = [...base, d1, digitoVerificador([...base, d1])].join('');
+      return /^(\d)\1{10}$/.test(cpf) ? cpfNovo() : cpf;
+    }
+    const telefoneNovo = () => `55619${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+
+    /** Cria o usuário (telefone confirmado) e entra com ele; ainda sem perfil. */
+    async function entrar(telefone: string) {
+      const email = `convite-${telefone}@teste.guinchei`;
+      const { error } = await admin().auth.admin.createUser({
+        phone: telefone,
+        phone_confirm: true,
+        email,
+        email_confirm: true,
+        password: SENHA,
+      });
+      if (error) throw error;
+      const supabase = criarClienteApi({
+        supabaseUrl: SUPABASE_URL!,
+        supabaseAnonKey: SUPABASE_ANON_KEY!,
+      });
+      const { error: erroLogin } = await supabase.auth.signInWithPassword({
+        email,
+        password: SENHA,
+      });
+      if (erroLogin) throw erroLogin;
+      return { supabase, api: criarApiGuincheiro(supabase), telefone };
+    }
+
+    /** Um representante com a Frota própria (autônomo de CPF), como depois do cadastro do #43. */
+    async function representanteComFrota(nome: string) {
+      const sessao = await entrar(telefoneNovo());
+      const id = (await sessao.supabase.auth.getUser()).data.user!.id;
+      const cpf = cpfNovo();
+      const servidor = admin();
+      const perfil = await servidor.from('perfis').insert({
+        id,
+        papel: 'representante',
+        nome,
+        telefone: sessao.telefone,
+        cpf,
+        aceite_termos_versao: 'prestadores-teste',
+      });
+      expect(perfil.error).toBeNull();
+      const frota = await servidor
+        .from('frotas')
+        .insert({
+          tipo: 'autonomo',
+          documento: cpf,
+          nome: `Frota ${nome}`,
+          representante_id: id,
+          base_cep: '70000000',
+          base_endereco: 'SQN 308 Bloco A',
+          base_bairro: 'Asa Norte',
+          chave_pix: 'teste@exemplo.com',
+          termos_prestador_versao: 'prestadores-teste',
+        })
+        .select('id')
+        .single();
+      expect(frota.error).toBeNull();
+      return { ...sessao, id, frotaId: frota.data!.id };
+    }
+
+    let ana: Awaited<ReturnType<typeof representanteComFrota>>;
+    let bruno: Awaited<ReturnType<typeof representanteComFrota>>;
+    const convidado = telefoneNovo();
+    let conviteId: string;
+
+    beforeAll(async () => {
+      ana = await representanteComFrota('Ana');
+      bruno = await representanteComFrota('Bruno');
+    });
+
+    it('o representante convida pelo telefone e vê o convite pendente', async () => {
+      conviteId = await ana.api.convidarGuincheiro(`+${convidado}`);
+      const convites = await ana.api.listarConvites();
+      expect(convites).toHaveLength(1);
+      expect(convites[0]).toMatchObject({ id: conviteId, telefone: convidado, vencido: false });
+      expect(Date.parse(convites[0]!.validoAte)).toBeGreaterThan(Date.now());
+    });
+
+    it('número inválido, repetido ou que já tem conta tem erro claro', async () => {
+      expect(await motivoDe(ana.api.convidarGuincheiro('61999990000'))).toBe('telefone_invalido');
+      expect(await motivoDe(ana.api.convidarGuincheiro(convidado))).toBe('convite_repetido');
+      expect(await motivoDe(ana.api.convidarGuincheiro(MARCOS_DIGITOS))).toBe(
+        'numero_ja_tem_conta',
+      );
+    });
+
+    it('o convite de outra Frota não é visível, nem cancelável, nem convidável', async () => {
+      expect(await bruno.api.listarConvites()).toEqual([]);
+      expect(await motivoDe(bruno.api.cancelarConvite(conviteId))).toBe('convite_indisponivel');
+      expect(await motivoDe(bruno.api.convidarGuincheiro(convidado))).toBe(
+        'convidado_por_outra_frota',
+      );
+      expect(await ana.api.listarConvites()).toHaveLength(1);
+    });
+
+    it('quem não é representante não convida nem lê convites', async () => {
+      const { api, supabase } = novaApiGuincheiro();
+      await api.confirmarCodigo(MARCOS, CODIGO_DE_TESTE);
+      expect(await motivoDe(api.convidarGuincheiro(telefoneNovo()))).toBe('sem_permissao');
+      expect(await api.listarConvites()).toEqual([]);
+      expect(await api.listarGuincheirosDaFrota()).toEqual([]);
+      const { error } = await supabase.from('convites_guincheiro').insert({
+        frota_id: ana.frotaId,
+        telefone: telefoneNovo(),
+      });
+      expect(error).not.toBeNull();
+    });
+
+    it('o convidado entra, vê a Frota e conclui o primeiro acesso: perfil + Guincheiro da Frota certa', async () => {
+      const novo = await entrar(convidado);
+      expect(await novo.api.buscarMeuPerfil()).toBeNull();
+      expect(await novo.api.buscarMeuGuincheiro()).toBeNull();
+      expect(await novo.api.buscarMeuConvite()).toEqual({ frotaNome: 'Frota Ana' });
+
+      const cpf = cpfNovo();
+      const dados = { nome: 'Carla Dias', cpf, termosVersao: 'termos-teste' };
+      expect(await motivoDe(novo.api.aceitarConvite({ ...dados, cpf: '11144477734' }))).toBe(
+        'cpf_invalido',
+      );
+      expect(await motivoDe(novo.api.aceitarConvite({ ...dados, cpf: '12345678062' }))).toBe(
+        'cpf_ja_cadastrado',
+      );
+      expect(await motivoDe(novo.api.aceitarConvite({ ...dados, nome: ' ' }))).toBe(
+        'dados_incompletos',
+      );
+      expect(await novo.api.buscarMeuPerfil()).toBeNull();
+
+      await novo.api.aceitarConvite(dados);
+
+      expect(await novo.api.buscarMeuPerfil()).toMatchObject({
+        papel: 'guincheiro',
+        nome: 'Carla Dias',
+        telefone: convidado,
+        cpf,
+        aceite_termos_versao: 'termos-teste',
+      });
+      expect(await novo.api.buscarMeuGuincheiro()).toEqual({
+        nome: 'Carla Dias',
+        frota: 'Frota Ana',
+        disponivel: false,
+      });
+      expect(await novo.api.buscarMeuConvite()).toBeNull();
+      expect(await motivoDe(novo.api.aceitarConvite(dados))).toBe('sem_convite');
+
+      const { data: convite } = await admin()
+        .from('convites_guincheiro')
+        .select('estado, aceito_por')
+        .eq('id', conviteId)
+        .single();
+      expect(convite).toEqual({
+        estado: 'aceito',
+        aceito_por: (await novo.supabase.auth.getUser()).data.user!.id,
+      });
+      expect(await ana.api.listarConvites()).toEqual([]);
+    });
+
+    it('o representante vê os Guincheiros já vinculados; a outra Frota não', async () => {
+      const lista = await ana.api.listarGuincheirosDaFrota();
+      expect(lista).toHaveLength(1);
+      expect(lista[0]).toMatchObject({
+        nome: 'Carla Dias',
+        telefone: convidado,
+        disponivel: false,
+      });
+      expect(Object.keys(lista[0]!)).not.toContain('cpf');
+      expect(await bruno.api.listarGuincheirosDaFrota()).toEqual([]);
+    });
+
+    it('o Guincheiro recém-criado fica fora do Match', async () => {
+      const { data } = await admin().rpc('guincheiros_elegiveis_proximos', {
+        latitude: -15.79,
+        longitude: -47.88,
+        limite: 100,
+      });
+      expect((data as { frota_id: string }[]).map((g) => g.frota_id)).not.toContain(ana.frotaId);
+    });
+
+    it('número sem convite continua sem vincular', async () => {
+      const sem = await entrar(telefoneNovo());
+      expect(await sem.api.buscarMeuConvite()).toBeNull();
+      const dados = { nome: 'Sem Convite', cpf: cpfNovo(), termosVersao: 'v' };
+      expect(await motivoDe(sem.api.aceitarConvite(dados))).toBe('sem_convite');
+      expect(await sem.api.buscarMeuPerfil()).toBeNull();
+    });
+
+    it('convite cancelado não vincula e libera o número para outra Frota', async () => {
+      const numero = telefoneNovo();
+      const id = await bruno.api.convidarGuincheiro(numero);
+      const novo = await entrar(numero);
+      expect(await novo.api.buscarMeuConvite()).toEqual({ frotaNome: 'Frota Bruno' });
+
+      await bruno.api.cancelarConvite(id);
+      expect(await bruno.api.listarConvites()).toEqual([]);
+      expect(await motivoDe(bruno.api.cancelarConvite(id))).toBe('convite_indisponivel');
+      expect(await novo.api.buscarMeuConvite()).toBeNull();
+      const dados = { nome: 'Cancelado', cpf: cpfNovo(), termosVersao: 'v' };
+      expect(await motivoDe(novo.api.aceitarConvite(dados))).toBe('sem_convite');
+
+      await ana.api.convidarGuincheiro(numero);
+      expect(await novo.api.buscarMeuConvite()).toEqual({ frotaNome: 'Frota Ana' });
+    });
+
+    it('convite vencido não vincula, aparece como vencido e é substituído por um novo', async () => {
+      const numero = telefoneNovo();
+      const id = await ana.api.convidarGuincheiro(numero);
+      const vencimento = await admin()
+        .from('convites_guincheiro')
+        .update({
+          criado_em: new Date(Date.now() - 10 * 86_400_000).toISOString(),
+          valido_ate: new Date(Date.now() - 86_400_000).toISOString(),
+        })
+        .eq('id', id);
+      expect(vencimento.error).toBeNull();
+
+      expect((await ana.api.listarConvites()).find((c) => c.id === id)?.vencido).toBe(true);
+      const novo = await entrar(numero);
+      expect(await novo.api.buscarMeuConvite()).toBeNull();
+      const dados = { nome: 'Vencido', cpf: cpfNovo(), termosVersao: 'v' };
+      expect(await motivoDe(novo.api.aceitarConvite(dados))).toBe('convite_vencido');
+
+      // Outra Frota pode convidar o número: o convite vencido não trava ninguém.
+      const novoId = await bruno.api.convidarGuincheiro(numero);
+      expect((await ana.api.listarConvites()).map((c) => c.id)).not.toContain(id);
+      expect((await bruno.api.listarConvites()).map((c) => c.id)).toContain(novoId);
     });
   });
 

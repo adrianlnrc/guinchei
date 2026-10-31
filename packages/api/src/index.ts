@@ -104,6 +104,41 @@ export interface MinhaFrota {
   itens: ItemHomologacao[];
 }
 
+/** Convite pendente da Frota do representante: o número convidado e até quando vale. */
+export interface ConviteGuincheiro {
+  id: string;
+  /** Só dígitos, com o 55. */
+  telefone: string;
+  criadoEm: string;
+  validoAte: string;
+  /** Passou da validade: não vincula mais; convidar o número de novo o substitui. */
+  vencido: boolean;
+}
+
+/** Guincheiro já vinculado à Frota (sem CPF: o perfil dele não é legível pela Frota). */
+export interface GuincheiroDaFrota {
+  id: string;
+  nome: string;
+  telefone: string;
+  /** `false` até o Guincheiro ser homologado e ligar o plantão. */
+  disponivel: boolean;
+  criadoEm: string;
+}
+
+/** O convite que espera quem acabou de entrar sem perfil. */
+export interface MeuConvite {
+  frotaNome: string;
+}
+
+/** Primeiro acesso do convidado: o telefone vem do login, a Frota, do convite. */
+export interface CadastroGuincheiroConvidado {
+  nome: string;
+  /** 11 dígitos, sem máscara. */
+  cpf: string;
+  /** Versão dos termos de uso aceita (ADR-0010). */
+  termosVersao: string;
+}
+
 export type TipoVeiculoGuincho = Enums<'tipo_veiculo_guincho'>;
 
 /** Quantas fotos o veículo leva (de 1 a este número), cada uma um item de homologação. */
@@ -341,6 +376,22 @@ export type MotivoErroApi =
   | 'documento_ausente'
   /** Cadastro de Frota: este número não pode cadastrar uma Frota (já é prestador ou Cliente). */
   | 'cadastro_indisponivel'
+  /** Convite: o celular não tem 55 + DDD + número. */
+  | 'telefone_invalido'
+  /** Convite: a Frota já convidou este número e o convite está pendente. */
+  | 'convite_repetido'
+  /** Convite: o número já foi convidado por outra Frota. */
+  | 'convidado_por_outra_frota'
+  /** Convite: o número já tem conta (Guincheiro, Cliente, representante ou operação). */
+  | 'numero_ja_tem_conta'
+  /** Primeiro acesso: não há convite pendente para o número (nunca houve ou foi cancelado). */
+  | 'sem_convite'
+  /** Primeiro acesso: o convite venceu. */
+  | 'convite_vencido'
+  /** Cancelar: o convite não é da Frota ou já foi decidido. */
+  | 'convite_indisponivel'
+  /** Primeiro acesso: o CPF não passa no dígito verificador. */
+  | 'cpf_invalido'
   /** Veículo: só o representante de uma Frota cadastra veículos. */
   | 'sem_frota'
   /** Veículo: placa fora dos padrões antigo e Mercosul. */
@@ -504,6 +555,26 @@ export interface ApiGuincheiro extends Pick<
   enviarCadastroFrota(): Promise<string>;
   /** A Frota cadastrada por quem está logado; `null` se ainda não enviou o cadastro. */
   buscarMinhaFrota(): Promise<MinhaFrota | null>;
+  /**
+   * Representante: convida um Guincheiro pelo celular (E.164, com ou sem o "+") e devolve o id
+   * do convite. Erros: `telefone_invalido`, `convite_repetido`, `convidado_por_outra_frota`,
+   * `numero_ja_tem_conta`, `sem_permissao` (quem não representa uma Frota).
+   */
+  convidarGuincheiro(telefone: string): Promise<string>;
+  /** Representante: os convites pendentes da própria Frota, do mais novo ao mais antigo. */
+  listarConvites(): Promise<ConviteGuincheiro[]>;
+  /** Representante: cancela um convite pendente da própria Frota (`convite_indisponivel`). */
+  cancelarConvite(id: string): Promise<void>;
+  /** Representante: os Guincheiros já vinculados à Frota. */
+  listarGuincheirosDaFrota(): Promise<GuincheiroDaFrota[]>;
+  /** O convite pendente e válido para o telefone do login, se a pessoa ainda não tem perfil. */
+  buscarMeuConvite(): Promise<MeuConvite | null>;
+  /**
+   * Primeiro acesso do convidado: cria o perfil de Guincheiro e a linha em `guincheiros`
+   * (indisponível), vinculada à Frota que convidou. Erros: `sem_convite`, `convite_vencido`,
+   * `numero_ja_tem_conta`, `dados_incompletos`, `cpf_invalido`, `cpf_ja_cadastrado`.
+   */
+  aceitarConvite(dados: CadastroGuincheiroConvidado): Promise<void>;
   /**
    * Envia o CRLV (PDF ou imagem) ou uma foto (só imagem) do veículo ao bucket
    * `documentos-prestadores` e devolve o caminho, para `cadastrarVeiculo` ou
@@ -1216,6 +1287,60 @@ function erroDoCadastroDeFrota(
   }
 }
 
+/** Erros das funções de convite (migração `convites_de_guincheiro`). */
+function erroDoConvite(
+  error: { code?: string; message?: string },
+  mensagemDeFalha: string,
+): ErroApi {
+  const causa = { cause: error };
+  switch (error.code) {
+    case 'GCV01':
+      return new ErroApi('telefone_invalido', 'Informe o celular com DDD', causa);
+    case 'GCV03':
+      return new ErroApi('convite_repetido', 'Este número já tem um convite pendente', causa);
+    case 'GCV04':
+      return new ErroApi(
+        'convidado_por_outra_frota',
+        'Este número já foi convidado por outra Frota',
+        causa,
+      );
+    case 'GCV05':
+    case 'GCV08':
+      return new ErroApi('numero_ja_tem_conta', 'Este número já tem conta no Guinchei', causa);
+    case 'GCV06':
+      return new ErroApi(
+        'sem_convite',
+        'Não há convite para este número. Peça à sua Frota que o convide de novo.',
+        causa,
+      );
+    case 'GCV07':
+      return new ErroApi(
+        'convite_vencido',
+        'O convite venceu. Peça à sua Frota que o convide de novo.',
+        causa,
+      );
+    case 'GCV09':
+      return new ErroApi('dados_incompletos', 'Informe o nome e aceite os termos de uso', causa);
+    case 'GCV10':
+      return new ErroApi('cpf_invalido', 'CPF inválido. Confira os números.', causa);
+    case 'GCV11':
+      return new ErroApi('convite_indisponivel', 'O convite não está mais pendente', causa);
+    case '42501':
+      return new ErroApi(
+        'sem_permissao',
+        'Só o representante de uma Frota gerencia convites',
+        causa,
+      );
+    case '23505':
+      if (error.message?.includes(CPF_UNICO)) {
+        return new ErroApi('cpf_ja_cadastrado', 'CPF já cadastrado em outra conta', causa);
+      }
+      return new ErroApi('falha', mensagemDeFalha, causa);
+    default:
+      return new ErroApi('falha', mensagemDeFalha, causa);
+  }
+}
+
 export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
   const base = criarApi(supabase);
 
@@ -1445,6 +1570,63 @@ export function criarApiGuincheiro(supabase: ClienteSupabase): ApiGuincheiro {
           .map(itemDeHomologacao)
           .sort((a, b) => a.enviadoEm.localeCompare(b.enviadoEm) || a.tipo.localeCompare(b.tipo)),
       };
+    },
+
+    async convidarGuincheiro(telefone) {
+      const { data, error } = await supabase.rpc('convidar_guincheiro', { telefone });
+      if (error) throw erroDoConvite(error, 'Não foi possível enviar o convite');
+      return data;
+    },
+
+    async listarConvites() {
+      const { data, error } = await supabase
+        .from('convites_guincheiro')
+        .select('id, telefone, criado_em, valido_ate')
+        .eq('estado', 'pendente')
+        .order('criado_em', { ascending: false });
+      if (error) throw new ErroApi('falha', 'Não foi possível ler os convites', { cause: error });
+      const agora = Date.now();
+      return data.map((c) => ({
+        id: c.id,
+        telefone: c.telefone,
+        criadoEm: c.criado_em,
+        validoAte: c.valido_ate,
+        vencido: Date.parse(c.valido_ate) <= agora,
+      }));
+    },
+
+    async cancelarConvite(id) {
+      const { error } = await supabase.rpc('cancelar_convite_guincheiro', { convite_id: id });
+      if (error) throw erroDoConvite(error, 'Não foi possível cancelar o convite');
+    },
+
+    async listarGuincheirosDaFrota() {
+      const { data, error } = await supabase.rpc('guincheiros_da_minha_frota');
+      if (error)
+        throw new ErroApi('falha', 'Não foi possível ler os Guincheiros', { cause: error });
+      return data.map((g) => ({
+        id: g.id,
+        nome: g.nome,
+        telefone: g.telefone,
+        disponivel: g.disponivel,
+        criadoEm: g.criado_em,
+      }));
+    },
+
+    async buscarMeuConvite() {
+      const { data, error } = await supabase.rpc('meu_convite_guincheiro');
+      if (error) throw new ErroApi('falha', 'Não foi possível ler o convite', { cause: error });
+      const convite = data[0];
+      return convite ? { frotaNome: convite.frota_nome } : null;
+    },
+
+    async aceitarConvite({ nome, cpf, termosVersao }) {
+      const { error } = await supabase.rpc('aceitar_convite_guincheiro', {
+        nome,
+        cpf,
+        termos_versao: termosVersao,
+      });
+      if (error) throw erroDoConvite(error, 'Não foi possível concluir o primeiro acesso');
     },
 
     async definirDisponibilidade(disponivel) {

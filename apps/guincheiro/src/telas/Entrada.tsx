@@ -6,11 +6,13 @@ import { useApi } from '../api';
 import { mascararCelular, telefoneE164 } from '../celular';
 import { MensagemDeErro } from '../MensagemDeErro';
 import { usePlantao } from '../plantao';
+import { ROTA_DADOS_PESSOAIS } from '../rotas';
 import { AVISO_NAO_E_GUINCHEIRO } from '../sessao';
 
 /**
- * Entra o Guincheiro que a Frota já cadastrou. Quem não tem perfil é levado, depois do código,
- * a cadastrar a própria Frota (autônomo, ADR-0012).
+ * Entra o Guincheiro que a Frota já cadastrou. Quem foi convidado por telefone é levado, depois
+ * do código, ao primeiro acesso (#46); quem não tem perfil nem convite, a cadastrar a própria
+ * Frota (autônomo, ADR-0012).
  */
 export function Celular() {
   const ir = useNavigate();
@@ -119,9 +121,16 @@ export function Codigo() {
         return;
       }
       const perfil = await api.buscarMeuPerfil();
-      if (!perfil || perfil.papel === 'representante') {
-        // Sem perfil: cadastra a própria Frota. Representante: acompanha a que já enviou.
-        ir(perfil ? '/frota' : '/cadastro', { replace: true });
+      if (!perfil) {
+        // Número convidado: primeiro acesso na Frota que convidou. Sem convite: cadastra a
+        // própria Frota (autônomo, ADR-0012).
+        const convite = await api.buscarMeuConvite();
+        ir(convite ? ROTA_DADOS_PESSOAIS : '/cadastro', { replace: true });
+        return;
+      }
+      if (perfil.papel === 'representante') {
+        // Acompanha a Frota que já enviou.
+        ir('/frota', { replace: true });
         return;
       }
       // Telefone verificado de Cliente ou da operação: não fica logado aqui.
