@@ -416,6 +416,7 @@ export type Database = {
           atualizado_em: string;
           id: boolean;
           limite_tentativas: number;
+          prazo_aprovacao_preco_segundos: number;
           timeout_oferta_segundos: number;
         };
         ComputedFields: never;
@@ -423,12 +424,14 @@ export type Database = {
           atualizado_em?: string;
           id?: boolean;
           limite_tentativas?: number;
+          prazo_aprovacao_preco_segundos?: number;
           timeout_oferta_segundos?: number;
         };
         Update: {
           atualizado_em?: string;
           id?: boolean;
           limite_tentativas?: number;
+          prazo_aprovacao_preco_segundos?: number;
           timeout_oferta_segundos?: number;
         };
         Relationships: [];
@@ -442,6 +445,7 @@ export type Database = {
           destino: unknown;
           destino_endereco: string | null;
           estado: Database['public']['Enums']['estado_pedido'];
+          frota_cotada_id: string | null;
           id: string;
           km_ate_veiculo: number | null;
           km_rebocado: number | null;
@@ -469,6 +473,7 @@ export type Database = {
           destino?: unknown;
           destino_endereco?: string | null;
           estado?: Database['public']['Enums']['estado_pedido'];
+          frota_cotada_id?: string | null;
           id?: string;
           km_ate_veiculo?: number | null;
           km_rebocado?: number | null;
@@ -495,6 +500,7 @@ export type Database = {
           destino?: unknown;
           destino_endereco?: string | null;
           estado?: Database['public']['Enums']['estado_pedido'];
+          frota_cotada_id?: string | null;
           id?: string;
           km_ate_veiculo?: number | null;
           km_rebocado?: number | null;
@@ -514,6 +520,13 @@ export type Database = {
           tipo_veiculo?: Database['public']['Enums']['tipo_veiculo'];
         };
         Relationships: [
+          {
+            foreignKeyName: 'pedidos_frota_cotada_id_fkey';
+            columns: ['frota_cotada_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
           {
             foreignKeyName: 'pedidos_cliente_id_fkey';
             columns: ['cliente_id'];
@@ -644,6 +657,112 @@ export type Database = {
         };
         Relationships: [];
       };
+      recotacoes_pedido: {
+        Row: {
+          criado_em: string;
+          expira_em: string | null;
+          frota_anterior_id: string;
+          frota_nova_id: string;
+          guincheiro_id: string;
+          id: number;
+          km_ate_veiculo: number;
+          pedido_id: string;
+          preco_adicional_feriado: number;
+          preco_adicional_noturno: number;
+          preco_ajuste_minimo: number;
+          preco_anterior: number;
+          preco_ate_veiculo: number;
+          preco_novo: number;
+          preco_rebocado: number;
+          preco_taxa_base: number;
+          respondida_em: string | null;
+          resultado: Database['public']['Enums']['resultado_recotacao'];
+          rodada: number;
+          tabela_precos_versao: number;
+        };
+        ComputedFields: never;
+        Insert: {
+          criado_em?: string;
+          expira_em?: string | null;
+          frota_anterior_id: string;
+          frota_nova_id: string;
+          guincheiro_id: string;
+          id?: never;
+          km_ate_veiculo: number;
+          pedido_id: string;
+          preco_adicional_feriado?: number;
+          preco_adicional_noturno?: number;
+          preco_ajuste_minimo?: number;
+          preco_anterior: number;
+          preco_ate_veiculo: number;
+          preco_novo: number;
+          preco_rebocado: number;
+          preco_taxa_base: number;
+          respondida_em?: string | null;
+          resultado: Database['public']['Enums']['resultado_recotacao'];
+          rodada: number;
+          tabela_precos_versao: number;
+        };
+        Update: {
+          criado_em?: string;
+          expira_em?: string | null;
+          frota_anterior_id?: string;
+          frota_nova_id?: string;
+          guincheiro_id?: string;
+          id?: never;
+          km_ate_veiculo?: number;
+          pedido_id?: string;
+          preco_adicional_feriado?: number;
+          preco_adicional_noturno?: number;
+          preco_ajuste_minimo?: number;
+          preco_anterior?: number;
+          preco_ate_veiculo?: number;
+          preco_novo?: number;
+          preco_rebocado?: number;
+          preco_taxa_base?: number;
+          respondida_em?: string | null;
+          resultado?: Database['public']['Enums']['resultado_recotacao'];
+          rodada?: number;
+          tabela_precos_versao?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'recotacoes_pedido_frota_anterior_id_fkey';
+            columns: ['frota_anterior_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'recotacoes_pedido_frota_nova_id_fkey';
+            columns: ['frota_nova_id'];
+            isOneToOne: false;
+            referencedRelation: 'frotas';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'recotacoes_pedido_guincheiro_id_fkey';
+            columns: ['guincheiro_id'];
+            isOneToOne: false;
+            referencedRelation: 'guincheiros';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'recotacoes_pedido_pedido_id_fkey';
+            columns: ['pedido_id'];
+            isOneToOne: false;
+            referencedRelation: 'pedidos';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'recotacoes_pedido_tabela_precos_versao_fkey';
+            columns: ['tabela_precos_versao'];
+            isOneToOne: false;
+            referencedRelation: 'tabela_precos';
+            referencedColumns: ['versao'];
+          },
+        ];
+      };
       tentativas_match: {
         Row: {
           criado_em: string;
@@ -752,6 +871,7 @@ export type Database = {
       };
       abrir_rodada_match: { Args: { pedido_id: string }; Returns: number };
       aceitar_oferta: { Args: { tentativa_id: number }; Returns: string };
+      aprovar_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
       apolice_validade_aceitavel: { Args: { validade: string }; Returns: boolean };
       assinatura_do_trajeto: {
         Args: { destino: unknown; km_rebocado: number; origem: unknown };
@@ -818,10 +938,13 @@ export type Database = {
         };
         Returns: string;
       };
+      desistir_do_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
+      encerrar_por_novo_preco: { Args: { pedido_id: string }; Returns: undefined };
       feriados_perto_de: { Args: { dia: string }; Returns: Json };
       gravar_cotacao: {
         Args: {
           cliente_id: string;
+          frota_cotada_id?: string;
           instante?: string;
           km_ate_veiculo: number;
           pedido_id: string;
@@ -881,6 +1004,24 @@ export type Database = {
         };
         Returns: string;
       };
+      registrar_recotacao: {
+        Args: {
+          exige_aprovacao: boolean;
+          guincheiro_id: string;
+          km_ate_veiculo: number;
+          pedido_id: string;
+          preco_adicional_feriado: number;
+          preco_adicional_noturno: number;
+          preco_ajuste_minimo: number;
+          preco_ate_veiculo: number;
+          preco_rebocado: number;
+          preco_taxa_base: number;
+          preco_total: number;
+          rodada: number;
+          tentativas_lidas: number;
+        };
+        Returns: Database['public']['Enums']['resultado_recotacao'];
+      };
       registrar_tentativa: {
         Args: {
           guincheiro_id: string;
@@ -927,6 +1068,37 @@ export type Database = {
         };
         Returns: boolean;
       };
+      travar_aprovacao_pendente: {
+        Args: { pedido_id: string };
+        Returns: {
+          criado_em: string;
+          expira_em: string | null;
+          frota_anterior_id: string;
+          frota_nova_id: string;
+          guincheiro_id: string;
+          id: number;
+          km_ate_veiculo: number;
+          pedido_id: string;
+          preco_adicional_feriado: number;
+          preco_adicional_noturno: number;
+          preco_ajuste_minimo: number;
+          preco_anterior: number;
+          preco_ate_veiculo: number;
+          preco_novo: number;
+          preco_rebocado: number;
+          preco_taxa_base: number;
+          respondida_em: string | null;
+          resultado: Database['public']['Enums']['resultado_recotacao'];
+          rodada: number;
+          tabela_precos_versao: number;
+        };
+        SetofOptions: {
+          from: '*';
+          to: 'recotacoes_pedido';
+          isOneToOne: true;
+          isSetofReturn: false;
+        };
+      };
       travar_match_lido: {
         Args: { pedido_id: string; rodada: number; tentativas_lidas: number };
         Returns: undefined;
@@ -954,6 +1126,8 @@ export type Database = {
           isSetofReturn: false;
         };
       };
+      valer_recotacao: { Args: { recotacao_id: number }; Returns: undefined };
+      varrer_aprovacoes_de_preco: { Args: Record<PropertyKey, never>; Returns: string[] };
       varrer_match: { Args: Record<PropertyKey, never>; Returns: string[] };
     };
     Enums: {
@@ -963,10 +1137,17 @@ export type Database = {
       estado_homologacao: 'pendente' | 'aprovado' | 'recusado' | 'vencido';
       estado_pagamento: 'autorizado' | 'capturado' | 'estornado' | 'recusado';
       estado_pedido:
-        'cotado' | 'confirmado' | 'em_match' | 'atribuido' | 'sem_guincheiro' | 'estornado';
+        | 'cotado'
+        | 'confirmado'
+        | 'em_match'
+        | 'atribuido'
+        | 'sem_guincheiro'
+        | 'estornado'
+        | 'aguardando_aprovacao_preco';
       etapa_foto: 'antes' | 'depois';
       metodo_pagamento: 'pix' | 'cartao';
       papel: 'cliente' | 'guincheiro' | 'operacao' | 'representante';
+      resultado_recotacao: 'aplicada' | 'pendente' | 'aprovada' | 'desistida' | 'expirada';
       resultado_tentativa: 'oferecida' | 'aceita' | 'recusada' | 'expirada' | 'pulada_teto';
       rodas_giram: 'sim' | 'nao' | 'nao_sei';
       situacao_veiculo: 'nao_liga' | 'batida' | 'superaqueceu' | 'outro';
@@ -1101,10 +1282,12 @@ export const Constants = {
         'atribuido',
         'sem_guincheiro',
         'estornado',
+        'aguardando_aprovacao_preco',
       ],
       etapa_foto: ['antes', 'depois'],
       metodo_pagamento: ['pix', 'cartao'],
       papel: ['cliente', 'guincheiro', 'operacao', 'representante'],
+      resultado_recotacao: ['aplicada', 'pendente', 'aprovada', 'desistida', 'expirada'],
       resultado_tentativa: ['oferecida', 'aceita', 'recusada', 'expirada', 'pulada_teto'],
       rodas_giram: ['sim', 'nao', 'nao_sei'],
       situacao_veiculo: ['nao_liga', 'batida', 'superaqueceu', 'outro'],

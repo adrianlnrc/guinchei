@@ -6,7 +6,15 @@
 // @guinchei/preco, com a tabela, os feriados e o instante da cotação. O banco confere na
 // gravação que nada mudou desde a leitura (GMT03); se mudou, relê e decide de novo. Assim
 // execuções simultâneas para o mesmo Pedido não abrem duas ofertas.
-import { decidirProximo, type Tentativa } from '../../../packages/match/src/index.ts';
+//
+// Candidato de outra Frota que a cotada (ADR-0013): o preço já é recalculado com a distância
+// dele; `decidirRecotacao` diz se o Pedido passa a valer o novo preço (menor ou igual) ou se o
+// Match pausa até o Cliente aprovar (maior). Nesse caso nenhuma oferta sai.
+import {
+  decidirProximo,
+  decidirRecotacao,
+  type Tentativa,
+} from '../../../packages/match/src/index.ts';
 import {
   avaliarOfertaAoGuincheiro,
   calcularPrecoFechado,
@@ -22,15 +30,19 @@ interface DadosDoMatch {
   preco_total: number;
   km_rebocado: number;
   instante: string;
+  /** Frota com quem o preço em vigor foi cotado; `null` em Pedido anterior ao ADR-0013. */
+  frota_cotada_id: string | null;
   tabela: LinhaTabelaPrecos;
   feriados: string[];
   tentativas: { guincheiro_id: string; resultado: Tentativa['resultado'] }[];
-  candidatos: { guincheiro_id: string; km: number }[];
+  candidatos: { guincheiro_id: string; frota_id: string; km: number }[];
 }
 
 export type PassoDoMatch =
   | { tipo: 'ofertado'; tentativaId: number; guincheiroId: string }
   | { tipo: 'aguardando' }
+  /** O candidato é de outra Frota por um preço maior: o Match pausa até o Cliente aprovar. */
+  | { tipo: 'aguardando_aprovacao'; guincheiroId: string; precoAnterior: number; precoNovo: number }
   | { tipo: 'sem_guincheiro' }
   /** O Pedido não está em `em_match` (atribuído, estornado...): nada a fazer. */
   | { tipo: 'fora_do_match'; estado: string };
@@ -46,12 +58,17 @@ async function passo(pedidoId: string): Promise<PassoDoMatch> {
   const kmRebocado = Number(dados.km_rebocado);
   const candidatos = dados.candidatos.map((c) => ({
     guincheiroId: c.guincheiro_id,
+    frotaId: c.frota_id,
     km: Number(c.km),
   }));
   const tentativas: Tentativa[] = dados.tentativas.map((t) => ({
     guincheiroId: t.guincheiro_id,
     resultado: t.resultado,
   }));
+
+  // O preço em vigor e a Frota cotada mudam quando uma recotação é aplicada nesta leitura.
+  let precoEmVigor = dados.preco_total;
+  let frotaCotadaId = dados.frota_cotada_id;
 
   // Cada candidato pulado pelo teto é gravado e a decisão segue com ele na lista.
   for (;;) {
@@ -80,7 +97,44 @@ async function passo(pedidoId: string): Promise<PassoDoMatch> {
       },
       tabela,
     );
-    const oferta = avaliarOfertaAoGuincheiro(dados.preco_total, precoDoCandidato.total, tabela);
+
+    // Outra Frota que a cotada: o preço é refeito (ADR-0013), sem teto de absorção.
+    const recotacao = decidirRecotacao({
+      frotaCotadaId,
+      frotaDoCandidatoId: candidato.frotaId,
+      precoAtual: precoEmVigor,
+      precoNovo: precoDoCandidato.total,
+    });
+    if (recotacao.tipo !== 'manter') {
+      const exigeAprovacao = recotacao.tipo === 'pedir_aprovacao';
+      await rpc('registrar_recotacao', {
+        pedido_id: pedidoId,
+        rodada: dados.rodada,
+        tentativas_lidas: tentativas.length,
+        guincheiro_id: candidato.guincheiroId,
+        km_ate_veiculo: candidato.km,
+        preco_taxa_base: precoDoCandidato.taxaBase,
+        preco_ate_veiculo: precoDoCandidato.deslocamento,
+        preco_rebocado: precoDoCandidato.reboque,
+        preco_adicional_noturno: precoDoCandidato.adicionalNoturno,
+        preco_adicional_feriado: precoDoCandidato.adicionalFeriado,
+        preco_ajuste_minimo: precoDoCandidato.ajustePiso,
+        preco_total: precoDoCandidato.total,
+        exige_aprovacao: exigeAprovacao,
+      });
+      if (recotacao.tipo === 'pedir_aprovacao') {
+        return {
+          tipo: 'aguardando_aprovacao',
+          guincheiroId: candidato.guincheiroId,
+          precoAnterior: recotacao.precoAnterior,
+          precoNovo: recotacao.precoNovo,
+        };
+      }
+      precoEmVigor = recotacao.precoNovo;
+      frotaCotadaId = candidato.frotaId;
+    }
+
+    const oferta = avaliarOfertaAoGuincheiro(precoEmVigor, precoDoCandidato.total, tabela);
     const resultado = oferta.oferecer ? 'oferecida' : 'pulada_teto';
     const tentativaId = await rpc<number>('registrar_tentativa', {
       pedido_id: pedidoId,

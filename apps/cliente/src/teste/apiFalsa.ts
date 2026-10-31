@@ -69,6 +69,7 @@ export function acompanhamentoEm(
     precoTotal: COTACAO_DO_SERVIDOR.preco.total,
     origemEndereco: 'Eixo Monumental, Brasília',
     destinoEndereco: 'QNA 12, Taguatinga Norte',
+    recotacao: null,
     corrida: naCorrida
       ? {
           id: 'corrida-1',
@@ -134,6 +135,8 @@ export function apiFalsa({
       estado: 'estornado',
       valor: COTACAO_DO_SERVIDOR.preco.total,
     })),
+    aprovarNovoPreco: vi.fn<(pedidoId: string) => Promise<void>>(async () => {}),
+    desistirDoNovoPreco: vi.fn<(pedidoId: string) => Promise<void>>(async () => {}),
     buscarAcompanhamento: vi.fn<(pedidoId: string) => Promise<Acompanhamento | null>>(
       async (pedidoId) => acompanhamentoEm('em_match', { pedidoId }),
     ),

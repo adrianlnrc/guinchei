@@ -47,6 +47,7 @@ Configuração para agentes de IA: [CLAUDE.md](CLAUDE.md) e [docs/agents/](docs/
 | [0010](docs/adr/0010-login-por-telefone-e-cadastro-em-duas-etapas.md) | Login por telefone com código (WhatsApp) e cadastro em duas etapas |
 | [0011](docs/adr/0011-fotos-de-estado-opcionais-cliente-e-guincheiro.md) | Fotos de estado opcionais, registradas pelo Cliente e pelo Guincheiro |
 | [0012](docs/adr/0012-cadastro-de-prestadores-empresa-e-autonomo.md) | Cadastro de prestadores: empresa e autônomo, com verificação manual |
+| [0013](docs/adr/0013-preco-refeito-ao-redirecionar-para-outra-frota.md) | Preço fechado refeito quando o Pedido é redirecionado a outra Frota (provisório) |
 
 ---
 

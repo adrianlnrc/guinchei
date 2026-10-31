@@ -546,16 +546,22 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(doCliente).toEqual({ estado: 'atribuido' });
     }, 60_000);
 
+    // Esgota a rodada com os dois Guincheiros da Frota cotada (Reboque Planalto). A Rita é de
+    // outra Frota e cobraria mais (ADR-0013): o Match pausaria para o Cliente aprovar, então
+    // ela sai do plantão antes, para a rodada acabar em sem_guincheiro.
     async function esgotarRodada(id: string) {
-      const [marcos, wagner, rita] = await Promise.all([
+      const [marcos, wagner] = await Promise.all([
         entrar(MARCOS.telefone),
         entrar(WAGNER.telefone),
-        entrar(RITA.telefone),
       ]);
+      const tirouRita = await admin()
+        .from('guincheiros')
+        .update({ disponivel: false })
+        .eq('id', RITA.id);
+      if (tirouRita.error) throw tirouRita.error;
       await marcos.recusarOferta((await ofertaDoPedido(marcos, id)).tentativaId);
-      // O Wagner deixa a oferta expirar: a varredura do pg_cron passa à Rita.
+      // O Wagner deixa a oferta expirar: a varredura do pg_cron esgota a rodada.
       await ofertaDoPedido(wagner, id);
-      await rita.recusarOferta((await ofertaDoPedido(rita, id)).tentativaId);
       await esperar(
         async () => (await estadoDoPedido(id)) === 'sem_guincheiro',
         'Pedido em sem_guincheiro',
@@ -568,7 +574,6 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(tentativas).toEqual([
         { guincheiro_id: MARCOS.id, resultado: 'recusada' },
         { guincheiro_id: WAGNER.id, resultado: 'expirada' },
-        { guincheiro_id: RITA.id, resultado: 'recusada' },
       ]);
       return { marcos };
     }
@@ -603,25 +608,26 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
     it('candidato longe demais (absorção acima da Comissão) é pulado pelo teto e não recebe', async () => {
       const pedido = await pedidoComTrajeto();
       const cotacao = await pedido.api.cotarPedido(pedido.id);
-      // Depois da cotação (com o Marcos a ~4,2 km), só a Rita fica elegível, e em Planaltina
-      // (~35 km do Eixo Monumental): o repasse pela distância dela passaria da Comissão.
+      // Depois da cotação (com o Marcos a ~4,2 km), só o Wagner, da mesma Frota do Marcos,
+      // fica elegível, e em Planaltina (~35 km do Eixo Monumental): o repasse pela distância
+      // dele passaria da Comissão. Na mesma Frota cotada vale o teto do ADR-0009, sem recotar.
       const servico = admin();
-      const { data: rita } = await servico
+      const { data: wagner } = await servico
         .from('guincheiros')
         .select('posicao')
-        .eq('id', RITA.id)
+        .eq('id', WAGNER.id)
         .single();
       await servico
         .from('guincheiros')
         .update({ disponivel: false })
-        .in('id', [MARCOS.id, WAGNER.id]);
+        .in('id', [MARCOS.id, RITA.id]);
       await servico
         .from('guincheiros')
         .update({ posicao: 'SRID=4326;POINT(-47.65 -15.62)' })
-        .eq('id', RITA.id);
+        .eq('id', WAGNER.id);
       try {
         await pedido.api.confirmarPedido(pedido.id, 'pix');
-        // A primeira oferta sai na confirmação: a Rita é pulada e a rodada se esgota.
+        // A primeira oferta sai na confirmação: o Wagner é pulado e a rodada se esgota.
         expect(await estadoDoPedido(pedido.id)).toBe('sem_guincheiro');
         const { data: tentativas } = await servico
           .from('tentativas_match')
@@ -630,17 +636,156 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         const [pulada, ...outras] = tentativas ?? [];
         expect(outras).toEqual([]);
         expect(pulada).toMatchObject({
-          guincheiro_id: RITA.id,
+          guincheiro_id: WAGNER.id,
           resultado: 'pulada_teto',
           expira_em: null,
         });
         expect(pulada!.preco_recalculado as number).toBeGreaterThan(cotacao.preco.total);
-        const ritaApi = await entrar(RITA.telefone);
-        expect(await ritaApi.buscarOfertasAbertas()).toEqual([]);
+        const wagnerApi = await entrar(WAGNER.telefone);
+        expect(await wagnerApi.buscarOfertasAbertas()).toEqual([]);
+        // Mesma Frota cotada: nenhuma recotação.
+        const { data: recotacoes } = await servico
+          .from('recotacoes_pedido')
+          .select('id')
+          .eq('pedido_id', pedido.id);
+        expect(recotacoes).toEqual([]);
       } finally {
-        await servico.from('guincheiros').update({ posicao: rita!.posicao }).eq('id', RITA.id);
+        await servico.from('guincheiros').update({ posicao: wagner!.posicao }).eq('id', WAGNER.id);
       }
     }, 30_000);
+
+    describe('Preço fechado refeito ao passar a outra Frota (#58, ADR-0013)', () => {
+      /** Marcos e Wagner (Frota cotada) recusam; o próximo é a Rita, de outra Frota e mais longe. */
+      async function recusarAFrotaCotada(id: string) {
+        const [marcos, wagner] = await Promise.all([
+          entrar(MARCOS.telefone),
+          entrar(WAGNER.telefone),
+        ]);
+        await marcos.recusarOferta((await ofertaDoPedido(marcos, id)).tentativaId);
+        await wagner.recusarOferta((await ofertaDoPedido(wagner, id)).tentativaId);
+      }
+
+      it('mais cara: o Match pausa, o Cliente aprova e a Rita recebe pelo preço novo', async () => {
+        const { api, id, cotacao } = await pedidoConfirmado();
+        const rita = await entrar(RITA.telefone);
+        await recusarAFrotaCotada(id);
+
+        const pausado = await esperar(async () => {
+          const atual = await api.buscarAcompanhamento(id);
+          return atual?.etapa === 'aguardando_aprovacao_preco' ? atual : null;
+        }, 'Pedido aguardando a aprovação do novo preço');
+        expect(pausado.precoTotal).toBe(cotacao.preco.total);
+        expect(pausado.recotacao).toMatchObject({
+          estado: 'pendente',
+          precoAnterior: cotacao.preco.total,
+        });
+        const novo = pausado.recotacao!.precoNovo;
+        expect(novo).toBeGreaterThan(cotacao.preco.total);
+        const { decomposicao: d } = pausado.recotacao!;
+        expect(
+          d.taxaBase +
+            d.ateVeiculo +
+            d.rebocado +
+            d.adicionalNoturno +
+            d.adicionalFeriado +
+            d.ajusteMinimo,
+        ).toBe(novo);
+        // Nenhuma oferta sai para a Rita enquanto o Cliente não responde.
+        expect((await rita.buscarOfertasAbertas()).some((o) => o.pedidoId === id)).toBe(false);
+
+        await api.aprovarNovoPreco(id);
+        const oferta = await ofertaDoPedido(rita, id);
+        expect(oferta.precoRecalculado).toBe(novo);
+        // 80% do novo preço: a Comissão é de 20% (ADR-0009).
+        expect(oferta.repasse).toBe(novo - Math.round(novo * 0.2));
+        const { data: pagamento } = await admin()
+          .from('pagamentos')
+          .select('estado, valor')
+          .eq('pedido_id', id)
+          .single();
+        expect(pagamento).toEqual({ estado: 'autorizado', valor: novo });
+
+        await rita.aceitarOferta(oferta.tentativaId);
+        expect(await estadoDoPedido(id)).toBe('atribuido');
+        const { data: pedido } = await admin()
+          .from('pedidos')
+          .select('preco_total')
+          .eq('id', id)
+          .single();
+        expect(pedido).toEqual({ preco_total: novo });
+        const { data: recotacoes } = await admin()
+          .from('recotacoes_pedido')
+          .select('resultado, preco_anterior, preco_novo')
+          .eq('pedido_id', id);
+        expect(recotacoes).toEqual([
+          { resultado: 'aprovada', preco_anterior: cotacao.preco.total, preco_novo: novo },
+        ]);
+      }, 90_000);
+
+      it('mais cara e o Cliente desiste: estorno integral, sem oferta à Rita', async () => {
+        const { api, id, cotacao } = await pedidoConfirmado();
+        const rita = await entrar(RITA.telefone);
+        await recusarAFrotaCotada(id);
+        await esperar(
+          async () => (await estadoDoPedido(id)) === 'aguardando_aprovacao_preco',
+          'Pedido aguardando a aprovação do novo preço',
+        );
+
+        await api.desistirDoNovoPreco(id);
+
+        expect(await estadoDoPedido(id)).toBe('estornado');
+        const { data: pagamento } = await admin()
+          .from('pagamentos')
+          .select('estado, valor')
+          .eq('pedido_id', id)
+          .single();
+        expect(pagamento).toEqual({ estado: 'estornado', valor: cotacao.preco.total });
+        expect((await rita.buscarOfertasAbertas()).some((o) => o.pedidoId === id)).toBe(false);
+        const denovo = await api.aprovarNovoPreco(id).catch((e: unknown) => e);
+        expect((denovo as ErroApi).motivo).toBe('pedido_indisponivel');
+      }, 60_000);
+
+      it('mais barata: segue sem pausa, o Pedido passa a valer o preço novo', async () => {
+        const pedido = await pedidoComTrajeto();
+        const cotacao = await pedido.api.cotarPedido(pedido.id);
+        // Depois da cotação (Marcos a ~4,2 km), a Rita passa a ser a mais próxima do veículo.
+        const servico = admin();
+        const { data: rita } = await servico
+          .from('guincheiros')
+          .select('posicao')
+          .eq('id', RITA.id)
+          .single();
+        await servico
+          .from('guincheiros')
+          .update({ posicao: 'SRID=4326;POINT(-47.8925 -15.7905)' })
+          .eq('id', RITA.id);
+        try {
+          await pedido.api.confirmarPedido(pedido.id, 'pix');
+          const ritaApi = await entrar(RITA.telefone);
+          const oferta = await ofertaDoPedido(ritaApi, pedido.id);
+          expect(oferta.precoRecalculado).toBeLessThan(cotacao.preco.total);
+
+          const acompanhamento = await pedido.api.buscarAcompanhamento(pedido.id);
+          expect(acompanhamento).toMatchObject({
+            etapa: 'em_match',
+            precoTotal: oferta.precoRecalculado,
+            recotacao: {
+              estado: 'aplicada',
+              precoAnterior: cotacao.preco.total,
+              precoNovo: oferta.precoRecalculado,
+            },
+          });
+          const { data: pagamento } = await servico
+            .from('pagamentos')
+            .select('estado, valor')
+            .eq('pedido_id', pedido.id)
+            .single();
+          expect(pagamento).toEqual({ estado: 'autorizado', valor: oferta.precoRecalculado });
+        } finally {
+          await servico.from('guincheiros').update({ posicao: rita!.posicao }).eq('id', RITA.id);
+        }
+      }, 30_000);
+    });
 
     describe('app do Guincheiro (#12): Realtime, aceite e avanço da Corrida', () => {
       // Aqui a oferta não deve expirar antes do aceite: prazo de 20 s neste bloco.

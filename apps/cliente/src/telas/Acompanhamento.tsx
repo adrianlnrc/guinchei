@@ -6,6 +6,7 @@ import {
   LIMITE_FOTOS_POR_ETAPA,
   type Acompanhamento,
   type EtapaDoAcompanhamento,
+  type RecotacaoDoPedido,
 } from '@guinchei/api';
 import { etapaDaFoto } from '@guinchei/estados';
 import { formatarReais } from '@guinchei/ui';
@@ -144,7 +145,9 @@ function Etapa({
       // Ainda não pagou: volta ao preço.
       return <Navigate to="/preco" replace />;
     case 'em_match':
-      return <Procurando preco={acompanhamento.precoTotal} />;
+      return <Procurando preco={acompanhamento.precoTotal} recotacao={acompanhamento.recotacao} />;
+    case 'aguardando_aprovacao_preco':
+      return <AprovarNovoPreco acompanhamento={acompanhamento} atualizar={atualizar} />;
     case 'sem_guincheiro':
       return <SemGuincheiro pedidoId={acompanhamento.pedidoId} atualizar={atualizar} />;
     case 'estornado':
@@ -154,7 +157,13 @@ function Etapa({
   }
 }
 
-function Procurando({ preco }: { preco: number | null }) {
+function Procurando({
+  preco,
+  recotacao,
+}: {
+  preco: number | null;
+  recotacao: RecotacaoDoPedido | null;
+}) {
   return (
     <Tela escura rotulo="Procurando guincho">
       <div
@@ -228,10 +237,190 @@ function Procurando({ preco }: { preco: number | null }) {
           Pagamento confirmado. Estamos falando com um Guincheiro.
           {preco !== null && ` Seu preço já está travado em ${formatarReais(preco)}.`}
         </p>
+        <AvisoDeReducao recotacao={recotacao} escura />
       </div>
       <div style={{ padding: '0 24px 32px', display: 'flex', flexDirection: 'column' }}>
         <CancelarEmBreve escura />
       </div>
+    </Tela>
+  );
+}
+
+/**
+ * Aviso de que outra empresa vai atender por um preço menor (ADR-0013): o novo preço já vale e
+ * a diferença volta ao Cliente. Só a recotação `aplicada` que de fato baixou o preço.
+ */
+function AvisoDeReducao({
+  recotacao,
+  escura,
+}: {
+  recotacao: RecotacaoDoPedido | null;
+  escura?: boolean;
+}) {
+  if (recotacao?.estado !== 'aplicada' || recotacao.precoNovo >= recotacao.precoAnterior) {
+    return null;
+  }
+  return (
+    <p
+      role="status"
+      className="apoio"
+      style={{
+        textAlign: escura ? 'center' : undefined,
+        padding: '12px 14px',
+        borderRadius: 12,
+        border: '1px solid var(--linha)',
+      }}
+    >
+      <strong>Outra empresa vai atender.</strong> O preço baixou de{' '}
+      {formatarReais(recotacao.precoAnterior)} para {formatarReais(recotacao.precoNovo)}. A
+      diferença de {formatarReais(recotacao.precoAnterior - recotacao.precoNovo)} será estornada.
+    </p>
+  );
+}
+
+/** Horário de Brasília do prazo, para a tela dizer até quando o Cliente pode responder. */
+function horaDeBrasilia(iso: string): string {
+  return new Date(iso).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'America/Sao_Paulo',
+  });
+}
+
+function LinhaDoPreco({ rotulo, centavos }: { rotulo: string; centavos: number }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+      <span>{rotulo}</span>
+      <span>{formatarReais(centavos)}</span>
+    </div>
+  );
+}
+
+/**
+ * Pedido redirecionado a outra empresa por um preço maior (ADR-0013): o Match pausou e o
+ * Cliente aprova o novo preço (a diferença é autorizada) ou desiste (estorno integral, sem
+ * custo). Sem resposta no prazo, vale como desistência.
+ */
+function AprovarNovoPreco({
+  acompanhamento,
+  atualizar,
+}: {
+  acompanhamento: Acompanhamento;
+  atualizar: (pedidoId: string) => Promise<void>;
+}) {
+  const api = useApi();
+  const { pedidoId, recotacao } = acompanhamento;
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function agir(acao: () => Promise<unknown>, padrao: string) {
+    setErro(null);
+    setOcupado(true);
+    try {
+      await acao();
+      await atualizar(pedidoId);
+    } catch (e) {
+      setErro(mensagemDaAcao(e, padrao));
+      // O prazo pode ter vencido: a tela relê e mostra o desfecho.
+      if (e instanceof ErroApi && e.motivo === 'prazo_vencido') await atualizar(pedidoId);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  // Sem a recotação (ainda não chegou na leitura), a tela espera a próxima atualização.
+  if (recotacao?.estado !== 'pendente') {
+    return (
+      <Tela rotulo="Aprovar novo preço">
+        <Corpo style={{ padding: '16px 24px 32px', gap: 16 }}>
+          <p className="apoio" aria-live="polite">
+            Carregando o novo preço…
+          </p>
+        </Corpo>
+      </Tela>
+    );
+  }
+
+  const { decomposicao: d } = recotacao;
+  return (
+    <Tela rotulo="Aprovar novo preço">
+      <Corpo style={{ padding: '16px 24px 32px', gap: 16 }}>
+        <h1
+          className="titulo"
+          style={{
+            font: '700 30px/1.12 var(--fonte-titulo)',
+            letterSpacing: '-.01em',
+            marginTop: 28,
+          }}
+        >
+          Outra empresa vai atender
+        </h1>
+        <p className="apoio">
+          A empresa que cotou o seu preço não pôde atender. A próxima empresa fica mais longe do seu
+          veículo, então o preço muda. Nada é oferecido a ela até você decidir.
+        </p>
+        <div
+          className="cartao"
+          style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}
+        >
+          <LinhaDoPreco rotulo="Preço anterior" centavos={recotacao.precoAnterior} />
+          <LinhaDoPreco rotulo="Novo preço" centavos={recotacao.precoNovo} />
+          <LinhaDoPreco
+            rotulo="Diferença"
+            centavos={recotacao.precoNovo - recotacao.precoAnterior}
+          />
+        </div>
+        <div
+          role="group"
+          aria-label="Decomposição do novo preço"
+          className="apoio"
+          style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+        >
+          <LinhaDoPreco rotulo="Taxa base" centavos={d.taxaBase} />
+          <LinhaDoPreco rotulo="Até o veículo" centavos={d.ateVeiculo} />
+          <LinhaDoPreco rotulo="Reboque" centavos={d.rebocado} />
+          {d.adicionalNoturno > 0 && (
+            <LinhaDoPreco rotulo="Adicional noturno" centavos={d.adicionalNoturno} />
+          )}
+          {d.adicionalFeriado > 0 && (
+            <LinhaDoPreco rotulo="Adicional de feriado" centavos={d.adicionalFeriado} />
+          )}
+          {d.ajusteMinimo > 0 && (
+            <LinhaDoPreco rotulo="Ajuste ao preço mínimo" centavos={d.ajusteMinimo} />
+          )}
+        </div>
+        {recotacao.expiraEm && (
+          <p className="apoio">
+            Responda até as {horaDeBrasilia(recotacao.expiraEm)}. Sem resposta, o Pedido é encerrado
+            e o pagamento é estornado por inteiro.
+          </p>
+        )}
+        <div className="espaco" />
+        <MensagemDeErro>{erro}</MensagemDeErro>
+        <Botao
+          disabled={ocupado}
+          onClick={() =>
+            agir(
+              () => api.aprovarNovoPreco(pedidoId),
+              'Não foi possível aprovar o novo preço. Tente outra vez.',
+            )
+          }
+        >
+          Aprovar {formatarReais(recotacao.precoNovo)}
+        </Botao>
+        <Botao
+          variante="contorno"
+          disabled={ocupado}
+          onClick={() =>
+            agir(
+              () => api.desistirDoNovoPreco(pedidoId),
+              'Não foi possível desistir agora. Tente outra vez.',
+            )
+          }
+        >
+          Desistir e estornar
+        </Botao>
+      </Corpo>
     </Tela>
   );
 }
@@ -441,6 +630,7 @@ function NaCorrida({
           {texto.titulo}
         </h1>
         <p className="apoio">{texto.apoio(acompanhamento, nome)}</p>
+        <AvisoDeReducao recotacao={acompanhamento.recotacao} />
         <ol
           aria-label="Etapas do Pedido"
           style={{
