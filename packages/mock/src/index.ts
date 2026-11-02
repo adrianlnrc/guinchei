@@ -1,6 +1,5 @@
 // Cenário do protótipo: terça, 21:47, Rafael parado no Eixo Monumental.
 // Nomes, valores e histórico são de exemplo (ver chats/ do handoff de design).
-import type { EstadoCorrida } from '@guinchei/estados';
 import {
   TABELA_PADRAO,
   calcularPrecoFechado,
@@ -136,77 +135,6 @@ export const HISTORICO_GUINCHEIRO: CorridaHistorico[] = [
 ];
 
 // ---------- Painel de operação ----------
-
-export interface CorridaMonitor {
-  id: number;
-  trecho: string;
-  guincheiro?: string;
-  detalhe?: string;
-  /** Corrida em curso, ou Pedido que ainda está no Match (`em_match`, `sem_guincheiro`). */
-  estado: EstadoCorrida | 'em_match' | 'sem_guincheiro';
-  /** Tentativa atual do Match, só para `em_match`. */
-  tentativa?: number;
-  minutos: number;
-}
-
-export const MONITOR: CorridaMonitor[] = [
-  {
-    id: 2318,
-    trecho: 'Ceilândia → Samambaia',
-    detalhe: 'Aguardando o Cliente: tentar de novo ou estornar',
-    estado: 'sem_guincheiro',
-    minutos: 4,
-  },
-  {
-    id: 2316,
-    trecho: 'Taguatinga → Águas Claras',
-    estado: 'em_match',
-    tentativa: 2,
-    minutos: 1,
-  },
-  {
-    id: 2317,
-    trecho: 'Eixo Monumental → Taguatinga N.',
-    guincheiro: 'Marcos Alves · Reboque Planalto',
-    estado: 'a_caminho',
-    minutos: 6,
-  },
-  {
-    id: 2315,
-    trecho: 'Gama → Park Way',
-    guincheiro: 'Diego Ramos · SOS Gama',
-    estado: 'no_local',
-    minutos: 19,
-  },
-  {
-    id: 2314,
-    trecho: 'Asa Norte → SIA',
-    guincheiro: 'Jéssica Prado · Reboque Planalto',
-    estado: 'carregado',
-    minutos: 31,
-  },
-  {
-    id: 2312,
-    trecho: 'Sobradinho → Lago Norte',
-    guincheiro: 'Paulo Lima · Guincho Norte',
-    estado: 'carregado',
-    minutos: 38,
-  },
-  {
-    id: 2311,
-    trecho: 'Guará II → Asa Sul',
-    guincheiro: 'André Souza · SOS Gama',
-    estado: 'aceita',
-    minutos: 1,
-  },
-];
-
-export const INDICADORES = {
-  atendidos30: { pct: '86%', de: '25 de 29 Pedidos' },
-  emCurso: 5,
-  disponiveis: 9,
-  notaMedia: '4,8',
-};
 
 export type SituacaoItem = 'Aprovado' | 'Revisar' | 'Pendente';
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { COTACAO } from '@guinchei/mock';
 import { TABELA_PADRAO, calcularPrecoFechado, calcularRepasse } from '@guinchei/preco';
 import { formatarReais, partesReais } from '@guinchei/ui';
-import { apiFalsa } from './teste/apiFalsa';
+import { apiFalsa, corridaDoMonitor } from './teste/apiFalsa';
 import { renderEm as renderizar } from './teste/renderizar';
 
 afterEach(cleanup);
@@ -17,12 +17,23 @@ async function renderEm(rota: string) {
 
 describe('App painel', () => {
   it('o monitor mostra os Pedidos em Match e sem Guincheiro, só para leitura', async () => {
-    await renderEm('/monitor');
-    const semGuincheiro = screen.getByText('2318').closest('.linha-tabela') as HTMLElement;
+    renderizar(
+      '/monitor',
+      apiFalsa({
+        sessao: true,
+        corridasDoMonitor: [
+          corridaDoMonitor('abcd1234', { estado: 'sem_guincheiro', minutos: 4 }),
+          corridaDoMonitor('efgh5678', { estado: 'em_match', minutos: 1 }),
+        ],
+      }),
+    );
+    const semGuincheiro = (await screen.findByText('abcd1234')).closest(
+      '.linha-tabela',
+    ) as HTMLElement;
     expect(within(semGuincheiro).getByText('Sem Guincheiro')).toBeTruthy();
     expect(screen.getByText('Aguardando o Cliente: tentar de novo ou estornar')).toBeTruthy();
     expect(screen.getByText('Procurando Guincheiro')).toBeTruthy();
-    expect(screen.getByText('Tentativa 2 · há 1 min')).toBeTruthy();
+    expect(screen.getByText('Procurando há 1 min')).toBeTruthy();
     expect(
       screen.getByText('1 Pedido procurando Guincheiro · 1 sem Guincheiro, aguardando o Cliente'),
     ).toBeTruthy();

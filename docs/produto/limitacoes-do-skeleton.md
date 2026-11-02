@@ -36,7 +36,7 @@ Lista para a demo (issue #15), atualizada com o Incremento 1 (cadastro e homolog
 ## Fora do skeleton
 
 - **Push e GPS no iOS ficam pendentes do spike #3.** O app do Guincheiro precisa ficar aberto para receber chamados; não promete avisar com a tela bloqueada, e não há rastreamento ao vivo (RF09) no mapa do Cliente, só a etapa.
-- **Parte do Painel de operação ainda é protótipo.** Homologação, vencimentos, ativação da Frota e tabela de preços usam o banco de verdade. O Monitor de Corridas, os indicadores ("atendidos em menos de 30 min", Guincheiros disponíveis, nota média) e a Disputa mostram dados de exemplo (inclusive fotos); só a linha de Pedido aguardando aprovação de novo preço (ADR-0013) é real.
+- **Parte do Painel de operação ainda é protótipo.** Homologação, vencimentos, ativação da Frota e tabela de preços usam o banco de verdade. O Monitor de Corridas e seus indicadores (Corridas em curso, Guincheiros disponíveis, "atendidos em menos de 30 min") também leem o banco; a nota média aparece como "—" (sem avaliação, RF13) e a Disputa mostra dados de exemplo (inclusive fotos).
 - **Cancelar o Pedido** (RN05, RF14) e a taxa de cancelamento: o botão aparece desabilitado.
 - Avaliação mútua (RF13), histórico de Corridas (RF18) e histórico/ganhos do plantão do Guincheiro (dados de exemplo, só na sessão).
 - Cadastro de Frota **empresa** pelo app (o app cadastra o autônomo; a empresa nasce pela operação, ou, no seed, pelo banco) e liquidação do repasse ao prestador (RF12, depende do PSP).

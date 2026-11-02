@@ -1,8 +1,8 @@
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErroApi, type PedidoAguardandoAprovacao } from '@guinchei/api';
 import { formatarReais } from '@guinchei/ui';
-import { apiFalsa } from './teste/apiFalsa';
+import { apiFalsa, corridaDoMonitor } from './teste/apiFalsa';
 import { renderEm } from './teste/renderizar';
 
 afterEach(cleanup);
@@ -56,5 +56,112 @@ describe('Monitor de Corridas: Pedido aguardando aprovação do novo preço (ADR
       await screen.findByText('Monitor de Corridas', { selector: '.topo__titulo' }),
     ).toBeTruthy();
     expect(screen.queryByRole('row', { name: /aguardando aprovação do novo preço/ })).toBeNull();
+  });
+});
+
+describe('Monitor de Corridas: dados reais', () => {
+  it('lista os Pedidos com trecho, estado, Guincheiro, Frota e minutos', async () => {
+    const api = apiFalsa({
+      sessao: true,
+      corridasDoMonitor: [
+        corridaDoMonitor('aaaa1111', { estado: 'em_match', minutos: 2 }),
+        corridaDoMonitor('bbbb2222', {
+          estado: 'a_caminho',
+          guincheiro: 'Marcos Alves',
+          frota: 'Reboque Planalto',
+          minutos: 6,
+          origemEndereco: 'Asa Norte',
+          destinoEndereco: 'SIA',
+        }),
+        corridaDoMonitor('cccc3333', { estado: 'carregado', guincheiro: 'Ana', frota: null }),
+        corridaDoMonitor('dddd4444', { estado: 'sem_guincheiro', minutos: 9 }),
+      ],
+    });
+    renderEm('/monitor', api);
+
+    const linha = await screen.findByRole('row', { name: 'Pedido bbbb2222' });
+    const texto = linha.textContent ?? '';
+    expect(texto).toContain('Asa Norte → SIA');
+    expect(texto).toContain('Marcos Alves · Reboque Planalto');
+    expect(texto).toContain('A caminho');
+    expect(texto).toContain('6 min');
+    expect(
+      within(screen.getByRole('row', { name: 'Pedido aaaa1111' })).getByText(
+        'Procurando Guincheiro',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('row', { name: 'Pedido cccc3333' }).textContent).toContain('Carregado');
+    expect(screen.getByRole('row', { name: 'Pedido dddd4444' }).textContent).toContain(
+      'Sem Guincheiro',
+    );
+    // O Pedido sem Guincheiro mais antigo ganha o destaque no mapa.
+    expect(screen.getByText('#dddd4444 · sem Guincheiro 9 min')).toBeTruthy();
+    // Sem rótulo de exemplo: tudo isso vem do banco.
+    expect(screen.queryByText(/de exemplo/)).toBeNull();
+  });
+
+  it('mostra os indicadores reais e deixa a nota média como "—", dita como inexistente', async () => {
+    const api = apiFalsa({
+      sessao: true,
+      indicadores: {
+        corridasEmCurso: 3,
+        guincheirosDisponiveis: 7,
+        atendidosRapido: { atendidos: 5, total: 8 },
+      },
+    });
+    renderEm('/monitor', api);
+
+    expect(await screen.findByText('63%')).toBeTruthy();
+    expect(screen.getByText('5 de 8 Corridas aceitas hoje')).toBeTruthy();
+    const cartao = (rotulo: string) => screen.getByText(rotulo).closest('div') as HTMLElement;
+    expect(within(cartao('Corridas em curso')).getByText('3')).toBeTruthy();
+    expect(within(cartao('Guincheiros disponíveis')).getByText('7')).toBeTruthy();
+    const nota = cartao('Nota média · 7 dias');
+    expect(within(nota).getByText('—')).toBeTruthy();
+    expect(within(nota).getByText('Avaliação (RF13) ainda não existe')).toBeTruthy();
+  });
+
+  it('sem Corrida aceita hoje, o indicador de 30 min mostra "—"', async () => {
+    renderEm('/monitor', apiFalsa({ sessao: true }));
+
+    expect(await screen.findByText('Nenhuma Corrida aceita hoje')).toBeTruthy();
+    expect(screen.queryByText(/%$/)).toBeNull();
+  });
+
+  it('lista vazia: avisa que não há Pedido em andamento e zera o resumo', async () => {
+    renderEm('/monitor', apiFalsa({ sessao: true }));
+
+    expect(await screen.findByText('Nenhum Pedido em andamento nas últimas 24 h.')).toBeTruthy();
+    expect(
+      screen.getByText('0 Pedidos procurando Guincheiro · 0 sem Guincheiro, aguardando o Cliente'),
+    ).toBeTruthy();
+  });
+
+  it('relê a cada 5 s', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const api = apiFalsa({ sessao: true });
+      renderEm('/monitor', api);
+      await waitFor(() => expect(api.listarCorridasDoMonitor).toHaveBeenCalledTimes(1));
+
+      api.listarCorridasDoMonitor.mockResolvedValue([corridaDoMonitor('eeee5555')]);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(await screen.findByRole('row', { name: 'Pedido eeee5555' })).toBeTruthy();
+      expect(api.listarCorridasDoMonitor.mock.calls.length).toBeGreaterThanOrEqual(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('se a leitura falha, avisa e o Monitor continua de pé', async () => {
+    const api = apiFalsa({ sessao: true });
+    api.listarCorridasDoMonitor.mockRejectedValue(
+      new ErroApi('falha', 'Não foi possível ler as Corridas do Monitor'),
+    );
+    renderEm('/monitor', api);
+
+    expect(await screen.findByText(/Não foi possível atualizar/)).toBeTruthy();
+    expect(screen.queryByText('Nenhum Pedido em andamento nas últimas 24 h.')).toBeNull();
   });
 });

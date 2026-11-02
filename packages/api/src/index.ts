@@ -2581,6 +2581,81 @@ export interface PedidoAguardandoAprovacao {
   destinoEndereco: string | null;
 }
 
+/** Estado que o Monitor mostra: o do Pedido no Match ou, atribuído, o da Corrida. */
+export type EstadoNoMonitor = 'em_match' | 'sem_guincheiro' | EstadoCorrida;
+
+/** Uma linha do Monitor: um Pedido dos últimos 24 h em Match ou atribuído. */
+export interface CorridaDoMonitor {
+  pedidoId: string;
+  /** Os 8 primeiros caracteres do id do Pedido. */
+  idCurto: string;
+  origemEndereco: string | null;
+  destinoEndereco: string | null;
+  estado: EstadoNoMonitor;
+  /** Só com Corrida: o nome do Guincheiro e o da Frota dele. */
+  guincheiro: string | null;
+  frota: string | null;
+  /** ISO 8601: criação do Pedido. */
+  criadoEm: string;
+  /** Minutos inteiros desde a criação do Pedido, na hora da leitura. */
+  minutos: number;
+  /** Origem do Pedido; `null` se o banco devolver um formato ilegível. */
+  origem: { lat: number; lng: number } | null;
+}
+
+/** Os indicadores do topo do Monitor. */
+export interface IndicadoresDoMonitor {
+  /** Corridas ainda não `entregue`. */
+  corridasEmCurso: number;
+  /** Guincheiros com `disponivel` de Frota `ativa`: os elegíveis do Match. */
+  guincheirosDisponiveis: number;
+  /**
+   * "Atendidos em menos de 30 min" no dia de hoje (America/Sao_Paulo): entre as Corridas
+   * aceitas hoje, as que foram aceitas até `LIMITE_ATENDIMENTO_MINUTOS` depois da criação do
+   * Pedido. `total` é 0 quando nenhuma Corrida foi aceita hoje.
+   */
+  atendidosRapido: { atendidos: number; total: number };
+}
+
+/** Limite da métrica "atendidos em menos de 30 min" do Monitor. */
+export const LIMITE_ATENDIMENTO_MINUTOS = 30;
+/** Janela dos Pedidos que o Monitor lista. */
+export const JANELA_DO_MONITOR_HORAS = 24;
+
+/**
+ * Lê um ponto do PostgREST: `geography` vem como EWKB em hexadecimal (ou GeoJSON, se o
+ * servidor for configurado assim). `null` para qualquer outra coisa.
+ */
+export function lerPontoDoBanco(valor: unknown): { lat: number; lng: number } | null {
+  if (valor && typeof valor === 'object') {
+    const { type, coordinates } = valor as { type?: unknown; coordinates?: unknown };
+    if (type === 'Point' && Array.isArray(coordinates) && coordinates.length >= 2) {
+      const [lng, lat] = coordinates as unknown[];
+      return typeof lng === 'number' && typeof lat === 'number' ? { lat, lng } : null;
+    }
+    return null;
+  }
+  if (typeof valor !== 'string' || !/^([0-9a-fA-F]{2})+$/.test(valor)) return null;
+  const bytes = Uint8Array.from(valor.match(/../g)!, (h) => parseInt(h, 16));
+  const visao = new DataView(bytes.buffer);
+  if (bytes.length < 21) return null;
+  const pequeno = bytes[0] === 1;
+  const tipo = visao.getUint32(1, pequeno);
+  const temSrid = (tipo & 0x20000000) !== 0;
+  if ((tipo & 0xff) !== 1) return null; // só ponto
+  const inicio = temSrid ? 9 : 5;
+  if (bytes.length < inicio + 16) return null;
+  const lng = visao.getFloat64(inicio, pequeno);
+  const lat = visao.getFloat64(inicio + 8, pequeno);
+  return Number.isFinite(lng) && Number.isFinite(lat) ? { lat, lng } : null;
+}
+
+/** Instante ISO em que começa hoje em Brasília (UTC-3 o ano todo, sem horário de verão). */
+function inicioDeHojeEmBrasilia(agora: Date): string {
+  const dia = agora.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  return `${dia}T00:00:00-03:00`;
+}
+
 /**
  * O que o Painel de operação usa: a entrada por telefone do `ApiGuinchei`, mais sair e a
  * leitura do operador. O Painel só admite perfis com papel `operacao`.
@@ -2595,6 +2670,13 @@ export interface ApiPainel extends Pick<
   buscarMeuOperador(): Promise<MeuOperador | null>;
   /** Monitor: Pedidos aguardando o Cliente aprovar o novo preço, o que vence primeiro no topo. */
   listarPedidosAguardandoAprovacao(): Promise<PedidoAguardandoAprovacao[]>;
+  /**
+   * Monitor: Pedidos dos últimos 24 h em `em_match`, `sem_guincheiro` ou `atribuido`, o mais
+   * recente primeiro. Atribuído, o estado é o da Corrida.
+   */
+  listarCorridasDoMonitor(): Promise<CorridaDoMonitor[]>;
+  /** Monitor: os indicadores do topo (Corridas em curso, Guincheiros disponíveis, 30 min). */
+  lerIndicadoresDoMonitor(): Promise<IndicadoresDoMonitor>;
   /** Frotas com item `pendente`, a de envio mais antigo primeiro. */
   listarFilaHomologacao(): Promise<FrotaNaFila[]>;
   /** A Frota com todos os itens; `null` se não existe. */
@@ -2658,6 +2740,74 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
         origemEndereco: r.pedidos?.origem_endereco ?? null,
         destinoEndereco: r.pedidos?.destino_endereco ?? null,
       }));
+    },
+
+    async listarCorridasDoMonitor() {
+      const agora = Date.now();
+      const desde = new Date(agora - JANELA_DO_MONITOR_HORAS * 3_600_000).toISOString();
+      const { data, error } = await supabase
+        .from('pedidos')
+        .select(
+          'id, estado, criado_em, origem, origem_endereco, destino_endereco, corridas (estado, guincheiros (perfis (nome), frotas (nome)))',
+        )
+        .in('estado', ['em_match', 'sem_guincheiro', 'atribuido'])
+        .gte('criado_em', desde)
+        .order('criado_em', { ascending: false });
+      if (error) {
+        throw new ErroApi('falha', 'Não foi possível ler as Corridas do Monitor', { cause: error });
+      }
+      return data.map((p): CorridaDoMonitor => {
+        const corrida = p.corridas;
+        const estado: EstadoNoMonitor =
+          p.estado === 'atribuido' ? (corrida?.estado ?? 'aceita') : (p.estado as EstadoNoMonitor);
+        return {
+          pedidoId: p.id,
+          idCurto: p.id.slice(0, 8),
+          origemEndereco: p.origem_endereco,
+          destinoEndereco: p.destino_endereco,
+          estado,
+          guincheiro: corrida?.guincheiros?.perfis?.nome ?? null,
+          frota: corrida?.guincheiros?.frotas?.nome ?? null,
+          criadoEm: p.criado_em,
+          minutos: Math.max(0, Math.floor((agora - Date.parse(p.criado_em)) / 60_000)),
+          origem: lerPontoDoBanco(p.origem),
+        };
+      });
+    },
+
+    async lerIndicadoresDoMonitor() {
+      const agora = new Date();
+      const [emCurso, disponiveis, hoje] = await Promise.all([
+        supabase
+          .from('corridas')
+          .select('id', { count: 'exact', head: true })
+          .neq('estado', 'entregue'),
+        supabase
+          .from('guincheiros')
+          .select('id, frotas!inner (ativa)', { count: 'exact', head: true })
+          .eq('disponivel', true)
+          .eq('frotas.ativa', true),
+        supabase
+          .from('corridas')
+          .select('criado_em, pedidos (criado_em)')
+          .gte('criado_em', inicioDeHojeEmBrasilia(agora)),
+      ]);
+      const falha = emCurso.error ?? disponiveis.error ?? hoje.error;
+      if (falha) {
+        throw new ErroApi('falha', 'Não foi possível ler os indicadores do Monitor', {
+          cause: falha,
+        });
+      }
+      const limite = LIMITE_ATENDIMENTO_MINUTOS * 60_000;
+      const aceitasHoje = hoje.data ?? [];
+      const atendidos = aceitasHoje.filter(
+        (c) => c.pedidos && Date.parse(c.criado_em) - Date.parse(c.pedidos.criado_em) <= limite,
+      ).length;
+      return {
+        corridasEmCurso: emCurso.count ?? 0,
+        guincheirosDisponiveis: disponiveis.count ?? 0,
+        atendidosRapido: { atendidos, total: aceitasHoje.length },
+      };
     },
 
     async listarFilaHomologacao() {

@@ -1,6 +1,7 @@
-import { INDICADORES } from '@guinchei/mock';
+import type { IndicadoresDoMonitor } from '@guinchei/api';
 import { Mapa, formatarReais, type Marcador } from '@guinchei/ui';
 import { useOperacao } from '../operacao';
+import { projetarNoMapa } from '../projecao';
 
 const ROTULO_ESTADO = {
   em_match: 'Procurando Guincheiro',
@@ -12,16 +13,20 @@ const ROTULO_ESTADO = {
   entregue: 'Entregue',
 } as const;
 
-const COLUNAS = '64px 1fr 110px 70px';
-const POSICOES: Record<number, { left: number; top: number }> = {
-  2318: { left: 90, top: 220 },
-  2317: { left: 340, top: 150 },
-  2316: { left: 230, top: 90 },
-  2315: { left: 150, top: 330 },
-  2314: { left: 470, top: 410 },
-  2312: { left: 250, top: 470 },
-  2311: { left: 380, top: 560 },
-};
+const COLUNAS = '88px 1fr 110px 70px';
+/** Onde cabem os marcadores no mapa de 604×700 (borda de 60 e marcador de 26). */
+const AREA_DO_MAPA = { left: 60, top: 60, largura: 604 - 120 - 26, altura: 700 - 120 - 26 };
+
+/** "86%" e "25 de 29 Corridas aceitas hoje"; "—" enquanto não há Corrida aceita hoje. */
+function atendidosRapido(indicadores: IndicadoresDoMonitor | null) {
+  if (!indicadores) return { pct: '—', de: 'Lendo…' };
+  const { atendidos, total } = indicadores.atendidosRapido;
+  if (total === 0) return { pct: '—', de: 'Nenhuma Corrida aceita hoje' };
+  return {
+    pct: `${Math.round((atendidos / total) * 100)}%`,
+    de: `${atendidos} de ${total} ${total === 1 ? 'Corrida aceita' : 'Corridas aceitas'} hoje`,
+  };
+}
 
 /** Horário de Brasília do prazo para o Cliente responder. */
 function horaDeBrasilia(iso: string): string {
@@ -33,17 +38,34 @@ function horaDeBrasilia(iso: string): string {
 }
 
 export function Monitor() {
-  const { corridas, aguardandoAprovacao } = useOperacao();
+  const { corridas: lidas, indicadores, erroMonitor, aguardandoAprovacao } = useOperacao();
+  const corridas = lidas ?? [];
   const aguardando = aguardandoAprovacao ?? [];
   const semGuincheiro = corridas.filter((c) => c.estado === 'sem_guincheiro');
   const emMatch = corridas.filter((c) => c.estado === 'em_match');
-  const emCurso = corridas.length - semGuincheiro.length - emMatch.length;
-  const destacado = semGuincheiro[0];
-  const marcadores: Marcador[] = corridas.map((c) => ({
-    ...(POSICOES[c.id] ?? { left: 0, top: 0 }),
-    tamanho: 26,
-    tipo: c.estado === 'sem_guincheiro' ? 'alerta' : 'guincho',
-  }));
+  const destacado = [...semGuincheiro].sort((a, b) => b.minutos - a.minutos)[0];
+  const rapido = atendidosRapido(indicadores);
+  // Um marcador por Pedido com origem legível, na posição projetada do DF.
+  const marcadores = corridas.flatMap((c) =>
+    c.origem
+      ? [
+          {
+            pedidoId: c.pedidoId,
+            marcador: {
+              ...projetarNoMapa(c.origem, AREA_DO_MAPA),
+              tamanho: 26,
+              tipo: c.estado === 'sem_guincheiro' ? 'alerta' : 'guincho',
+            } satisfies Marcador,
+          },
+        ]
+      : [],
+  );
+  const posicaoDoDestacado = marcadores.find((m) => m.pedidoId === destacado?.pedidoId)?.marcador;
+  const cartoes: [string, string | number, string | null][] = [
+    ['Corridas em curso', indicadores?.corridasEmCurso ?? '—', null],
+    ['Guincheiros disponíveis', indicadores?.guincheirosDisponiveis ?? '—', null],
+    ['Nota média · 7 dias', '—', 'Avaliação (RF13) ainda não existe'],
+  ];
 
   const resumo = `${emMatch.length} ${emMatch.length === 1 ? 'Pedido procurando' : 'Pedidos procurando'} Guincheiro · ${semGuincheiro.length} sem Guincheiro, aguardando o Cliente`;
 
@@ -57,7 +79,9 @@ export function Monitor() {
           className="ponto"
           style={{ font: '500 14px var(--fonte-texto)', color: 'var(--tinta-2)' }}
         >
-          Indicadores e Corridas de exemplo · aprovações de preço reais
+          {erroMonitor
+            ? 'Não foi possível atualizar: mostrando a última leitura'
+            : 'Dados reais · atualiza a cada 5 s'}
         </span>
       </header>
       <div
@@ -83,17 +107,16 @@ export function Monitor() {
             Atendidos em menos de 30 min · hoje
           </span>
           <span className="heroi" style={{ fontSize: 44, letterSpacing: '-.02em' }}>
-            {INDICADORES.atendidos30.pct}
+            {rapido.pct}
           </span>
           <span style={{ font: '400 13px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
-            {INDICADORES.atendidos30.de}
+            {rapido.de}
+          </span>
+          <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--cinza-medio)' }}>
+            Do Pedido à Corrida aceita
           </span>
         </div>
-        {[
-          ['Corridas em curso', emCurso],
-          ['Guincheiros disponíveis', INDICADORES.disponiveis],
-          ['Nota média · 7 dias', INDICADORES.notaMedia],
-        ].map(([rotulo, valor]) => (
+        {cartoes.map(([rotulo, valor, nota]) => (
           <div
             key={rotulo}
             className="cartao"
@@ -109,6 +132,11 @@ export function Monitor() {
               {rotulo}
             </span>
             <span style={{ font: '700 36px var(--fonte-titulo)' }}>{valor}</span>
+            {nota && (
+              <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
+                {nota}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -144,9 +172,9 @@ export function Monitor() {
               { left: 260, top: 280, w: 120, h: 80 },
               { left: 80, top: 100, w: 90, h: 70 },
             ]}
-            marcadores={marcadores}
+            marcadores={marcadores.map((m) => m.marcador)}
           />
-          {destacado && (
+          {destacado && posicaoDoDestacado && (
             <div
               style={{
                 position: 'absolute',
@@ -160,8 +188,8 @@ export function Monitor() {
               <div
                 style={{
                   position: 'absolute',
-                  left: 120,
-                  top: 190,
+                  left: Math.min(posicaoDoDestacado.left + 34, 340),
+                  top: Math.max(posicaoDoDestacado.top - 6, 8),
                   padding: '6px 10px',
                   borderRadius: 8,
                   background: 'var(--tinta)',
@@ -170,7 +198,7 @@ export function Monitor() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                #{destacado.id} · sem Guincheiro {destacado.minutos} min
+                #{destacado.idCurto} · sem Guincheiro {destacado.minutos} min
               </div>
             </div>
           )}
@@ -263,25 +291,41 @@ export function Monitor() {
                 </span>
               </div>
             ))}
+            {lidas && lidas.length === 0 && aguardando.length === 0 && (
+              <div
+                style={{
+                  padding: '24px 18px',
+                  font: '400 14px var(--fonte-texto)',
+                  color: 'var(--tinta-2)',
+                }}
+              >
+                Nenhum Pedido em andamento nas últimas 24 h.
+              </div>
+            )}
             {corridas.map((c) => {
               const alerta = c.estado === 'sem_guincheiro';
               return (
                 <div
-                  key={c.id}
+                  key={c.pedidoId}
+                  role="row"
+                  aria-label={`Pedido ${c.idCurto}`}
                   className="linha-tabela"
                   style={{
                     gridTemplateColumns: COLUNAS,
                     background: alerta ? 'var(--alerta-fundo)' : undefined,
                   }}
                 >
-                  <span style={{ font: '600 14px var(--fonte-mono)' }}>{c.id}</span>
+                  <span style={{ font: '600 14px var(--fonte-mono)' }}>{c.idCurto}</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ font: '500 14px var(--fonte-texto)' }}>{c.trecho}</span>
+                    <span style={{ font: '500 14px var(--fonte-texto)' }}>
+                      {c.origemEndereco ?? 'Origem'} → {c.destinoEndereco ?? 'Destino'}
+                    </span>
                     <span style={{ font: '400 12px var(--fonte-texto)', color: 'var(--tinta-2)' }}>
-                      {c.guincheiro ??
-                        (c.estado === 'em_match'
-                          ? `Tentativa ${c.tentativa} · há ${c.minutos} min`
-                          : c.detalhe)}
+                      {c.guincheiro
+                        ? `${c.guincheiro}${c.frota ? ` · ${c.frota}` : ''}`
+                        : c.estado === 'em_match'
+                          ? `Procurando há ${c.minutos} min`
+                          : 'Aguardando o Cliente: tentar de novo ou estornar'}
                     </span>
                   </div>
                   <span

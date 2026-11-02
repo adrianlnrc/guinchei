@@ -3,7 +3,9 @@ import {
   ErroApi,
   type AlertaDeVencimento,
   type ApiPainel,
+  type CorridaDoMonitor,
   type FrotaEmHomologacao,
+  type IndicadoresDoMonitor,
   type ItemHomologacao,
   type MeuOperador,
   type PedidoAguardandoAprovacao,
@@ -194,6 +196,33 @@ export function frotaPronta(): FrotaEmHomologacao {
   };
 }
 
+/** Monitor vazio: sem Corrida, sem Guincheiro disponível e nenhuma aceita hoje. */
+export const INDICADORES_ZERADOS: IndicadoresDoMonitor = {
+  corridasEmCurso: 0,
+  guincheirosDisponiveis: 0,
+  atendidosRapido: { atendidos: 0, total: 0 },
+};
+
+/** Linha do Monitor; o que não vem nos campos é um Pedido `em_match` recém-criado. */
+export function corridaDoMonitor(
+  idCurto: string,
+  campos: Partial<CorridaDoMonitor> = {},
+): CorridaDoMonitor {
+  return {
+    pedidoId: `${idCurto}-0000-4000-8000-000000000000`,
+    idCurto,
+    origemEndereco: 'Eixo Monumental, Brasília',
+    destinoEndereco: 'QNA 12, Taguatinga Norte',
+    estado: 'em_match',
+    guincheiro: null,
+    frota: null,
+    criadoEm: '2026-10-22T18:00:00Z',
+    minutos: 1,
+    origem: { lat: -15.7903, lng: -47.8921 },
+    ...campos,
+  };
+}
+
 /**
  * Dublê de @guinchei/api para o Painel, em memória: aceita só o CODIGO_CERTO e só devolve
  * operador se o perfil do login tem papel `operacao` (como a API real).
@@ -204,12 +233,16 @@ export function apiFalsa({
   frotas = frotasDeHomologacao(),
   vencimentos = { prazoDias: 30, itens: [] },
   aguardandoAprovacao = [],
+  corridasDoMonitor = [],
+  indicadores = INDICADORES_ZERADOS,
 }: {
   sessao?: boolean;
   perfil?: Perfil | null;
   frotas?: FrotaEmHomologacao[];
   vencimentos?: AlertaDeVencimento;
   aguardandoAprovacao?: PedidoAguardandoAprovacao[];
+  corridasDoMonitor?: CorridaDoMonitor[];
+  indicadores?: IndicadoresDoMonitor;
 } = {}) {
   let logado = sessao;
   const todosOsItens = () => frotas.flatMap((f) => f.itens);
@@ -237,6 +270,8 @@ export function apiFalsa({
       logado && perfil?.papel === 'operacao' ? { nome: perfil.nome } : null,
     ),
     listarPedidosAguardandoAprovacao: vi.fn(async () => aguardandoAprovacao),
+    listarCorridasDoMonitor: vi.fn(async (): Promise<CorridaDoMonitor[]> => corridasDoMonitor),
+    lerIndicadoresDoMonitor: vi.fn(async (): Promise<IndicadoresDoMonitor> => indicadores),
     // Como o banco: a fila é das Frotas com item pendente, a de envio mais antigo primeiro.
     listarFilaHomologacao: vi.fn(async () =>
       frotas
