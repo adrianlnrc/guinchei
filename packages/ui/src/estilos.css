@@ -409,6 +409,69 @@ p {
   color: var(--tinta);
 }
 
+/* Estrelas da avaliação (nota de 1 a 5) */
+.estrelas {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.estrelas__legenda {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.estrelas__opcao {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  font-size: 38px;
+  line-height: 1;
+  color: var(--cinza-claro);
+  cursor: pointer;
+}
+.estrelas__opcao[data-cheia='true'] {
+  color: var(--ambar);
+}
+/* O rádio nativo cobre a estrela (clicável e focável), mas não aparece. */
+.estrelas__opcao input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+.estrelas__opcao:has(input:focus-visible) {
+  outline: 3px solid var(--apoio);
+  outline-offset: 2px;
+}
+.estrelas:disabled .estrelas__opcao,
+.estrelas:disabled .estrelas__opcao input {
+  cursor: default;
+}
+.estrelas--leitura {
+  gap: 2px;
+}
+.estrelas--leitura .estrelas__opcao {
+  width: 22px;
+  height: 22px;
+  font-size: 22px;
+  cursor: default;
+}
+
 /* ---------- Blocos ---------- */
 
 .cartao {

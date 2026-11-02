@@ -28,6 +28,18 @@ function atendidosRapido(indicadores: IndicadoresDoMonitor | null) {
   };
 }
 
+/** "4,6" e "12 avaliações em 7 dias"; "—" enquanto nenhuma Corrida foi avaliada na janela. */
+function notaMedia(indicadores: IndicadoresDoMonitor | null) {
+  if (!indicadores) return { valor: '—', legenda: 'Lendo…' };
+  const { media, total } = indicadores.notaMedia;
+  if (media === null || total === 0)
+    return { valor: '—', legenda: 'Nenhuma avaliação nos últimos 7 dias' };
+  return {
+    valor: media.toFixed(1).replace('.', ','),
+    legenda: `${total} ${total === 1 ? 'avaliação' : 'avaliações'} de Clientes em 7 dias`,
+  };
+}
+
 /** Horário de Brasília do prazo para o Cliente responder. */
 function horaDeBrasilia(iso: string): string {
   return new Date(iso).toLocaleTimeString('pt-BR', {
@@ -45,6 +57,7 @@ export function Monitor() {
   const emMatch = corridas.filter((c) => c.estado === 'em_match');
   const destacado = [...semGuincheiro].sort((a, b) => b.minutos - a.minutos)[0];
   const rapido = atendidosRapido(indicadores);
+  const nota = notaMedia(indicadores);
   // Um marcador por Pedido com origem legível, na posição projetada do DF.
   const marcadores = corridas.flatMap((c) =>
     c.origem
@@ -64,7 +77,7 @@ export function Monitor() {
   const cartoes: [string, string | number, string | null][] = [
     ['Corridas em curso', indicadores?.corridasEmCurso ?? '—', null],
     ['Guincheiros disponíveis', indicadores?.guincheirosDisponiveis ?? '—', null],
-    ['Nota média · 7 dias', '—', 'Avaliação (RF13) ainda não existe'],
+    ['Nota média · 7 dias', nota.valor, nota.legenda],
   ];
 
   const resumo = `${emMatch.length} ${emMatch.length === 1 ? 'Pedido procurando' : 'Pedidos procurando'} Guincheiro · ${semGuincheiro.length} sem Guincheiro, aguardando o Cliente`;

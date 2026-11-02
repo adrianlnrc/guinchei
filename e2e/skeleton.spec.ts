@@ -3,6 +3,7 @@
 // apps em build de produção, o Supabase local (Auth, Realtime, Storage, pg_cron e pg_net) e as
 // Edge Functions. Simulados: o Mapbox (fixtures, suporte/mapbox.ts) e o PSP (adaptador mock).
 import {
+  avaliacaoDaCorrida,
   colocarTodosNoPlantao,
   corridaDoPedido,
   GUINCHEIROS,
@@ -135,6 +136,38 @@ test('Cliente pede, paga, o Guincheiro mais próximo atende e o Cliente acompanh
     // Nenhum dos dois apps foi recarregado ao longo do fluxo.
     expect(await cliente.evaluate(() => 'semRecarregar' in window)).toBe(true);
     expect(await guincheiro.evaluate(() => 'semRecarregar' in window)).toBe(true);
+  });
+
+  await test.step('O Cliente avalia o atendimento (RF13) e vê a nota nas Corridas', async () => {
+    const pedido = (await pedidoAtual())!;
+    const corrida = await corridaDoPedido(pedido.id);
+    expect(corrida).not.toBeNull();
+
+    await cliente.getByRole('button', { name: 'Avaliar o atendimento' }).click();
+    await expect(cliente.getByRole('heading', { name: 'Como foi o atendimento?' })).toBeVisible();
+    // A avaliação fecha o fluxo do Pedido: sem a barra de abas.
+    await expect(cliente.getByRole('navigation', { name: 'Navegação do Cliente' })).toHaveCount(0);
+    await cliente.getByLabel('5 estrelas').check();
+    await cliente.getByLabel(/Comentário/).fill('Chegou rápido e cuidou do carro.');
+    await cliente.getByRole('button', { name: 'Enviar avaliação' }).click();
+
+    // Volta ao Início, agora sem o cartão "Avalie a corrida".
+    await expect(cliente.getByRole('heading', { name: 'Olá, Rafael' })).toBeVisible();
+    await expect(cliente.getByRole('button', { name: /Avalie a corrida/ })).toHaveCount(0);
+    expect(await avaliacaoDaCorrida(corrida!.id)).toEqual({
+      nota: 5,
+      comentario: 'Chegou rápido e cuidou do carro.',
+      papel_autor: 'cliente',
+    });
+
+    await cliente
+      .getByRole('navigation', { name: 'Navegação do Cliente' })
+      .getByRole('button', { name: 'Corridas' })
+      .click();
+    await cliente.getByRole('button', { name: /→/ }).first().click();
+    await expect(cliente.getByRole('img', { name: 'Nota 5 de 5' })).toBeVisible();
+    await expect(cliente.getByText('Chegou rápido e cuidou do carro.')).toBeVisible();
+    await expect(cliente.getByRole('region', { name: 'Guincheiro' })).toContainText('Marcos Alves');
   });
 });
 

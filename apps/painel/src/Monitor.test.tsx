@@ -100,13 +100,14 @@ describe('Monitor de Corridas: dados reais', () => {
     expect(screen.queryByText(/de exemplo/)).toBeNull();
   });
 
-  it('mostra os indicadores reais e deixa a nota média como "—", dita como inexistente', async () => {
+  it('mostra os indicadores reais, com a nota média das avaliações dos Clientes', async () => {
     const api = apiFalsa({
       sessao: true,
       indicadores: {
         corridasEmCurso: 3,
         guincheirosDisponiveis: 7,
         atendidosRapido: { atendidos: 5, total: 8 },
+        notaMedia: { media: 4.63, total: 12 },
       },
     });
     renderEm('/monitor', api);
@@ -117,8 +118,17 @@ describe('Monitor de Corridas: dados reais', () => {
     expect(within(cartao('Corridas em curso')).getByText('3')).toBeTruthy();
     expect(within(cartao('Guincheiros disponíveis')).getByText('7')).toBeTruthy();
     const nota = cartao('Nota média · 7 dias');
+    expect(within(nota).getByText('4,6')).toBeTruthy();
+    expect(within(nota).getByText('12 avaliações de Clientes em 7 dias')).toBeTruthy();
+  });
+
+  it('sem nenhuma avaliação nos últimos 7 dias, a nota média mostra "—"', async () => {
+    renderEm('/monitor', apiFalsa({ sessao: true }));
+
+    await screen.findByText('Nenhuma Corrida aceita hoje');
+    const nota = screen.getByText('Nota média · 7 dias').closest('div') as HTMLElement;
     expect(within(nota).getByText('—')).toBeTruthy();
-    expect(within(nota).getByText('Avaliação (RF13) ainda não existe')).toBeTruthy();
+    expect(within(nota).getByText('Nenhuma avaliação nos últimos 7 dias')).toBeTruthy();
   });
 
   it('sem Corrida aceita hoje, o indicador de 30 min mostra "—"', async () => {

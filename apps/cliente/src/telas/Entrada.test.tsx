@@ -6,6 +6,7 @@ import { renderEm } from '../teste/renderizar';
 afterEach(cleanup);
 
 const pedido = 'Oi, Rafael. Qual veículo precisa de reboque?';
+const inicio = 'Olá, Rafael';
 
 function pedirCodigo(celular: string) {
   fireEvent.change(screen.getByLabelText('Celular com DDD'), { target: { value: celular } });
@@ -20,13 +21,14 @@ async function digitarCodigo(codigo: string) {
 }
 
 describe('Entrada por telefone e código', () => {
-  it('o Cliente com perfil entra com o código e vai direto ao Pedido', async () => {
+  it('o Cliente com perfil entra com o código e vai ao Início', async () => {
     const api = apiFalsa({ perfil: PERFIL_RAFAEL });
     renderEm('/entrar', api);
     pedirCodigo('(61) 90000-0001');
     await digitarCodigo(CODIGO_CERTO);
 
-    expect(await screen.findByRole('heading', { name: pedido })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: inicio })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: pedido })).toBeNull();
     expect(api.enviarCodigo).toHaveBeenCalledWith('+5561900000001');
     expect(api.confirmarCodigo).toHaveBeenCalledWith('+5561900000001', CODIGO_CERTO);
   });
@@ -83,9 +85,10 @@ describe('Entrada por telefone e código', () => {
     expect(screen.getByRole('heading', { name: 'Qual é o seu celular?' })).toBeTruthy();
   });
 
-  it('com sessão e perfil guardados, abrir o app vai direto ao Pedido', async () => {
+  it('com sessão e perfil guardados, abrir o app leva ao Início, não direto ao Pedido', async () => {
     renderEm('/', apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL }));
-    expect(await screen.findByRole('heading', { name: pedido })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: inicio })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: pedido })).toBeNull();
   });
 
   it('sem sessão, abrir o app mostra as boas-vindas', async () => {

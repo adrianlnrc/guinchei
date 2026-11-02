@@ -32,7 +32,7 @@ const rotuloCampo: CSSProperties = {
 export function Cadastro() {
   const estado = useSessao();
   if (estado === 'sem_sessao') return <Navigate to="/entrar" replace />;
-  if (estado === 'pronto') return <Navigate to="/pedido/1" replace />;
+  if (estado === 'pronto') return <Navigate to="/inicio" replace />;
   if (estado === 'verificando') return <Tela rotulo="Carregando">{null}</Tela>;
   return <Formulario />;
 }
@@ -57,7 +57,7 @@ function Formulario() {
     setErro(null);
     setEnviando(true);
     try {
-      // Com o perfil no fluxo, o Cadastro redireciona para o Pedido.
+      // Com o perfil no fluxo, o Cadastro redireciona para o Início.
       setPerfil(await api.criarPerfilUrgente({ nome, cpf, termosVersao: TERMOS_VERSAO }));
     } catch (e) {
       setErro(

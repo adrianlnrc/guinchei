@@ -24,6 +24,7 @@ import {
 import { useApi } from '../api';
 import { useFluxo } from '../fluxo';
 import { MensagemDeErro } from '../MensagemDeErro';
+import { iniciais } from '../rotulos';
 import { ExigePerfil } from '../sessao';
 
 // Acompanhamento do Cliente por status (RF09 enxuto, issue #14). A tela lê o Pedido e a
@@ -105,8 +106,8 @@ function Acompanhando() {
     case 'carregando':
       return <Tela rotulo="Carregando">{null}</Tela>;
     case 'nenhum':
-      // Nada em andamento (nem no fluxo, nem no banco): começa um Pedido novo.
-      return <Navigate to="/pedido/1" replace />;
+      // Nada em andamento (nem no fluxo, nem no banco): volta ao Início.
+      return <Navigate to="/inicio" replace />;
     case 'erro':
       return (
         <Tela rotulo="Acompanhamento">
@@ -519,11 +520,12 @@ function SemGuincheiro({
   );
 }
 
-function NovoPedido() {
+function NovoPedido({ variante }: { variante?: 'contorno' }) {
   const ir = useNavigate();
   const { novoPedido } = useFluxo();
   return (
     <Botao
+      variante={variante}
       onClick={() => {
         novoPedido();
         ir('/pedido/1');
@@ -593,15 +595,6 @@ const TEXTOS: Record<
       a.precoTotal !== null ? `Total do Pedido: ${formatarReais(a.precoTotal)}.` : null,
   },
 };
-
-function iniciais(nome: string): string {
-  return nome
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((parte) => parte[0]!.toUpperCase())
-    .join('');
-}
 
 function NaCorrida({
   acompanhamento,
@@ -689,9 +682,26 @@ function NaCorrida({
           <FotosDaCorrida corridaId={acompanhamento.corrida.id} estado={etapa} />
         )}
         <div className="espaco" />
-        {entregue ? <NovoPedido /> : <CancelarEmBreve />}
+        {entregue ? <FimDaCorrida pedidoId={acompanhamento.pedidoId} /> : <CancelarEmBreve />}
       </Corpo>
     </Tela>
+  );
+}
+
+/**
+ * Fim do fluxo: avaliar o atendimento (RF13), que também fica no Início e no detalhe da
+ * Corrida, fazer outro Pedido ou voltar ao Início. A avaliação não trava nada.
+ */
+function FimDaCorrida({ pedidoId }: { pedidoId: string }) {
+  const ir = useNavigate();
+  return (
+    <>
+      <Botao onClick={() => ir(`/corridas/${pedidoId}/avaliar`)}>Avaliar o atendimento</Botao>
+      <NovoPedido variante="contorno" />
+      <Link centro onClick={() => ir('/inicio')}>
+        Voltar ao Início
+      </Link>
+    </>
   );
 }
 

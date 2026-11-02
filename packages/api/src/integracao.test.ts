@@ -805,6 +805,8 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
           .update({ timeout_oferta_segundos: TIMEOUT_DO_BLOCO_S })
           .eq('id', true);
         // Corridas deixadas em andamento pelos outros testes: aqui cada um começa sem Corrida.
+        // As avaliações saem antes (a Corrida avaliada não se apaga com a avaliação de pé).
+        await servico.from('avaliacoes').delete().not('id', 'is', null);
         await servico.from('corridas').delete().in('guincheiro_id', GUINCHEIROS);
         const religou = await servico
           .from('guincheiros')
@@ -1205,6 +1207,94 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         });
         expect(await api.buscarAcompanhamento('00000000-0000-4000-8000-000000000000')).toBeNull();
       }, 30_000);
+
+      it('o Cliente lista e detalha as Corridas e avalia a entregue uma vez só (RF13)', async () => {
+        const { api, supabase, id } = await pedidoConfirmado();
+        const { api: marcos, supabase: doMarcos } = await entrarComoGuincheiro(MARCOS.telefone);
+        const oferta = await ofertaDoPedido(marcos, id);
+        const corridaId = await marcos.aceitarOferta(oferta.tentativaId);
+
+        // Lista: o Pedido pago vem primeiro, sem nota; rascunhos em `cotado` ficam de fora.
+        await api.abrirPedido({ tipoVeiculo: 'moto', situacao: 'batida', rodasGiram: 'nao' });
+        const lista = await api.listarMinhasCorridas();
+        expect(lista[0]).toMatchObject({ pedidoId: id, etapa: 'aceita', corridaId, nota: null });
+        expect(lista.some((item) => item.etapa === 'cotado')).toBe(false);
+
+        // Detalhe: preço decomposto que soma o total, Guincheiro e Frota, sem avaliação ainda.
+        const detalhe = await api.buscarDetalheDoPedido(id);
+        expect(detalhe).toMatchObject({
+          pedidoId: id,
+          etapa: 'aceita',
+          corrida: {
+            id: corridaId,
+            estado: 'aceita',
+            guincheiro: { nome: 'Marcos Alves', frota: 'Reboque Planalto' },
+          },
+          avaliacao: null,
+        });
+        const { preco } = detalhe!;
+        expect(
+          preco.taxaBase +
+            preco.ateVeiculo +
+            preco.rebocado +
+            preco.adicionalNoturno +
+            preco.adicionalFeriado +
+            preco.ajusteMinimo,
+        ).toBe(detalhe!.precoTotal);
+        expect(await api.buscarDetalheDoPedido('00000000-0000-4000-8000-000000000000')).toBeNull();
+
+        // Antes da entrega não dá para avaliar.
+        await expect(api.avaliarCorrida(corridaId, 5)).rejects.toMatchObject({
+          motivo: 'corrida_nao_entregue',
+        });
+
+        for (const estado of ['a_caminho', 'no_local', 'carregado', 'entregue'] as const) {
+          await avancar(doMarcos, corridaId, estado);
+        }
+
+        // Nota e comentário fora da faixa são recusados; a escrita direta também.
+        await expect(api.avaliarCorrida(corridaId, 6)).rejects.toMatchObject({
+          motivo: 'avaliacao_invalida',
+        });
+        await expect(api.avaliarCorrida(corridaId, 5, 'a'.repeat(281))).rejects.toMatchObject({
+          motivo: 'avaliacao_invalida',
+        });
+        const direta = await supabase
+          .from('avaliacoes')
+          .insert({ corrida_id: corridaId, autor_id: RAFAEL.id, papel_autor: 'cliente', nota: 5 });
+        expect(direta.error?.code).toBe('42501');
+        expect(await api.buscarMinhaAvaliacao(corridaId)).toBeNull();
+
+        // Avalia; a segunda tentativa é recusada e a avaliação não muda.
+        const avaliacao = await api.avaliarCorrida(corridaId, 4, '  Chegou rápido  ');
+        expect(avaliacao).toMatchObject({ corridaId, nota: 4, comentario: 'Chegou rápido' });
+        await expect(api.avaliarCorrida(corridaId, 1, 'Mudei de ideia')).rejects.toMatchObject({
+          motivo: 'ja_avaliada',
+        });
+        expect(await api.buscarMinhaAvaliacao(corridaId)).toEqual(avaliacao);
+        expect((await api.listarMinhasCorridas())[0]).toMatchObject({ pedidoId: id, nota: 4 });
+        expect((await api.buscarDetalheDoPedido(id))?.avaliacao).toEqual(avaliacao);
+
+        // O Guincheiro lê a que recebeu, mas não avalia pela RPC do Cliente.
+        await expect(marcos.avaliarCorrida(corridaId, 5)).rejects.toMatchObject({
+          motivo: 'corrida_indisponivel',
+        });
+        const recebidas = await doMarcos
+          .from('avaliacoes')
+          .select('nota, comentario')
+          .eq('corrida_id', corridaId);
+        expect(recebidas.data).toEqual([{ nota: 4, comentario: 'Chegou rápido' }]);
+
+        // A operação enxerga a nota no indicador do Monitor.
+        const painel = criarApiPainel(
+          criarClienteApi({ supabaseUrl: SUPABASE_URL!, supabaseAnonKey: SUPABASE_ANON_KEY! }),
+        );
+        await painel.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+        const { notaMedia } = await painel.lerIndicadoresDoMonitor();
+        expect(notaMedia.total).toBeGreaterThanOrEqual(1);
+        expect(notaMedia.media).toBeGreaterThanOrEqual(1);
+        expect(notaMedia.media).toBeLessThanOrEqual(5);
+      }, 60_000);
     });
 
     describe('Fotos de estado (#13): Storage, RLS e Corrida sem fotos', () => {
@@ -1261,6 +1351,7 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
         // Apaga o que o bloco registrou, para o teste rodar de novo sem `db reset`.
         const servico = admin();
         for (const corridaId of corridasCriadas) {
+          await servico.from('avaliacoes').delete().eq('corrida_id', corridaId);
           await servico.from('fotos_estado').delete().eq('corrida_id', corridaId);
           const nomes = await objetosDaCorrida(corridaId);
           if (nomes.length) {
@@ -1459,6 +1550,9 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(indicadores.atendidosRapido.atendidos).toBeLessThanOrEqual(
         indicadores.atendidosRapido.total,
       );
+      // Sem avaliação na janela, a média é nula; com alguma, vem entre 1 e 5.
+      expect(indicadores.notaMedia.total).toBeGreaterThanOrEqual(0);
+      expect(indicadores.notaMedia.media === null).toBe(indicadores.notaMedia.total === 0);
     });
 
     it('código errado é recusado com codigo_invalido', async () => {

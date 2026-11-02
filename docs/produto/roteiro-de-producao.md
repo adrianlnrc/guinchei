@@ -18,7 +18,8 @@ Cada app só aceita o papel dele: um número de Guincheiro no app Cliente é bar
 
 ## O que mudou em relação ao roteiro local
 
-- Os passos 1 a 9 do [roteiro local](roteiro-de-demo.md#roteiro-cerca-de-14-minutos) valem como estão, trocando `localhost:517x` pelos endereços acima.
+- Os passos 1 a 9 do [roteiro local](roteiro-de-demo.md#roteiro-cerca-de-15-minutos) valem como estão, trocando `localhost:517x` pelos endereços acima. O passo 2 começa pelo **Início** (o login leva a ele; **Pedir guincho** abre as três perguntas) e o passo 4b, curto, é a avaliação do atendimento ao fim da Corrida.
+- **A migration das avaliações precisa estar aplicada** (`20261026090000_avaliacoes.sql`) antes de usar o Cliente novo: a lista de Corridas, o Início e o passo 4b leem a tabela `avaliacoes`. Sem ela, o Início mostra "Não foi possível carregar suas Corridas" (o botão **Pedir guincho** segue funcionando).
 - O **mapa** é real: o token do Mapbox está configurado no Cliente (veja [Configuração do mapa](#configuração-do-mapa-mapbox)). O passo 2 mostra mapa do DF, busca de endereço e rota. Se o mapa falhar na sala, o plano B é a fala sobre o mapa esquemático (veja o [plano B](#plano-b)).
 - O preço do dia aparece com os adicionais do calendário: noturno (20h às 6h, 15%) e feriado (20%). O exemplo do roteiro local (R$ 258,80) é de dia útil; em feriado o valor sobe.
 - **Não existe `db reset` em produção.** Veja [Estado e ensaio](#estado-e-ensaio).
@@ -67,8 +68,8 @@ select demo.restaurar();   -- volta ao estado bom; leva poucos segundos
 ## Checagem de 10 minutos antes
 
 - [ ] Os três endereços abrem, sem "App sem configuração do servidor".
-- [ ] Login com `(61) 90000-0001` e código `123456` no Cliente entra no Pedido (se pedir cadastro, o número não está nos números de teste do Auth).
-- [ ] Pedido de ponta a ponta até "Guincheiro aceitou" (limpe com o `truncate` acima depois).
+- [ ] Login com `(61) 90000-0001` e código `123456` no Cliente entra no Início (se pedir cadastro, o número não está nos números de teste do Auth).
+- [ ] Pedido de ponta a ponta até "Guincheiro aceitou" (limpe com o `truncate` acima depois). Se ensaiar a avaliação, o mesmo `truncate` a apaga junto (a cascata leva as Corridas e as avaliações delas). Depois de aplicar a migration das avaliações, tire a foto da demonstração de novo (`select demo.salvar();`).
 - [ ] Mapa real no passo de local de https://guinchei.vercel.app (sem o aviso "Mapa indisponível"), com 3 ou 4 endereços do DF testados na busca.
 - [ ] Um PDF e um JPG à mão para mostrar o envio de documento.
 - [ ] Zoom do navegador e fonte grandes o bastante para a sala.

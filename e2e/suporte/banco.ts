@@ -108,13 +108,14 @@ async function limparCadastros(): Promise<void> {
 }
 
 /**
- * Deixa o banco como o cenário espera: sem Pedidos, Corridas, ofertas, recotações, pagamentos nem fotos,
+ * Deixa o banco como o cenário espera: sem Pedidos, Corridas, avaliações, ofertas, recotações, pagamentos nem fotos,
  * sem os cadastros do e2e (`limparCadastros`) e com os três Guincheiros do seed em plantão. As Corridas saem antes de religar a
  * disponibilidade (o banco recusa `disponivel = true` com Corrida aberta).
  */
 export async function prepararBanco(): Promise<void> {
   await apagarArquivosDeFotos();
   for (const tabela of [
+    'avaliacoes',
     'fotos_estado',
     'corridas',
     'tentativas_match',
@@ -175,7 +176,18 @@ export async function ofertasDoPedido(pedidoId: string) {
 
 export async function corridaDoPedido(pedidoId: string) {
   const linhas = conferir(
-    await banco.from('corridas').select('estado, guincheiro_id').eq('pedido_id', pedidoId),
+    await banco.from('corridas').select('id, estado, guincheiro_id').eq('pedido_id', pedidoId),
+  );
+  return linhas[0] ?? null;
+}
+
+/** A avaliação que o Cliente deu à Corrida, ou null. */
+export async function avaliacaoDaCorrida(corridaId: string) {
+  const linhas = conferir(
+    await banco
+      .from('avaliacoes')
+      .select('nota, comentario, papel_autor')
+      .eq('corrida_id', corridaId),
   );
   return linhas[0] ?? null;
 }

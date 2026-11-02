@@ -4,6 +4,9 @@ import {
   LIMITE_FOTOS_POR_ETAPA,
   type Acompanhamento,
   type ApiGuinchei,
+  type AvaliacaoDaCorrida,
+  type DetalheDoPedido,
+  type ResumoDoPedido,
   type ArquivoDeMidia,
   type FotoEstado,
   type OpcoesFotoEstado,
@@ -81,6 +84,53 @@ export function acompanhamentoEm(
   } as Acompanhamento;
 }
 
+/** Uma Corrida entregue do Rafael, sem avaliação; o `parcial` troca o que o teste precisa. */
+export function resumoDoPedido(parcial: Partial<ResumoDoPedido> = {}): ResumoDoPedido {
+  return {
+    pedidoId: 'pedido-1',
+    etapa: 'entregue',
+    criadoEm: '2026-10-20T17:30:00Z',
+    origemEndereco: 'Eixo Monumental, Brasília',
+    destinoEndereco: 'QNA 12, Taguatinga Norte',
+    precoTotal: 23500,
+    corridaId: 'corrida-1',
+    nota: null,
+    ...parcial,
+  };
+}
+
+/** O detalhe correspondente a `resumoDoPedido`: preço de COTACAO_DO_SERVIDOR e o Wagner. */
+export function detalheDoPedido(parcial: Partial<DetalheDoPedido> = {}): DetalheDoPedido {
+  return {
+    pedidoId: 'pedido-1',
+    etapa: 'entregue',
+    criadoEm: '2026-10-20T17:30:00Z',
+    atualizadoEm: '2026-10-20T18:40:00Z',
+    origemEndereco: 'Eixo Monumental, Brasília',
+    destinoEndereco: 'QNA 12, Taguatinga Norte',
+    kmAteVeiculo: 3.87,
+    kmRebocado: 12.5,
+    precoTotal: COTACAO_DO_SERVIDOR.preco.total,
+    preco: {
+      taxaBase: 11000,
+      ateVeiculo: 1935,
+      rebocado: 7500,
+      adicionalNoturno: 3065,
+      adicionalFeriado: 0,
+      ajusteMinimo: 0,
+    },
+    corrida: {
+      id: 'corrida-1',
+      estado: 'entregue',
+      aceitaEm: '2026-10-20T17:35:00Z',
+      atualizadaEm: '2026-10-20T18:40:00Z',
+      guincheiro: { nome: 'Wagner Lopes', frota: 'Reboque Planalto' },
+    },
+    avaliacao: null,
+    ...parcial,
+  };
+}
+
 /**
  * Dublê de @guinchei/api em memória: guarda sessão e perfil, aceita só o CODIGO_CERTO e
  * recusa o CPF do Rafael como já cadastrado.
@@ -89,12 +139,25 @@ export function apiFalsa({
   sessao = false,
   perfil = null,
   fotos = [],
-}: { sessao?: boolean; perfil?: Perfil | null; fotos?: FotoEstado[] } = {}) {
+  corridas = [],
+  detalhes = {},
+}: {
+  sessao?: boolean;
+  perfil?: Perfil | null;
+  fotos?: FotoEstado[];
+  /** As Corridas do Cliente que `listarMinhasCorridas` devolve (mais recentes primeiro). */
+  corridas?: ResumoDoPedido[];
+  /** O detalhe de cada Pedido, pelo id; o que não está aqui é `null` (não é do Cliente). */
+  detalhes?: Record<string, DetalheDoPedido>;
+} = {}) {
   let logado = sessao;
   let meuPerfil = perfil;
   let telefoneLogado = perfil?.telefone ?? '5561900000006';
   const ouvintes = new Set<(acompanhamento: Acompanhamento) => void>();
   const registradas = [...fotos];
+  const avaliacoes = new Map<string, AvaliacaoDaCorrida>();
+  for (const d of Object.values(detalhes))
+    if (d.avaliacao) avaliacoes.set(d.avaliacao.corridaId, d.avaliacao);
 
   const api = {
     enviarCodigo: vi.fn<(telefone: string) => Promise<void>>(async () => {}),
@@ -178,6 +241,30 @@ export function apiFalsa({
       },
     ),
     listarFotosEstado: vi.fn(async () => [...registradas]),
+    listarMinhasCorridas: vi.fn<() => Promise<ResumoDoPedido[]>>(async () => [...corridas]),
+    buscarDetalheDoPedido: vi.fn<(pedidoId: string) => Promise<DetalheDoPedido | null>>(
+      async (pedidoId) => {
+        const d = detalhes[pedidoId];
+        if (!d) return null;
+        const avaliacao = d.corrida ? (avaliacoes.get(d.corrida.id) ?? null) : null;
+        return { ...d, avaliacao };
+      },
+    ),
+    // Como o banco: só a Corrida entregue, uma vez, com nota de 1 a 5 e até 280 caracteres.
+    avaliarCorrida: vi.fn(async (corridaId: string, nota: number, comentario?: string | null) => {
+      if (avaliacoes.has(corridaId)) {
+        throw new ErroApi('ja_avaliada', 'Esta Corrida já foi avaliada');
+      }
+      const gravada: AvaliacaoDaCorrida = {
+        corridaId,
+        nota,
+        comentario: comentario?.trim() || null,
+        criadoEm: '2026-10-26T18:00:00Z',
+      };
+      avaliacoes.set(corridaId, gravada);
+      return gravada;
+    }),
+    buscarMinhaAvaliacao: vi.fn(async (corridaId: string) => avaliacoes.get(corridaId) ?? null),
   } satisfies ApiGuinchei;
 
   return {

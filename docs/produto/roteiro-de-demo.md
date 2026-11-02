@@ -66,7 +66,7 @@ O Auth aceita um envio de código por número a cada 5 segundos: se "Receber có
 - **Guincho Capital**: Frota empresa pendente de homologação (itens a aprovar no Painel).
 - **Cerrado Guinchos**: Frota empresa **inativa** e sem vínculos, com a representante Helena, dois Guincheiros (Cláudia, CNH C; Diego, CNH B), a plataforma `CRB-4G56` de **4.200 kg** e a lança `CRB-5H67` de **3.500 kg**, tudo aprovado. É ela que a demo leva de "sem vínculo" até "ativa e recebendo oferta".
 
-## Roteiro (cerca de 14 minutos)
+## Roteiro (cerca de 15 minutos)
 
 Cada passo diz **onde**, **o que fazer** e **o que dizer**. Fale o que está em "Dizer" com suas palavras; os números e nomes são os do seed.
 
@@ -76,7 +76,7 @@ Cada passo diz **onde**, **o que fazer** e **o que dizer**. Fale o que está em 
 
 ### 2. Cliente pede e vê o Preço fechado (2 min) — janela 1
 
-1. Abrir `localhost:5173`, tocar em **Pedir guincho agora**, entrar com `(61) 90000-0001` e o código `123456`.
+1. Abrir `localhost:5173`, tocar em **Pedir guincho agora**, entrar com `(61) 90000-0001` e o código `123456`. O login leva ao **Início** ("Olá, Rafael", com a barra Início, Corridas e Perfil); tocar em **Pedir guincho**.
 2. Em **três toques**: **Carro de passeio**, **Parou e não liga**, **Sim** (as 4 rodas giram). Em seguida **Confirmar local no mapa**.
 3. Tela de origem e destino: mapa esquemático, com a nota "Mapa indisponível: configure VITE_MAPBOX_TOKEN". Tocar em **Ver preço fechado**.
 4. Tela **Preço fechado**: mostrar o valor em destaque (cerca de R$ 258,80 de dia útil: taxa base R$ 110 + 4,2 km até o veículo × R$ 5 + 21,3 km rebocados × R$ 6), a decomposição e "Guincho mais próximo a 4,2 km".
@@ -99,6 +99,14 @@ Cada passo diz **onde**, **o que fazer** e **o que dizer**. Fale o que está em 
 4. Janela 2: **Carreguei**, **Entreguei** (se pedir, **Seguir sem fotos**). Janela 1: "Entregue. Seu veículo chegou ao destino".
 
 **Dizer:** "Cada etapa chega ao Cliente sem recarregar a página. As fotos de estado são opcionais, mas recomendadas: servem de prova numa disputa por avaria. O Guincheiro volta sozinho ao plantão."
+
+### 4b. Cliente avalia o atendimento (1 min) — janela 1
+
+1. Na tela "Entregue", tocar em **Avaliar o atendimento**: "Como foi o atendimento?". Escolher as estrelas (com o teclado, as setas trocam a nota), escrever um comentário curto (até 280 caracteres) e tocar em **Enviar avaliação**. O app volta ao **Início**, que não pede mais a avaliação.
+2. Na aba **Corridas**, abrir a Corrida: preço decomposto, Marcos e a Reboque Planalto, linha do tempo e a avaliação, agora só para leitura.
+3. Opcional: **Agora não** em vez de enviar leva ao Início, onde o cartão **Avalie a corrida** continua até a nota ser dada. No Painel, o indicador **Nota média · 7 dias** passa a mostrar a nota.
+
+**Dizer:** "Ao fim da Corrida o Cliente avalia o Guincheiro de 1 a 5. É uma por Corrida e não se edita, porque entra como prova numa disputa. A nota média da operação vem dessas avaliações. O lado inverso, o Guincheiro avaliar o Cliente, ainda é protótipo."
 
 ### 5. Prestador: vínculo entre Guincheiro e veículo (3 min) — janela 4
 
@@ -128,7 +136,7 @@ Cada passo diz **onde**, **o que fazer** e **o que dizer**. Fale o que está em 
 ### 8. O prestador recém-ativado recebe oferta; recotação (2 min) — janelas 5, 1 e 3
 
 1. Janela 5 (Cláudia): atualizar a tela; o interruptor agora liga. Deixar **Disponível**.
-2. Janela 2 (Marcos) segue em plantão. Janela 1: abrir um novo Pedido (a partir da tela final, ou recarregando `localhost:5173`; mesmos três toques) e tocar em **Ver preço fechado**. O preço **baixou** (cerca de R$ 245: só a distância até o veículo mudou) e o guincho mais próximo é a Cláudia, a 1,4 km: ela, recém-homologada, é agora a Frota cotada.
+2. Janela 2 (Marcos) segue em plantão. Janela 1: abrir um novo Pedido (pelo **Pedir guincho** do Início; mesmos três toques) e tocar em **Ver preço fechado**. O preço **baixou** (cerca de R$ 245: só a distância até o veículo mudou) e o guincho mais próximo é a Cláudia, a 1,4 km: ela, recém-homologada, é agora a Frota cotada.
 3. Pagar. Janela 5: **Novo chamado**; tocar em **Recusar**.
 4. O próximo candidato é o Marcos, de **outra Frota** e mais longe. O Cliente (janela 1) vê "Outra empresa vai atender": preço anterior, novo preço (cerca de R$ 258,80), diferença e a decomposição, com **Aprovar** e **Desistir e estornar**. Na janela 3, o **Monitor de Corridas** mostra o Pedido "Aguardando aprovação do Cliente" com os dois valores.
 5. Janela 1: **Aprovar**. A oferta vai ao Marcos.
@@ -176,8 +184,8 @@ Dizer em voz alta. Esta lista complementa e atualiza [limitacoes-do-skeleton.md]
 8. Tabela de preços, piso e repasse provisórios (ADR-0009), a revisar com o piloto.
 9. Os arquivos de documentos do seed não existem no Storage ("Documento indisponível" no Painel); os enviados ao vivo abrem normalmente.
 10. A operação confere os documentos olhando: CNPJ ativo, CNH, antecedentes, apólice e registro DETRAN **não** são consultados em fonte oficial. São automáticos só os dígitos verificadores (CPF, CNPJ, placa, RENAVAM) e a regra CNH × PBT.
-11. **Painel ainda é em parte protótipo**: homologação, vencimentos, ativação, tabela de preços e o Monitor de Corridas são reais (Pedidos dos últimos 24 h, com os indicadores "Corridas em curso", "Guincheiros disponíveis" e "atendidos em menos de 30 min", relidos a cada 5 s; o mapa projeta as coordenadas do DF num desenho esquemático, sem ruas). A "nota média" aparece como "—" (a avaliação, RF13, não existe) e a Disputa mostra dados de exemplo. "Atendidos em menos de 30 min" é a parcela das Corridas aceitas hoje cuja aceitação veio até 30 min depois da criação do Pedido (que inclui o tempo da cotação, pois o banco não guarda a hora da confirmação).
-12. Cadastro de Frota **empresa** pelo app não existe (o app cadastra o autônomo); histórico de Corridas, ganhos do plantão (dados de exemplo), avaliação mútua (RF13), cancelamento (RN05, botão desabilitado) e rastreamento ao vivo (RF09) ficam para depois.
+11. **Painel ainda é em parte protótipo**: homologação, vencimentos, ativação, tabela de preços e o Monitor de Corridas são reais (Pedidos dos últimos 24 h, com os indicadores "Corridas em curso", "Guincheiros disponíveis" e "atendidos em menos de 30 min", relidos a cada 5 s; o mapa projeta as coordenadas do DF num desenho esquemático, sem ruas). A "nota média · 7 dias" é a média das avaliações que os Clientes deram (RF13), e "—" enquanto não houver nenhuma; a Disputa mostra dados de exemplo. "Atendidos em menos de 30 min" é a parcela das Corridas aceitas hoje cuja aceitação veio até 30 min depois da criação do Pedido (que inclui o tempo da cotação, pois o banco não guarda a hora da confirmação).
+12. Cadastro de Frota **empresa** pelo app não existe (o app cadastra o autônomo); ganhos do plantão (dados de exemplo), cancelamento (RN05, botão desabilitado) e rastreamento ao vivo (RF09) ficam para depois. **Avaliação (RF13):** o lado Cliente → Guincheiro é real (nota de 1 a 5 e comentário, uma por Corrida, gravados no banco); o lado Guincheiro → Cliente segue como prévia, sem tela no app do Guincheiro. O histórico de Corridas do Cliente (aba Corridas) lê o banco; o do plantão do Guincheiro segue de exemplo.
 13. Quando ninguém aceita não há broadcast (RF08): o Cliente decide entre tentar de novo e estornar, e o Painel não atribui.
 14. Requisitos de produção fora: 24x7, LGPD, auditoria completa, operação offline.
 

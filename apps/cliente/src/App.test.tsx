@@ -22,13 +22,13 @@ function renderEm(rota: string) {
 }
 
 describe('App cliente', () => {
-  it('"Pedir" a partir do Histórico começa um Pedido sem as respostas anteriores', async () => {
+  it('"Pedir guincho" a partir do Início começa um Pedido sem as respostas anteriores', async () => {
     renderEm('/pedido/1');
     fireEvent.click(await screen.findByRole('button', { name: 'Carro de passeio' }));
     fireEvent.click(screen.getByRole('button', { name: 'Parou e não liga' }));
     fireEvent.click(screen.getByRole('button', { name: 'Não sei' }));
-    act(() => void navegar('/historico'));
-    fireEvent.click(screen.getByRole('button', { name: 'Pedir' }));
+    act(() => void navegar('/inicio'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pedir guincho' }));
     const carro = screen.getByRole('button', { name: 'Carro de passeio' });
     expect(carro.getAttribute('aria-pressed')).toBe('false');
   });

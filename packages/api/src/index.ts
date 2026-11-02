@@ -426,6 +426,66 @@ export interface Acompanhamento {
   } | null;
 }
 
+/** Quantos Pedidos a lista "Corridas" do Cliente traz (os mais recentes). */
+export const LIMITE_DA_LISTA_DE_CORRIDAS = 50;
+
+/** Tamanho máximo do comentário da avaliação (RF13), em caracteres. */
+export const LIMITE_COMENTARIO_AVALIACAO = 280;
+
+/** A avaliação que o Cliente deu ao Guincheiro de uma Corrida (RF13). Não muda depois de gravada. */
+export interface AvaliacaoDaCorrida {
+  corridaId: string;
+  /** De 1 a 5. */
+  nota: number;
+  comentario: string | null;
+  /** ISO 8601, hora do servidor. */
+  criadoEm: string;
+}
+
+/** Um Pedido do Cliente na lista "Corridas" e na página inicial (já pago: sem os `cotado`). */
+export interface ResumoDoPedido {
+  pedidoId: string;
+  etapa: EtapaDoAcompanhamento;
+  /** ISO 8601: quando o Pedido foi aberto. */
+  criadoEm: string;
+  /** `null` só num rascunho sem trajeto, que a lista não traz. */
+  origemEndereco: string | null;
+  destinoEndereco: string | null;
+  /** Centavos: o Preço fechado (`null` só num rascunho sem cotação, que a lista não traz). */
+  precoTotal: number | null;
+  /** `null` até um Guincheiro aceitar. */
+  corridaId: string | null;
+  /** A nota que o Cliente deu; `null` se não avaliou ou se não há Corrida entregue. */
+  nota: number | null;
+}
+
+/** O detalhe de um Pedido do Cliente: preço decomposto, Guincheiro, horários e avaliação. */
+export interface DetalheDoPedido {
+  pedidoId: string;
+  etapa: EtapaDoAcompanhamento;
+  /** ISO 8601: abertura do Pedido. */
+  criadoEm: string;
+  /** ISO 8601: última mudança do Pedido (num `estornado`, o estorno). */
+  atualizadoEm: string;
+  origemEndereco: string | null;
+  destinoEndereco: string | null;
+  kmAteVeiculo: number | null;
+  kmRebocado: number | null;
+  /** Centavos: o Preço fechado em vigor (depois de uma recotação, o novo). */
+  precoTotal: number | null;
+  preco: DecomposicaoDoPreco;
+  corrida: {
+    id: string;
+    estado: Enums<'estado_corrida'>;
+    /** ISO 8601: quando o Guincheiro aceitou. */
+    aceitaEm: string;
+    /** ISO 8601: última mudança de estado (na `entregue`, a entrega). */
+    atualizadaEm: string;
+    guincheiro: GuincheiroDaCorrida | null;
+  } | null;
+  avaliacao: AvaliacaoDaCorrida | null;
+}
+
 /** Etapa das Fotos de estado: "antes" até o "Carreguei", "depois" de carregado em diante. */
 export type EtapaFoto = Enums<'etapa_foto'>;
 
@@ -585,6 +645,12 @@ export type MotivoErroApi =
   | 'guincheiro_ja_vinculado'
   /** Vínculo: não existe (ou já foi desfeito). */
   | 'vinculo_indisponivel'
+  /** Avaliação: a Corrida ainda não foi entregue. */
+  | 'corrida_nao_entregue'
+  /** Avaliação: a Corrida já foi avaliada (uma por Corrida, sem edição). */
+  | 'ja_avaliada'
+  /** Avaliação: nota fora de 1 a 5 ou comentário com mais de 280 caracteres. */
+  | 'avaliacao_invalida'
   | 'falha';
 
 export class ErroApi extends Error {
@@ -670,6 +736,29 @@ export interface ApiGuinchei {
   ): Promise<FotoEstado>;
   /** As Fotos de estado da Corrida (dos dois lados), da mais antiga à mais nova, com URL assinada. */
   listarFotosEstado(corridaId: string): Promise<FotoEstado[]>;
+  /**
+   * Cliente: os Pedidos dele já pagos (sem os `cotado`), do mais recente ao mais antigo, até
+   * `LIMITE_DA_LISTA_DE_CORRIDAS`, com a nota que ele deu a cada Corrida.
+   */
+  listarMinhasCorridas(): Promise<ResumoDoPedido[]>;
+  /**
+   * Cliente: o detalhe de um Pedido dele (preço decomposto, Guincheiro, horários e avaliação).
+   * `null` se o Pedido não existe ou não é do Cliente.
+   */
+  buscarDetalheDoPedido(pedidoId: string): Promise<DetalheDoPedido | null>;
+  /**
+   * Cliente do Pedido: avalia o Guincheiro da Corrida `entregue`, de 1 a 5, com comentário
+   * opcional de até `LIMITE_COMENTARIO_AVALIACAO` caracteres (RF13). Uma vez por Corrida; a
+   * avaliação não muda depois. Erros: `corrida_indisponivel`, `corrida_nao_entregue`,
+   * `ja_avaliada` e `avaliacao_invalida`.
+   */
+  avaliarCorrida(
+    corridaId: string,
+    nota: number,
+    comentario?: string | null,
+  ): Promise<AvaliacaoDaCorrida>;
+  /** Cliente: a avaliação que ele deu à Corrida; `null` se ainda não avaliou. */
+  buscarMinhaAvaliacao(corridaId: string): Promise<AvaliacaoDaCorrida | null>;
 }
 
 /** Guincheiro logado, para o plantão. */
@@ -922,6 +1011,31 @@ function erroDaOferta(error: { code?: string }, mensagemDeFalha: string): ErroAp
   }
 }
 
+/** Erros de `avaliar_corrida` (migração das avaliações). */
+function erroDaAvaliacao(error: { code?: string }): ErroApi {
+  switch (error.code) {
+    case 'GAV01':
+      return new ErroApi('corrida_indisponivel', 'Não encontramos esta Corrida', { cause: error });
+    case 'GAV02':
+      return new ErroApi('corrida_nao_entregue', 'Você pode avaliar depois da entrega', {
+        cause: error,
+      });
+    case 'GAV03':
+      return new ErroApi('ja_avaliada', 'Esta Corrida já foi avaliada', { cause: error });
+    case 'GAV04':
+    case 'GAV05':
+      return new ErroApi(
+        'avaliacao_invalida',
+        'A nota vai de 1 a 5 e o comentário tem até 280 caracteres',
+        {
+          cause: error,
+        },
+      );
+    default:
+      return new ErroApi('falha', 'Não foi possível enviar a avaliação', { cause: error });
+  }
+}
+
 const MOTIVOS_DAS_FUNCOES: readonly MotivoErroApi[] = [
   'sem_sessao',
   'sem_guincheiro',
@@ -1115,6 +1229,35 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
     }));
   }
 
+  /** O perfil do Guincheiro não é legível (tem CPF e telefone): só nome e Frota, pela função. */
+  async function lerGuincheiroDaCorrida(corridaId: string): Promise<GuincheiroDaCorrida | null> {
+    const contraparte = await supabase.rpc('contraparte_da_corrida', { corrida_id: corridaId });
+    if (contraparte.error) {
+      throw new ErroApi('falha', 'Não foi possível ler o Guincheiro', { cause: contraparte.error });
+    }
+    const linha = contraparte.data[0];
+    return linha ? { nome: linha.nome, frota: linha.frota ?? null } : null;
+  }
+
+  /** A avaliação do Cliente à Corrida (a RLS só deixa o Cliente ler a que ele fez). */
+  async function lerAvaliacaoDoCliente(corridaId: string): Promise<AvaliacaoDaCorrida | null> {
+    const { data, error } = await supabase
+      .from('avaliacoes')
+      .select('corrida_id, nota, comentario, criado_em')
+      .eq('corrida_id', corridaId)
+      .eq('papel_autor', 'cliente')
+      .maybeSingle();
+    if (error) throw new ErroApi('falha', 'Não foi possível ler a avaliação', { cause: error });
+    return data
+      ? {
+          corridaId: data.corrida_id,
+          nota: data.nota,
+          comentario: data.comentario,
+          criadoEm: data.criado_em,
+        }
+      : null;
+  }
+
   async function lerAcompanhamento(pedidoId: string): Promise<Acompanhamento | null> {
     const [pedido, corrida, recotacao] = await Promise.all([
       supabase
@@ -1138,20 +1281,7 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       });
     }
     if (!pedido.data) return null;
-    let guincheiro: GuincheiroDaCorrida | null = null;
-    if (corrida.data) {
-      // O perfil do Guincheiro não é legível (tem CPF e telefone): só nome e Frota, pela função.
-      const contraparte = await supabase.rpc('contraparte_da_corrida', {
-        corrida_id: corrida.data.id,
-      });
-      if (contraparte.error) {
-        throw new ErroApi('falha', 'Não foi possível ler o Guincheiro', {
-          cause: contraparte.error,
-        });
-      }
-      const linha = contraparte.data[0];
-      if (linha) guincheiro = { nome: linha.nome, frota: linha.frota ?? null };
-    }
+    const guincheiro = corrida.data ? await lerGuincheiroDaCorrida(corrida.data.id) : null;
     return {
       pedidoId: pedido.data.id,
       etapa: etapaDoPedido(pedido.data.estado, corrida.data?.estado),
@@ -1470,6 +1600,140 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
       if (error) throw new ErroApi('falha', 'Não foi possível ler as fotos', { cause: error });
       return comUrlsAssinadas(data);
     },
+
+    async listarMinhasCorridas() {
+      const usuario = await usuarioLogado();
+      if (!usuario) return [];
+      const pedidos = await supabase
+        .from('pedidos')
+        .select('id, estado, criado_em, origem_endereco, destino_endereco, preco_total')
+        .eq('cliente_id', usuario.id)
+        // `cotado` é rascunho (ainda não pago): não é Corrida do histórico.
+        .neq('estado', 'cotado')
+        .order('criado_em', { ascending: false })
+        .limit(LIMITE_DA_LISTA_DE_CORRIDAS);
+      if (pedidos.error) {
+        throw new ErroApi('falha', 'Não foi possível ler as Corridas', { cause: pedidos.error });
+      }
+      if (pedidos.data.length === 0) return [];
+      const corridas = await supabase
+        .from('corridas')
+        .select('id, pedido_id, estado')
+        .in(
+          'pedido_id',
+          pedidos.data.map((p) => p.id),
+        );
+      if (corridas.error) {
+        throw new ErroApi('falha', 'Não foi possível ler as Corridas', { cause: corridas.error });
+      }
+      const avaliacoes =
+        corridas.data.length === 0
+          ? { data: [], error: null }
+          : await supabase
+              .from('avaliacoes')
+              .select('corrida_id, nota')
+              .eq('papel_autor', 'cliente')
+              .in(
+                'corrida_id',
+                corridas.data.map((c) => c.id),
+              );
+      if (avaliacoes.error) {
+        throw new ErroApi('falha', 'Não foi possível ler as avaliações', {
+          cause: avaliacoes.error,
+        });
+      }
+      const corridaDoPedido = new Map(corridas.data.map((c) => [c.pedido_id, c]));
+      const notaDaCorrida = new Map(avaliacoes.data.map((a) => [a.corrida_id, a.nota]));
+      return pedidos.data.map((p) => {
+        const corrida = corridaDoPedido.get(p.id);
+        return {
+          pedidoId: p.id,
+          etapa: etapaDoPedido(p.estado, corrida?.estado),
+          criadoEm: p.criado_em,
+          origemEndereco: p.origem_endereco,
+          destinoEndereco: p.destino_endereco,
+          precoTotal: p.preco_total,
+          corridaId: corrida?.id ?? null,
+          nota: corrida ? (notaDaCorrida.get(corrida.id) ?? null) : null,
+        };
+      });
+    },
+
+    async buscarDetalheDoPedido(pedidoId) {
+      const usuario = await usuarioLogado();
+      if (!usuario) return null;
+      const [pedido, corrida] = await Promise.all([
+        supabase
+          .from('pedidos')
+          .select(
+            'id, estado, criado_em, atualizado_em, origem_endereco, destino_endereco, km_ate_veiculo, km_rebocado, preco_total, preco_taxa_base, preco_ate_veiculo, preco_rebocado, preco_adicional_noturno, preco_adicional_feriado, preco_ajuste_minimo',
+          )
+          .eq('id', pedidoId)
+          .eq('cliente_id', usuario.id)
+          .maybeSingle(),
+        supabase
+          .from('corridas')
+          .select('id, estado, criado_em, atualizado_em')
+          .eq('pedido_id', pedidoId)
+          .maybeSingle(),
+      ]);
+      if (pedido.error || corrida.error) {
+        throw new ErroApi('falha', 'Não foi possível ler a Corrida', {
+          cause: pedido.error ?? corrida.error,
+        });
+      }
+      const p = pedido.data;
+      if (!p) return null;
+      const c = corrida.data;
+      const [guincheiro, avaliacao] = c
+        ? await Promise.all([lerGuincheiroDaCorrida(c.id), lerAvaliacaoDoCliente(c.id)])
+        : [null, null];
+      return {
+        pedidoId: p.id,
+        etapa: etapaDoPedido(p.estado, c?.estado),
+        criadoEm: p.criado_em,
+        atualizadoEm: p.atualizado_em,
+        origemEndereco: p.origem_endereco,
+        destinoEndereco: p.destino_endereco,
+        kmAteVeiculo: p.km_ate_veiculo,
+        kmRebocado: p.km_rebocado,
+        precoTotal: p.preco_total,
+        preco: {
+          // Todos preenchidos pela cotação; o tipo gerado é nulável porque o rascunho não tem.
+          taxaBase: p.preco_taxa_base ?? 0,
+          ateVeiculo: p.preco_ate_veiculo ?? 0,
+          rebocado: p.preco_rebocado ?? 0,
+          adicionalNoturno: p.preco_adicional_noturno ?? 0,
+          adicionalFeriado: p.preco_adicional_feriado ?? 0,
+          ajusteMinimo: p.preco_ajuste_minimo ?? 0,
+        },
+        corrida: c
+          ? {
+              id: c.id,
+              estado: c.estado,
+              aceitaEm: c.criado_em,
+              atualizadaEm: c.atualizado_em,
+              guincheiro,
+            }
+          : null,
+        avaliacao,
+      };
+    },
+
+    async avaliarCorrida(corridaId, nota, comentario) {
+      const texto = comentario?.trim();
+      const { error } = await supabase.rpc('avaliar_corrida', {
+        corrida_id: corridaId,
+        nota,
+        ...(texto ? { comentario: texto } : {}),
+      });
+      if (error) throw erroDaAvaliacao(error);
+      const gravada = await lerAvaliacaoDoCliente(corridaId);
+      if (!gravada) throw new ErroApi('falha', 'Não foi possível ler a avaliação enviada');
+      return gravada;
+    },
+
+    buscarMinhaAvaliacao: lerAvaliacaoDoCliente,
   };
 }
 
@@ -2615,10 +2879,17 @@ export interface IndicadoresDoMonitor {
    * Pedido. `total` é 0 quando nenhuma Corrida foi aceita hoje.
    */
   atendidosRapido: { atendidos: number; total: number };
+  /**
+   * Nota média das avaliações dos últimos `JANELA_DA_NOTA_MEDIA_DIAS` dias (RF13). `media` é
+   * `null` (e `total`, 0) quando nenhuma Corrida foi avaliada no período.
+   */
+  notaMedia: { media: number | null; total: number };
 }
 
 /** Limite da métrica "atendidos em menos de 30 min" do Monitor. */
 export const LIMITE_ATENDIMENTO_MINUTOS = 30;
+/** Janela da nota média do Monitor. */
+export const JANELA_DA_NOTA_MEDIA_DIAS = 7;
 /** Janela dos Pedidos que o Monitor lista. */
 export const JANELA_DO_MONITOR_HORAS = 24;
 
@@ -2777,7 +3048,7 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
 
     async lerIndicadoresDoMonitor() {
       const agora = new Date();
-      const [emCurso, disponiveis, hoje] = await Promise.all([
+      const [emCurso, disponiveis, hoje, notas] = await Promise.all([
         supabase
           .from('corridas')
           .select('id', { count: 'exact', head: true })
@@ -2791,8 +3062,11 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
           .from('corridas')
           .select('criado_em, pedidos (criado_em)')
           .gte('criado_em', inicioDeHojeEmBrasilia(agora)),
+        supabase.rpc('nota_media_desde', {
+          desde: new Date(agora.getTime() - JANELA_DA_NOTA_MEDIA_DIAS * 86_400_000).toISOString(),
+        }),
       ]);
-      const falha = emCurso.error ?? disponiveis.error ?? hoje.error;
+      const falha = emCurso.error ?? disponiveis.error ?? hoje.error ?? notas.error;
       if (falha) {
         throw new ErroApi('falha', 'Não foi possível ler os indicadores do Monitor', {
           cause: falha,
@@ -2807,6 +3081,11 @@ export function criarApiPainel(supabase: ClienteSupabase): ApiPainel {
         corridasEmCurso: emCurso.count ?? 0,
         guincheirosDisponiveis: disponiveis.count ?? 0,
         atendidosRapido: { atendidos, total: aceitasHoje.length },
+        // A função devolve uma linha; sem avaliação, a média é nula e o total é 0.
+        notaMedia: {
+          media: (notas.data?.[0]?.media as number | null | undefined) ?? null,
+          total: Number(notas.data?.[0]?.total ?? 0),
+        },
       };
     },
 

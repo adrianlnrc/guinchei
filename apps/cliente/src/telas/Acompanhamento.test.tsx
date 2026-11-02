@@ -2,7 +2,13 @@ import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react
 import { afterEach, describe, expect, it } from 'vitest';
 import { ErroApi, type FotoEstado } from '@guinchei/api';
 import { formatarReais } from '@guinchei/ui';
-import { COTACAO_DO_SERVIDOR, PERFIL_RAFAEL, acompanhamentoEm, apiFalsa } from '../teste/apiFalsa';
+import {
+  COTACAO_DO_SERVIDOR,
+  PERFIL_RAFAEL,
+  acompanhamentoEm,
+  apiFalsa,
+  detalheDoPedido,
+} from '../teste/apiFalsa';
 import { renderEm } from '../teste/renderizar';
 
 afterEach(cleanup);
@@ -318,6 +324,20 @@ describe('Acompanhamento do Pedido', () => {
     expect(screen.getByRole('button', { name: 'Fazer novo Pedido' })).toBeTruthy();
   });
 
+  it('ao fim da entrega, o fluxo leva à avaliação do atendimento', async () => {
+    const api = await abrirEm('entregue');
+    api.buscarDetalheDoPedido.mockResolvedValue(detalheDoPedido({ pedidoId: 'pedido-novo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Avaliar o atendimento' }));
+    expect(await screen.findByRole('heading', { name: 'Como foi o atendimento?' })).toBeTruthy();
+    expect(api.buscarDetalheDoPedido).toHaveBeenCalledWith('pedido-novo');
+  });
+
+  it('ao fim da entrega, dá para voltar ao Início sem avaliar', async () => {
+    await abrirEm('entregue');
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar ao Início' }));
+    expect(await screen.findByRole('heading', { name: 'Olá, Rafael' })).toBeTruthy();
+  });
+
   it('um Pedido entregue deixa fazer outro', async () => {
     await abrirEm('entregue');
     fireEvent.click(screen.getByRole('button', { name: 'Fazer novo Pedido' }));
@@ -332,10 +352,10 @@ describe('Acompanhamento do Pedido', () => {
       expect(api.acompanharPedido).toHaveBeenCalledWith('pedido-novo', expect.any(Function));
     });
 
-    it('sem Pedido em andamento, volta ao início do Pedido', async () => {
+    it('sem Pedido em andamento, volta ao Início', async () => {
       const api = apiFalsa({ sessao: true, perfil: PERFIL_RAFAEL });
       renderEm('/acompanhamento', api);
-      expect(await screen.findByRole('button', { name: 'Carro de passeio' })).toBeTruthy();
+      expect(await screen.findByRole('heading', { name: 'Olá, Rafael' })).toBeTruthy();
       expect(api.acompanharPedido).not.toHaveBeenCalled();
     });
 
