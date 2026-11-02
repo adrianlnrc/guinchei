@@ -11,12 +11,7 @@ export const AVISO_NAO_E_CLIENTE =
  * Em que ponto da entrada está quem abre o app. `nao_e_cliente`: o perfil é de Guincheiro,
  * representante ou operação; a sessão é encerrada (uma conta tem um papel só).
  */
-export type EstadoSessao =
-  | 'verificando'
-  | 'sem_sessao'
-  | 'nao_e_cliente'
-  | 'sem_perfil'
-  | 'pronto';
+export type EstadoSessao = 'verificando' | 'sem_sessao' | 'nao_e_cliente' | 'sem_perfil' | 'pronto';
 
 /** Carrega o perfil da sessão guardada no aparelho, se ainda não estiver no fluxo. */
 export function useSessao(): EstadoSessao {
