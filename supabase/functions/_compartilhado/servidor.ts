@@ -130,6 +130,31 @@ export function servir(
 }
 
 /**
+ * Se o `Authorization` é da service_role: o valor idêntico à `SUPABASE_SERVICE_ROLE_KEY`
+ * injetada, ou um JWT com `role = service_role`. O segundo caso cobre a chave legada guardada
+ * no Vault do banco (o pg_net manda esse JWT) quando a injetada tem outro formato
+ * (`sb_secret_...`). O gateway das Edge Functions confere a assinatura do JWT (`verify_jwt`
+ * fica ligado, que é o padrão), então aqui basta ler o papel.
+ */
+export function ehServiceRole(autorizacao: string | null): boolean {
+  if (!autorizacao?.startsWith('Bearer ')) return false;
+  const token = autorizacao.slice('Bearer '.length);
+  if (token === variavel('SUPABASE_SERVICE_ROLE_KEY')) return true;
+  try {
+    const carga = token.split('.')[1] ?? '';
+    const json = atob(
+      carga
+        .replace(/-/g, '+')
+        .replace(/_/g, '/')
+        .padEnd(Math.ceil(carga.length / 4) * 4, '='),
+    );
+    return (JSON.parse(json) as { role?: string }).role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Serve uma função POST só para o próprio backend (o pg_net do banco): exige a
  * service_role no `Authorization`. Nenhum app chama.
  */
@@ -138,8 +163,7 @@ export function servirInterno(
   traduzir: Traducao,
 ): void {
   servirPost(async (req, corpo) => {
-    const esperado = `Bearer ${variavel('SUPABASE_SERVICE_ROLE_KEY')}`;
-    if (req.headers.get('Authorization') !== esperado) {
+    if (!ehServiceRole(req.headers.get('Authorization'))) {
       throw new ErroServidor(401, 'sem_sessao', 'Só o backend chama esta função');
     }
     return tratar(corpo);
