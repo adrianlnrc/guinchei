@@ -10,11 +10,13 @@ import {
 import {
   agruparVencimentosPorFrota,
   type AlertaDeVencimento,
+  type CorridaDoMonitor,
   type FrotaComVencimentos,
   type FrotaNaFila,
+  type IndicadoresDoMonitor,
   type PedidoAguardandoAprovacao,
 } from '@guinchei/api';
-import { MONITOR, TAXA_CANCELAMENTO, type CorridaMonitor } from '@guinchei/mock';
+import { TAXA_CANCELAMENTO } from '@guinchei/mock';
 import { TABELA_PADRAO, type TabelaPrecos } from '@guinchei/preco';
 import { useApi } from './api';
 
@@ -26,7 +28,15 @@ export interface TabelaDoPainel extends TabelaPrecos {
 const TABELA_INICIAL: TabelaDoPainel = { ...TABELA_PADRAO, taxaCancelamento: TAXA_CANCELAMENTO };
 
 interface Operacao {
-  corridas: CorridaMonitor[];
+  /**
+   * Pedidos dos últimos 24 h em Match ou atribuídos, lidos do banco a cada 5 s; `null` até a
+   * primeira leitura chegar.
+   */
+  corridas: CorridaDoMonitor[] | null;
+  /** Indicadores do topo do Monitor, na mesma cadência; `null` até chegarem. */
+  indicadores: IndicadoresDoMonitor | null;
+  /** A última leitura do Monitor falhou (a tela mostra a última lista boa, se houver). */
+  erroMonitor: boolean;
   /**
    * Pedidos redirecionados a outra Frota por um preço maior, à espera de o Cliente aprovar
    * (ADR-0013); `null` até a leitura chegar. A leitura se repete a cada 10 s.
@@ -62,7 +72,9 @@ const Contexto = createContext<Operacao | null>(null);
 
 export function OperacaoProvider({ children }: { children: ReactNode }) {
   const api = useApi();
-  const corridas = MONITOR;
+  const [corridas, setCorridas] = useState<CorridaDoMonitor[] | null>(null);
+  const [indicadores, setIndicadores] = useState<IndicadoresDoMonitor | null>(null);
+  const [erroMonitor, setErroMonitor] = useState(false);
   const [fila, setFila] = useState<FrotaNaFila[] | null>(null);
   const [erroFila, setErroFila] = useState(false);
   const [vencimentos, setVencimentos] = useState<AlertaDeVencimento | null>(null);
@@ -152,6 +164,30 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     };
   }, [api]);
 
+  // O Monitor relê as Corridas e os indicadores a cada 5 s (polling; o Realtime fica para a
+  // Corrida do Cliente e do Guincheiro). Falha mantém a última leitura boa e avisa na tela.
+  useEffect(() => {
+    let vigente = true;
+    const ler = () =>
+      Promise.all([api.listarCorridasDoMonitor(), api.lerIndicadoresDoMonitor()]).then(
+        ([lidas, lidos]) => {
+          if (!vigente) return;
+          setCorridas(lidas);
+          setIndicadores(lidos);
+          setErroMonitor(false);
+        },
+        () => {
+          if (vigente) setErroMonitor(true);
+        },
+      );
+    void ler();
+    const ciclo = setInterval(() => void ler(), 5_000);
+    return () => {
+      vigente = false;
+      clearInterval(ciclo);
+    };
+  }, [api]);
+
   const resolverDisputa = useCallback((decisao: string) => setDecisaoDisputa(decisao), []);
   const publicarTabela = useCallback(
     (t: TabelaDoPainel) => setTabela({ ...t, versao: t.versao + 1 }),
@@ -164,6 +200,8 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
   const valor = useMemo(
     () => ({
       corridas,
+      indicadores,
+      erroMonitor,
       aguardandoAprovacao,
       fila,
       erroFila,
@@ -184,6 +222,8 @@ export function OperacaoProvider({ children }: { children: ReactNode }) {
     }),
     [
       corridas,
+      indicadores,
+      erroMonitor,
       aguardandoAprovacao,
       fila,
       erroFila,

@@ -1432,6 +1432,35 @@ describe.skipIf(!SUPABASE_URL)('@guinchei/api contra o Supabase local', () => {
       expect(await api.buscarMeuOperador()).toEqual({ nome: 'Operação Guinchei' });
     });
 
+    it('o Monitor lê o Pedido em Match com as coordenadas da origem e os indicadores reais', async () => {
+      const pedido = await pedidoComTrajeto();
+      await pedido.api.cotarPedido(pedido.id);
+      await pedido.api.confirmarPedido(pedido.id, 'pix');
+
+      const { api } = novoPainel();
+      await api.confirmarCodigo(OPERACAO.telefone, CODIGO_DE_TESTE);
+      const linhas = await api.listarCorridasDoMonitor();
+      const linha = linhas.find((l) => l.pedidoId === pedido.id);
+      expect(linha).toMatchObject({
+        idCurto: pedido.id.slice(0, 8),
+        origemEndereco: 'Eixo Monumental, Brasília',
+        destinoEndereco: 'QNA 12, Taguatinga Norte',
+        guincheiro: null,
+        frota: null,
+      });
+      expect(['em_match', 'sem_guincheiro']).toContain(linha!.estado);
+      expect(linha!.minutos).toBeGreaterThanOrEqual(0);
+      expect(linha!.origem!.lat).toBeCloseTo(-15.7903, 4);
+      expect(linha!.origem!.lng).toBeCloseTo(-47.8921, 4);
+
+      const indicadores = await api.lerIndicadoresDoMonitor();
+      expect(indicadores.corridasEmCurso).toBeGreaterThanOrEqual(0);
+      expect(indicadores.guincheirosDisponiveis).toBeGreaterThanOrEqual(0);
+      expect(indicadores.atendidosRapido.atendidos).toBeLessThanOrEqual(
+        indicadores.atendidosRapido.total,
+      );
+    });
+
     it('código errado é recusado com codigo_invalido', async () => {
       const { api } = novoPainel();
       const erro = await api.confirmarCodigo(OPERACAO.telefone, '000000').catch((e: unknown) => e);

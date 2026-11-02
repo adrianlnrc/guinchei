@@ -172,6 +172,9 @@ importers:
       '@guinchei/estados':
         specifier: workspace:*
         version: link:../../packages/estados
+      '@guinchei/geo':
+        specifier: workspace:*
+        version: link:../../packages/geo
       '@guinchei/mock':
         specifier: workspace:*
         version: link:../../packages/mock
