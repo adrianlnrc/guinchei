@@ -9,9 +9,9 @@ import { AVISO_NAO_E_CLIENTE, useSessao } from '../sessao';
 
 export function BoasVindas() {
   const ir = useNavigate();
-  // Sessão guardada no aparelho: quem já tem perfil vai direto ao Pedido.
+  // Sessão guardada no aparelho: quem já tem perfil vai ao Início.
   const sessao = useSessao();
-  if (sessao === 'pronto') return <Navigate to="/pedido/1" replace />;
+  if (sessao === 'pronto') return <Navigate to="/inicio" replace />;
   if (sessao === 'sem_perfil') return <Navigate to="/cadastro" replace />;
   if (sessao === 'nao_e_cliente') {
     return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_CLIENTE }} />;
@@ -155,7 +155,7 @@ export function Codigo() {
       }
       if (perfil) {
         setPerfil(perfil);
-        ir('/pedido/1');
+        ir('/inicio');
       } else {
         ir('/cadastro');
       }

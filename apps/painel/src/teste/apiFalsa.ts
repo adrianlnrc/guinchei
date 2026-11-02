@@ -201,6 +201,7 @@ export const INDICADORES_ZERADOS: IndicadoresDoMonitor = {
   corridasEmCurso: 0,
   guincheirosDisponiveis: 0,
   atendidosRapido: { atendidos: 0, total: 0 },
+  notaMedia: { media: null, total: 0 },
 };
 
 /** Linha do Monitor; o que não vem nos campos é um Pedido `em_match` recém-criado. */

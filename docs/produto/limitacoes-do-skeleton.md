@@ -36,9 +36,9 @@ Lista para a demo (issue #15), atualizada com o Incremento 1 (cadastro e homolog
 ## Fora do skeleton
 
 - **Push e GPS no iOS ficam pendentes do spike #3.** O app do Guincheiro precisa ficar aberto para receber chamados; não promete avisar com a tela bloqueada, e não há rastreamento ao vivo (RF09) no mapa do Cliente, só a etapa.
-- **Parte do Painel de operação ainda é protótipo.** Homologação, vencimentos, ativação da Frota e tabela de preços usam o banco de verdade. O Monitor de Corridas e seus indicadores (Corridas em curso, Guincheiros disponíveis, "atendidos em menos de 30 min") também leem o banco; a nota média aparece como "—" (sem avaliação, RF13) e a Disputa mostra dados de exemplo (inclusive fotos).
+- **Parte do Painel de operação ainda é protótipo.** Homologação, vencimentos, ativação da Frota e tabela de preços usam o banco de verdade. O Monitor de Corridas e seus indicadores (Corridas em curso, Guincheiros disponíveis, "atendidos em menos de 30 min") também leem o banco; a nota média é a das avaliações dos Clientes dos últimos 7 dias (RF13), "—" sem nenhuma, e a Disputa mostra dados de exemplo (inclusive fotos).
 - **Cancelar o Pedido** (RN05, RF14) e a taxa de cancelamento: o botão aparece desabilitado.
-- Avaliação mútua (RF13), histórico de Corridas (RF18) e histórico/ganhos do plantão do Guincheiro (dados de exemplo, só na sessão).
+- Avaliação do Guincheiro ao Cliente (RF13, o lado inverso: o Cliente já avalia o Guincheiro de verdade, com nota e comentário gravados no banco) e histórico/ganhos do plantão do Guincheiro (dados de exemplo, só na sessão). O histórico de Corridas do Cliente (RF18) lê o banco; o filtro e a busca por período ficam para depois.
 - Cadastro de Frota **empresa** pelo app (o app cadastra o autônomo; a empresa nasce pela operação, ou, no seed, pelo banco) e liquidação do repasse ao prestador (RF12, depende do PSP).
 - **Push no iOS** (spike #3, ver acima): o app do Guincheiro precisa estar aberto para a oferta aparecer.
 - Requisitos não funcionais de produção: 24x7, LGPD, auditoria, operação offline.

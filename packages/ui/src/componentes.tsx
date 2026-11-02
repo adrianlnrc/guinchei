@@ -205,6 +205,62 @@ export function Nota({
   );
 }
 
+/** Nome da nota para leitores de tela: "1 estrela", "4 estrelas". */
+export function rotuloDaNota(nota: number): string {
+  return `${nota} ${nota === 1 ? 'estrela' : 'estrelas'}`;
+}
+
+/**
+ * Nota de 1 a 5 em estrelas, escolhida com toque, mouse ou teclado (grupo de botões de rádio
+ * nativos: Tab entra no grupo e as setas trocam a nota). `desabilitada` bloqueia a troca.
+ */
+export function Estrelas({
+  valor,
+  onChange,
+  nome,
+  rotulo = 'Nota de 1 a 5',
+  desabilitada,
+}: {
+  valor: number | null;
+  onChange: (n: number) => void;
+  /** Identifica o grupo de rádios (precisa ser único na página). */
+  nome: string;
+  rotulo?: string;
+  desabilitada?: boolean;
+}) {
+  return (
+    <fieldset className="estrelas" disabled={desabilitada}>
+      <legend className="estrelas__legenda">{rotulo}</legend>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <label key={n} className="estrelas__opcao" data-cheia={valor !== null && n <= valor}>
+          <input
+            type="radio"
+            name={nome}
+            value={n}
+            checked={valor === n}
+            onChange={() => onChange(n)}
+            aria-label={rotuloDaNota(n)}
+          />
+          <span aria-hidden>★</span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
+/** A nota já dada, só para ler: "Nota 4 de 5" com as estrelas desenhadas. */
+export function EstrelasLeitura({ nota }: { nota: number }) {
+  return (
+    <span className="estrelas estrelas--leitura" role="img" aria-label={`Nota ${nota} de 5`}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <span key={n} className="estrelas__opcao" data-cheia={n <= nota} aria-hidden>
+          ★
+        </span>
+      ))}
+    </span>
+  );
+}
+
 const ROTULOS_ETAPAS = ['A caminho', 'No local', 'Carregado', 'Entregue'] as const;
 
 /** Barra de etapas da Corrida. `atual` vai de 0 (a caminho) a 3 (entregue). */
@@ -246,6 +302,7 @@ export function Abas<T extends string>({
   atual,
   onChange,
   escura,
+  rotulo,
   children,
 }: {
   /** `emBreve` mostra a aba desabilitada, com a indicação "em breve". */
@@ -253,10 +310,12 @@ export function Abas<T extends string>({
   atual: T;
   onChange: (v: T) => void;
   escura?: boolean;
+  /** Nome da barra para leitores de tela (ex.: "Navegação principal"). */
+  rotulo?: string;
   children?: ReactNode;
 }) {
   return (
-    <nav className={`abas${escura ? ' abas--escura' : ''}`}>
+    <nav className={`abas${escura ? ' abas--escura' : ''}`} aria-label={rotulo}>
       <div className="abas__grade">
         {abas.map((a) =>
           a.emBreve ? (

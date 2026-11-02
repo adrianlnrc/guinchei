@@ -22,11 +22,16 @@ export async function digitarCodigo(page: Page, celular: string): Promise<void> 
   await page.getByRole('button', { name: 'Confirmar' }).click();
 }
 
-/** Login do Cliente com o número de teste (ADR-0010); termina na primeira pergunta do Pedido. */
+/**
+ * Login do Cliente com o número de teste (ADR-0010). O login leva ao Início; daí "Pedir guincho"
+ * abre o Pedido, e o passo termina na primeira pergunta.
+ */
 export async function entrarComoCliente(page: Page): Promise<void> {
   await page.goto(URL_CLIENTE);
   await page.getByRole('button', { name: 'Pedir guincho agora' }).click();
   await digitarCodigo(page, CELULAR_CLIENTE);
+  await expect(page.getByRole('heading', { name: 'Olá, Rafael' })).toBeVisible();
+  await page.getByRole('button', { name: 'Pedir guincho', exact: true }).click();
   await expect(page.getByRole('heading', { name: /Oi, Rafael/ })).toBeVisible();
 }
 

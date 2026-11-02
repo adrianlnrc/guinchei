@@ -1,13 +1,7 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
 import type { CotacaoPedido, Perfil } from '@guinchei/api';
 import type { Endereco, Rota } from '@guinchei/geo';
-import {
-  HISTORICO_CLIENTE,
-  type CorridaHistorico,
-  type Rodas,
-  type Situacao,
-  type Veiculo,
-} from '@guinchei/mock';
+import type { Rodas, Situacao, Veiculo } from '@guinchei/mock';
 
 /** Origem, destino e rota gravados no Pedido pela tela de local (#9). */
 export interface Trajeto {
@@ -22,6 +16,8 @@ interface Fluxo {
   /** Perfil do Cliente logado, depois do cadastro urgente. */
   perfil: Perfil | null;
   setPerfil: (p: Perfil) => void;
+  /** Esquece o perfil e o rascunho do Pedido, depois de sair da conta. */
+  limparSessao: () => void;
   /** Id do Pedido aberto no banco. O acompanhamento lê o estado dele no banco. */
   pedidoId: string | null;
   setPedidoId: (id: string) => void;
@@ -39,7 +35,6 @@ interface Fluxo {
   setRodas: (v: Rodas) => void;
   /** Zera as respostas do rascunho para começar um Pedido novo. */
   novoPedido: () => void;
-  historico: CorridaHistorico[];
   aviso: string | null;
   avisar: (texto: string) => void;
 }
@@ -55,7 +50,6 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
   const [veiculo, setVeiculo] = useState<Veiculo | null>(null);
   const [situacao, setSituacao] = useState<Situacao | null>(null);
   const [rodas, setRodas] = useState<Rodas | null>(null);
-  const historico = HISTORICO_CLIENTE;
   const [aviso, setAviso] = useState<string | null>(null);
 
   const novoPedido = useCallback(() => {
@@ -66,6 +60,11 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
     setTrajeto(null);
     setCotacao(null);
   }, []);
+  const limparSessao = useCallback(() => {
+    setCelular('');
+    setPerfil(null);
+    novoPedido();
+  }, [novoPedido]);
   const avisar = useCallback((texto: string) => {
     setAviso(texto);
     setTimeout(() => setAviso((atual) => (atual === texto ? null : atual)), 3200);
@@ -77,6 +76,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       setCelular,
       perfil,
       setPerfil,
+      limparSessao,
       pedidoId,
       setPedidoId,
       trajeto,
@@ -90,7 +90,6 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       rodas,
       setRodas,
       novoPedido,
-      historico,
       aviso,
       avisar,
     }),
@@ -104,7 +103,7 @@ export function FluxoProvider({ children }: { children: ReactNode }) {
       situacao,
       rodas,
       novoPedido,
-      historico,
+      limparSessao,
       aviso,
       avisar,
     ],

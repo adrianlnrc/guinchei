@@ -69,6 +69,52 @@ export type Database = {
           },
         ];
       };
+      avaliacoes: {
+        Row: {
+          autor_id: string;
+          comentario: string | null;
+          corrida_id: string;
+          criado_em: string;
+          id: string;
+          nota: number;
+          papel_autor: Database['public']['Enums']['papel'];
+        };
+        ComputedFields: never;
+        Insert: {
+          autor_id: string;
+          comentario?: string | null;
+          corrida_id: string;
+          criado_em?: string;
+          id?: string;
+          nota: number;
+          papel_autor: Database['public']['Enums']['papel'];
+        };
+        Update: {
+          autor_id?: string;
+          comentario?: string | null;
+          corrida_id?: string;
+          criado_em?: string;
+          id?: string;
+          nota?: number;
+          papel_autor?: Database['public']['Enums']['papel'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'avaliacoes_autor_id_fkey';
+            columns: ['autor_id'];
+            isOneToOne: false;
+            referencedRelation: 'perfis';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'avaliacoes_corrida_id_fkey';
+            columns: ['corrida_id'];
+            isOneToOne: false;
+            referencedRelation: 'corridas';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       convites_guincheiro: {
         Row: {
           aceito_em: string | null;
@@ -1176,6 +1222,10 @@ export type Database = {
         };
         Returns: undefined;
       };
+      avaliar_corrida: {
+        Args: { comentario?: string; corrida_id: string; nota: number };
+        Returns: undefined;
+      };
       avaliar_vinculo: { Args: { guincheiro: string; veiculo: string }; Returns: string };
       cancelar_convite_guincheiro: { Args: { convite_id: string }; Returns: undefined };
       categoria_cnh_cobre_pbt: { Args: { categoria: string; pbt_kg: number }; Returns: boolean };
@@ -1384,6 +1434,13 @@ export type Database = {
       nome_do_tipo: {
         Args: { tipo: Database['public']['Enums']['tipo_item_homologacao'] };
         Returns: string;
+      };
+      nota_media_desde: {
+        Args: { desde: string };
+        Returns: {
+          media: number;
+          total: number;
+        }[];
       };
       pagamento_para_estornar: { Args: { cliente_id: string; pedido_id: string }; Returns: Json };
       participo_da_corrida: { Args: { corrida_id: string }; Returns: boolean };

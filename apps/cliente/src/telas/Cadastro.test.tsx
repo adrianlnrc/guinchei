@@ -16,16 +16,14 @@ async function preencher({ nome = 'Ana Lima', cpf = '52998224725', aceitar = tru
 const continuar = () => screen.getByRole('button', { name: 'Continuar' }) as HTMLButtonElement;
 
 describe('Cadastro urgente', () => {
-  it('grava nome, CPF sem máscara e a versão dos termos, e segue para o Pedido', async () => {
+  it('grava nome, CPF sem máscara e a versão dos termos, e segue para o Início', async () => {
     const api = semPerfil();
     renderEm('/cadastro', api);
     await preencher();
     expect(screen.getByLabelText<HTMLInputElement>('CPF').value).toBe('529.982.247-25');
     fireEvent.click(continuar());
 
-    expect(
-      await screen.findByRole('heading', { name: 'Oi, Ana. Qual veículo precisa de reboque?' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Olá, Ana' })).toBeTruthy();
     expect(api.criarPerfilUrgente).toHaveBeenCalledWith({
       nome: 'Ana Lima',
       cpf: '52998224725',
