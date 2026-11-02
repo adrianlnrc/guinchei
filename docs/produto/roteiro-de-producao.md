@@ -19,12 +19,14 @@ Cada app só aceita o papel dele: um número de Guincheiro no app Cliente é bar
 ## O que mudou em relação ao roteiro local
 
 - Os passos 1 a 9 do [roteiro local](roteiro-de-demo.md#roteiro-cerca-de-14-minutos) valem como estão, trocando `localhost:517x` pelos endereços acima.
-- O **mapa** é o esquemático até o token do Mapbox ser configurado (próxima seção). Com o token, o passo 2 mostra mapa real, busca de endereço do DF e rota.
+- O **mapa** é real: o token do Mapbox está configurado no Cliente (veja [Configuração do mapa](#configuração-do-mapa-mapbox)). O passo 2 mostra mapa do DF, busca de endereço e rota. Se o mapa falhar na sala, o plano B é a fala sobre o mapa esquemático (veja o [plano B](#plano-b)).
 - O preço do dia aparece com os adicionais do calendário: noturno (20h às 6h, 15%) e feriado (20%). O exemplo do roteiro local (R$ 258,80) é de dia útil; em feriado o valor sobe.
 - **Não existe `db reset` em produção.** Veja [Estado e ensaio](#estado-e-ensaio).
 - O 401 do Match ("Só o backend chama esta função") foi corrigido na `ofertar-proximo` (versão 2 publicada); se a oferta não chegar ao Marcos, veja o [plano B](#plano-b).
 
 ## Configuração do mapa (Mapbox)
+
+**Estado: configurado em 2 de novembro de 2026.** O token público `guinchei-web-prod` (conta Mapbox do dono) está em `VITE_MAPBOX_TOKEN` no projeto `guinchei` da Vercel, em Production e Preview, restrito a `https://guinchei.vercel.app`. Valor e escopos ficam no painel do Mapbox (Access tokens), não neste repositório. Para trocar o token, repita o passo 3 abaixo e faça Redeploy.
 
 O mapa, a busca de endereço e a rota só existem no app **Cliente**. Guincheiro e Painel não usam Mapbox.
 
@@ -53,7 +55,7 @@ Sem token, tudo funciona com o mapa esquemático e o trecho do cenário (Eixo Mo
 - [ ] Os três endereços abrem, sem "App sem configuração do servidor".
 - [ ] Login com `(61) 90000-0001` e código `123456` no Cliente entra no Pedido (se pedir cadastro, o número não está nos números de teste do Auth).
 - [ ] Pedido de ponta a ponta até "Guincheiro aceitou" (limpe com o `truncate` acima depois).
-- [ ] `VITE_MAPBOX_TOKEN` configurado, ou a fala sobre o mapa esquemático em mente.
+- [ ] Mapa real no passo de local de https://guinchei.vercel.app (sem o aviso "Mapa indisponível"), com 3 ou 4 endereços do DF testados na busca.
 - [ ] Um PDF e um JPG à mão para mostrar o envio de documento.
 - [ ] Zoom do navegador e fonte grandes o bastante para a sala.
 
@@ -66,6 +68,7 @@ Sem token, tudo funciona com o mapa esquemático e o trecho do cenário (Eixo Mo
 | Preço não aparece ("Não foi possível calcular o preço") | A Edge Function `cotar-pedido` caiu ou o Pedido está sem trajeto. Toque em **Tentar de novo**; veja os logs de função no Supabase. |
 | Oferta não chega ao Marcos | Ele precisa estar **Disponível**. O Match varre a cada 5 s pelo pg_cron e chama `ofertar-proximo`; confira no SQL Editor `select status_code, content, created from net._http_response order by created desc limit 5;` (200 com `ofertado` é o esperado; 401 indica o segredo `match_chave_servico` do Vault errado). |
 | Painel sem a Frota "pronta para ativar" | Falta vínculo ativo entre Guincheiro e veículo: volte ao passo 5. |
+| Mapa não carrega, busca sem resultado ou rota falha | Token do Mapbox recusado (URL fora da restrição, por exemplo um preview) ou limite da conta. Abra `https://guinchei.vercel.app` (o endereço de produção). Se persistir, remova `VITE_MAPBOX_TOKEN` da Vercel e faça Redeploy: o app volta ao mapa esquemático e ao trecho do cenário. |
 | Nada funciona a 5 minutos | Conte o fluxo pelo PRD e mostre o CI verde da `main` (pgTAP, integração e Playwright). |
 
 ## Testado em produção (2 de novembro de 2026)
