@@ -49,13 +49,19 @@ Sem token, tudo funciona com o mapa esquemático e o trecho do cenário (Eixo Mo
 
 ## Estado e ensaio
 
-- Os passos 2 a 4 (pedido, pagamento, Match, corrida) só geram Pedidos. Podem ser ensaiados à vontade; para limpar, apague os Pedidos (os dados de teste somem em cascata, os cadastros ficam):
+Não existe `db reset` em produção, mas há uma **recarga em segundos**: [`supabase/ferramentas/foto_da_demo.sql`](../../supabase/ferramentas/foto_da_demo.sql) cria `demo.salvar()` (tira uma foto de todas as tabelas de `public`) e `demo.restaurar()` (devolve o banco à foto). A foto do estado bom da demonstração (seeds carregados, nenhum Pedido de teste, só o Marcos disponível) já está tirada no Supabase hospedado.
 
-  ```sql
-  truncate table public.pedidos cascade;
-  ```
+No SQL Editor do Supabase, projeto Guinchei:
 
-- Os passos 5 a 8 **consomem o estado da Cerrado Guinchos** (vínculos criados, Frota ativada) e as decisões no Painel. Não ensaie esses passos em produção, ou o ensaio não pode ser desfeito sem recarregar o banco (apagar o schema `public`, reaplicar as 28 migrations e os seeds `01`, `02`, `04` e `05`; leva uns 10 minutos com o Claude). Se precisar, ensaie num Supabase local (`pnpm supabase db reset`).
+```sql
+select demo.restaurar();   -- volta ao estado bom; leva poucos segundos
+```
+
+- Pode ensaiar tudo, inclusive os passos 5 a 8 (Frota Cerrado, vínculos, ativação, recotação): ao fim, `select demo.restaurar();` desfaz tudo. Faça isso também **antes de entrar na sala**.
+- Para atualizar a foto (por exemplo, depois de mudar a disponibilidade de alguém de propósito): ajuste o estado, confira, e rode `select demo.salvar();`.
+- A recarga não mexe em usuários e sessões do Auth, arquivos do Storage, segredos do Vault, jobs do pg_cron nem Edge Functions. Um número cadastrado durante a demonstração (como o autônomo `0008`) continua no Auth e volta como pessoa sem cadastro. Uma janela do navegador que estava aberta com o estado antigo deve ser recarregada (F5); se mostrar tela vazia, saia e entre de novo.
+- Se só quiser limpar Pedidos, sem tocar em mais nada: `truncate table public.pedidos cascade;`.
+- Se mudar o schema (uma migração nova), tire a foto de novo depois de aplicá-la; uma foto antiga com colunas diferentes é restaurada só nas colunas em comum.
 - Antes de entrar na sala: Marcos precisa estar **Disponível**; ele volta sozinho ao plantão ao fim de cada Corrida.
 
 ## Checagem de 10 minutos antes
