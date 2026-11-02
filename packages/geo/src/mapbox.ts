@@ -27,8 +27,13 @@ import {
 } from './index';
 
 const BASE = 'https://api.mapbox.com';
-/** Do mais preciso ao mais vago; bairro e cidade-satélite servem de ponto de partida. */
-const TIPOS_BUSCA = 'address,street,neighborhood,locality';
+/**
+ * Do mais preciso ao mais vago; bairro, cidade-satélite e CEP servem de ponto de partida. No DF,
+ * a cidade-satélite (Taguatinga, Gama...) e a região administrativa chegam do Mapbox como
+ * `place` ou `district`, e o CEP como `postcode`: sem eles a busca por nome de cidade volta
+ * vazia.
+ */
+const TIPOS_BUSCA = 'address,street,neighborhood,locality,place,district,postcode';
 const MINIMO_BUSCA = 3;
 
 export interface ConfigMapbox {
