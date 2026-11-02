@@ -603,6 +603,8 @@ export interface ApiGuinchei {
   enviarCodigo(telefone: string): Promise<void>;
   confirmarCodigo(telefone: string, codigo: string): Promise<void>;
   temSessao(): Promise<boolean>;
+  /** Encerra a sessão no aparelho. */
+  sair(): Promise<void>;
   /** Perfil de quem está logado; `null` sem sessão ou antes do cadastro urgente. */
   buscarMeuPerfil(): Promise<Perfil | null>;
   criarPerfilUrgente(dados: CadastroUrgente): Promise<Perfil>;
@@ -1184,6 +1186,11 @@ export function criarApi(supabase: ClienteSupabase): ApiGuinchei {
 
     async temSessao() {
       return (await usuarioLogado()) !== null;
+    },
+
+    async sair() {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw new ErroApi('falha', 'Não foi possível sair', { cause: error });
     },
 
     async buscarMeuPerfil() {

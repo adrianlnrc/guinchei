@@ -104,6 +104,9 @@ export function apiFalsa({
       telefoneLogado = telefone.replace(/\D/g, '');
     }),
     temSessao: vi.fn(async () => logado),
+    sair: vi.fn(async () => {
+      logado = false;
+    }),
     buscarMeuPerfil: vi.fn(async () => (logado ? meuPerfil : null)),
     criarPerfilUrgente: vi.fn(async ({ nome, cpf, termosVersao }: CadastroUrgente) => {
       if (cpf === PERFIL_RAFAEL.cpf) throw new ErroApi('cpf_ja_cadastrado', 'CPF já cadastrado');
