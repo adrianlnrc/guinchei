@@ -1,5 +1,7 @@
 # Roteiro da apresentação em produção
 
+> **Para apresentar, use [roteiro-apresentacao.md](roteiro-apresentacao.md)**: roteiro único, completo e já adaptado a produção. Este arquivo guarda os bastidores (endereços, estado, mapa, plano B).
+
 Versão de [roteiro-de-demo.md](roteiro-de-demo.md) para o ambiente hospedado (Supabase `vxpjfrtdllmwwztnpglm` + 3 projetos na Vercel). Os passos, as falas e as limitações são os do roteiro local; aqui ficam o que muda: endereços, preparação, estado e plano B. Guia de infraestrutura: [producao.md](../producao.md).
 
 **Código de login: sempre `123456`** (números de teste do Supabase Auth; nenhuma mensagem é enviada).
