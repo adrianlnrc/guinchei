@@ -84,6 +84,24 @@ describe('buscarEnderecos (Geocoding v6 forward)', () => {
     expect(norte).toBeCloseTo(-15.5, 2);
   });
 
+  it('busca também cidade-satélite, região e CEP (place, district e postcode)', async () => {
+    const { mapas, fetch } = servico(async () => resposta(COLECAO([])));
+    await mapas.buscarEnderecos('taguatinga');
+
+    const tipos = urlChamada(fetch).searchParams.get('types')!.split(',');
+    expect(tipos).toEqual(
+      expect.arrayContaining([
+        'address',
+        'street',
+        'neighborhood',
+        'locality',
+        'place',
+        'district',
+        'postcode',
+      ]),
+    );
+  });
+
   it('devolve só os endereços dentro do DF, com o endereço completo', async () => {
     const { mapas } = servico(async () =>
       resposta(
