@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ErroApi } from '@guinchei/api';
 import { Botao, Corpo, Link, Rotulo, Tela } from '@guinchei/ui';
 import { useApi } from '../api';
 import { mascararCelular, telefoneE164, useFluxo } from '../fluxo';
 import { MensagemDeErro } from '../MensagemDeErro';
-import { useSessao } from '../sessao';
+import { AVISO_NAO_E_CLIENTE, useSessao } from '../sessao';
 
 export function BoasVindas() {
   const ir = useNavigate();
@@ -13,6 +13,9 @@ export function BoasVindas() {
   const sessao = useSessao();
   if (sessao === 'pronto') return <Navigate to="/pedido/1" replace />;
   if (sessao === 'sem_perfil') return <Navigate to="/cadastro" replace />;
+  if (sessao === 'nao_e_cliente') {
+    return <Navigate to="/entrar" replace state={{ erro: AVISO_NAO_E_CLIENTE }} />;
+  }
   return (
     <Tela escura rotulo="Boas-vindas">
       <Corpo style={{ padding: '28px 28px 40px', gap: 20 }}>
@@ -45,8 +48,9 @@ export function Celular() {
   const ir = useNavigate();
   const api = useApi();
   const { celular, setCelular } = useFluxo();
+  const { state } = useLocation() as { state: { erro?: string } | null };
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(state?.erro ?? null);
   const completo = celular.replace(/\D/g, '').length === 11;
 
   async function receberCodigo() {
@@ -144,6 +148,11 @@ export function Codigo() {
     try {
       await api.confirmarCodigo(telefoneE164(celular), codigo);
       const perfil = await api.buscarMeuPerfil();
+      if (perfil && perfil.papel !== 'cliente') {
+        await api.sair();
+        ir('/entrar', { replace: true, state: { erro: AVISO_NAO_E_CLIENTE } });
+        return;
+      }
       if (perfil) {
         setPerfil(perfil);
         ir('/pedido/1');

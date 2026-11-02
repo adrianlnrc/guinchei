@@ -31,6 +31,25 @@ describe('Entrada por telefone e código', () => {
     expect(api.confirmarCodigo).toHaveBeenCalledWith('+5561900000001', CODIGO_CERTO);
   });
 
+  it('quem tem conta de Guincheiro é barrado ao confirmar o código e a sessão é encerrada', async () => {
+    const api = apiFalsa({ perfil: { ...PERFIL_RAFAEL, papel: 'guincheiro' } });
+    renderEm('/entrar', api);
+    pedirCodigo('(61) 90000-0001');
+    await digitarCodigo(CODIGO_CERTO);
+
+    expect(await screen.findByText(/outro tipo de conta/)).toBeTruthy();
+    expect(api.sair).toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: pedido })).toBeNull();
+  });
+
+  it('sessão guardada de quem não é Cliente cai na entrada com o aviso', async () => {
+    const api = apiFalsa({ sessao: true, perfil: { ...PERFIL_RAFAEL, papel: 'operacao' } });
+    renderEm('/pedido/1', api);
+
+    expect(await screen.findByText(/outro tipo de conta/)).toBeTruthy();
+    expect(api.sair).toHaveBeenCalled();
+  });
+
   it('o código vai pelo WhatsApp (ADR-0010), não por SMS', async () => {
     renderEm('/entrar', apiFalsa());
     expect(screen.getByRole('main', { name: 'Celular' }).textContent).toMatch(/pelo WhatsApp/);
